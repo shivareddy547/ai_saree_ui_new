@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { MoreVertical, Play, Loader2 } from 'lucide-react';
+import { MoreVertical, Play, Loader2, X } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3000/api";
@@ -22,6 +22,7 @@ const AllVideos: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -59,6 +60,8 @@ const AllVideos: React.FC = () => {
     return `https://placehold.co/200x200/e2e8f0/64748b?text=${encodeURIComponent(product.name[0])}`;
   };
 
+  const closeModal = () => setSelectedVideoUrl(null);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -95,6 +98,7 @@ const AllVideos: React.FC = () => {
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product</th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Video</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Duration</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Status</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Views</th>
@@ -105,7 +109,7 @@ const AllVideos: React.FC = () => {
           <tbody className="divide-y divide-gray-100">
             {products.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                   No videos found. Create your first AI video!
                 </td>
               </tr>
@@ -121,6 +125,20 @@ const AllVideos: React.FC = () => {
                       />
                       <span className="font-medium text-slate-800">{product.name}</span>
                     </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={() => setSelectedVideoUrl(product.videoUrl || null)}
+                      disabled={!product.videoUrl}
+                      className={`p-2 rounded-lg transition-colors ${
+                        product.videoUrl
+                          ? 'hover:bg-gray-200 text-slate-600 cursor-pointer'
+                          : 'text-gray-300 cursor-not-allowed'
+                      }`}
+                      title={product.videoUrl ? 'Play video' : 'No video available'}
+                    >
+                      <Play size={16} />
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-slate-600">
                     {product.videoLength ? `${product.videoLength}s` : 'N/A'}
@@ -152,6 +170,34 @@ const AllVideos: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Video Player Modal */}
+      {selectedVideoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+          onClick={closeModal}
+        >
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={closeModal}
+              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-md hover:bg-gray-100 text-gray-600 z-10"
+            >
+              <X size={20} />
+            </button>
+            <video
+              controls
+              autoPlay
+              className="w-full h-auto max-h-[80vh] object-contain"
+              src={selectedVideoUrl}
+            >
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
