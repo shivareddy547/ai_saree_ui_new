@@ -618,12 +618,10 @@ const CreateProduct: React.FC = () => {
     };
     window.speechSynthesis.speak(utterance);
   };
-  // Upload all images to ImageKit before saving
   const uploadAllImages = async (): Promise<string[]> => {
     const uploadedUrls: string[] = [];
     for (let i = 0; i < images.length; i++) {
       const file = images[i];
-      // Skip if it's an existing image (already has URL) or if it's a placeholder
       if (imageKitUrls[i] && imageKitUrls[i].startsWith('http')) {
         uploadedUrls.push(imageKitUrls[i]);
         continue;
@@ -640,7 +638,6 @@ const CreateProduct: React.FC = () => {
           throw new Error(`Failed to upload image ${i + 1}: ${err}`);
         }
       } else {
-        // If file is empty but we have a URL in imageKitUrls, use that
         if (imageKitUrls[i] && imageKitUrls[i].startsWith('http')) {
           uploadedUrls.push(imageKitUrls[i]);
         }
@@ -652,7 +649,6 @@ const CreateProduct: React.FC = () => {
     setIsPosting(true);
     setCreateError(null);
     try {
-      // Upload all images first
       setIsUploadingImages(true);
       const uploadedImageUrls = await uploadAllImages();
       setIsUploadingImages(false);
@@ -677,6 +673,8 @@ const CreateProduct: React.FC = () => {
         audioLanguage,
         voiceGender,
         videoLength,
+        cloudinaryVideoPublicId: null,
+        cloudinaryAudioPublicId: null,
       };
       let response;
       if (isEditMode) {
@@ -934,7 +932,6 @@ const CreateProduct: React.FC = () => {
       }
       setGenerationMessage("Processing audio...");
       setGenerationProgress(15);
-      // Create audio context for processing
       const audioCtx = new AudioContext();
       const audioBuffer = await audioCtx.decodeAudioData(await audioBlob.arrayBuffer());
       const audioDuration = audioBuffer.duration;
@@ -959,7 +956,6 @@ const CreateProduct: React.FC = () => {
         imageElements.push(img);
       }
       if (imageElements.length === 0) {
-        // Create a placeholder image if no images available
         const canvas = document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;
@@ -988,31 +984,24 @@ const CreateProduct: React.FC = () => {
       const height = 720;
       canvas.width = width;
       canvas.height = height;
-      // Create canvas stream for video
       const canvasStream = canvas.captureStream(30);
-      // Create audio element from blob
       const finalAudioUrl = URL.createObjectURL(finalAudioBlob);
       const audioElement = new Audio(finalAudioUrl);
       await new Promise((resolve) => {
         audioElement.onloadedmetadata = () => resolve(null);
         audioElement.load();
       });
-      // Set up audio context with media stream destination for capturing audio
       const audioContext = new AudioContext();
       const source = audioContext.createMediaElementSource(audioElement);
       const destination = audioContext.createMediaStreamDestination();
       source.connect(destination);
-      // Combine video and audio streams
       const combinedStream = new MediaStream();
-      // Add video tracks from canvas
       canvasStream.getVideoTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
-      // Add audio tracks from audio context
       destination.stream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
-      // Create media recorder with combined stream
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: "video/webm;codecs=vp9,opus",
         videoBitsPerSecond: 5000000,
@@ -1024,11 +1013,8 @@ const CreateProduct: React.FC = () => {
           chunks.push(e.data);
         }
       };
-      // Start recording
       mediaRecorder.start(1000);
-      // Resume audio context (required for audio to flow)
       await audioContext.resume();
-      // Start audio playback (will be captured by destination)
       audioElement.play().catch(e => console.warn("Audio play warning:", e));
       const fps = 30;
       const actualDuration = audioElement.duration || targetDuration;
@@ -1045,7 +1031,6 @@ const CreateProduct: React.FC = () => {
           }
           const progress = currentFrame / totalFrames;
           ctx.clearRect(0, 0, width, height);
-          // Dynamic background gradient
           const hue1 = (180 + progress * 120) % 360;
           const hue2 = (hue1 + 60) % 360;
           const gradient = ctx.createLinearGradient(0, 0, width, height);
@@ -1054,7 +1039,6 @@ const CreateProduct: React.FC = () => {
           gradient.addColorStop(1, `hsl(${(hue1 + 30) % 360}, 70%, 10%)`);
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, width, height);
-          // Display images
           if (imageElements.length > 0) {
             const img = imageElements[imageIndex % imageElements.length];
             const aspectRatio = img.width / img.height;
@@ -1104,13 +1088,11 @@ const CreateProduct: React.FC = () => {
             ctx.drawImage(img, x + offsetX, y + offsetY, scaledWidth, scaledHeight);
             ctx.shadowBlur = 0;
           }
-          // Overlay gradient for text
           const overlayGradient = ctx.createLinearGradient(0, height - 180, 0, height);
           overlayGradient.addColorStop(0, "rgba(0,0,0,0)");
           overlayGradient.addColorStop(1, "rgba(0,0,0,0.7)");
           ctx.fillStyle = overlayGradient;
           ctx.fillRect(0, height - 180, width, 180);
-          // Product name
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
           const nameScale = 1 + Math.sin(progress * Math.PI * 2) * 0.02;
@@ -1123,7 +1105,6 @@ const CreateProduct: React.FC = () => {
           ctx.shadowBlur = 15;
           ctx.fillText(productName || "Product", 0, 0);
           ctx.restore();
-          // Price
           const priceScale = 1 + Math.sin(progress * Math.PI * 2 + 0.5) * 0.02;
           ctx.save();
           ctx.translate(width / 2, height - 30);
@@ -1134,7 +1115,6 @@ const CreateProduct: React.FC = () => {
           ctx.shadowBlur = 20;
           ctx.fillText(`₹${price || "0"}`, 0, 0);
           ctx.restore();
-          // Decorative line
           ctx.shadowBlur = 0;
           ctx.strokeStyle = `rgba(251, 191, 36, ${0.3 + Math.sin(progress * Math.PI * 4) * 0.2})`;
           ctx.lineWidth = 2;
@@ -1142,10 +1122,8 @@ const CreateProduct: React.FC = () => {
           ctx.moveTo(width / 2 - 100, height - 65);
           ctx.lineTo(width / 2 + 100, height - 65);
           ctx.stroke();
-          // Update progress
           const progressPercent = 40 + (currentFrame / totalFrames) * 55;
           setGenerationProgress(Math.min(progressPercent, 95));
-          // Switch image every 3 seconds
           if (currentFrame > 0 && currentFrame % (fps * 3) === 0) {
             imageIndex = (imageIndex + 1) % imageElements.length;
           }
@@ -1156,12 +1134,10 @@ const CreateProduct: React.FC = () => {
       });
       setGenerationProgress(97);
       setGenerationMessage("Finalizing video...");
-      // Stop audio and recording
       audioElement.pause();
       audioElement.currentTime = 0;
       await audioContext.close();
       mediaRecorder.stop();
-      // Wait for final blob
       const finalBlob = await new Promise<Blob>((resolve) => {
         mediaRecorder.onstop = () => {
           const blob = new Blob(chunks, { type: "video/webm" });
