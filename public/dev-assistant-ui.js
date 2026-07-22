@@ -2942,65 +2942,74 @@
     }
 
     // ===== YAML Modal =====
-    function showYamlModalWithApply(yamlContent, componentName, requirementId) {
-        closeAllModals();
-        const overlay = document.createElement("div");
-        overlay.className = "dev-modal-overlay";
-        Object.assign(overlay.style, {
-            position: "fixed", left: 0, top: 0, width: "100%", height: "100%",
-            background: "rgba(0,0,0,0.8)", zIndex: 1000002,
-            display: "flex", justifyContent: "center", alignItems: "center",
-            backdropFilter: "blur(5px)", padding: "10px"
-        });
+    // ===== YAML Modal with Editable Content =====
+function showYamlModalWithApply(yamlContent, componentName, requirementId) {
+    closeAllModals();
+    const overlay = document.createElement("div");
+    overlay.className = "dev-modal-overlay";
+    Object.assign(overlay.style, {
+        position: "fixed", left: 0, top: 0, width: "100%", height: "100%",
+        background: "rgba(0,0,0,0.8)", zIndex: 1000002,
+        display: "flex", justifyContent: "center", alignItems: "center",
+        backdropFilter: "blur(5px)", padding: "10px"
+    });
 
-        const modal = document.createElement("div");
-        modal.className = "modal-content";
-        Object.assign(modal.style, {
-            background: "#1a1a2a", color: "#fff", padding: "25px", borderRadius: "12px",
-            width: "90%", maxWidth: "800px", maxHeight: "80%", overflowY: "auto",
-            border: "1px solid #444", boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
-            boxSizing: "border-box"
-        });
+    const modal = document.createElement("div");
+    modal.className = "modal-content";
+    Object.assign(modal.style, {
+        background: "#1a1a2a", color: "#fff", padding: "25px", borderRadius: "12px",
+        width: "90%", maxWidth: "800px", maxHeight: "80%", overflowY: "auto",
+        border: "1px solid #444", boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+        boxSizing: "border-box"
+    });
 
-        modal.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:1px solid #444;padding-bottom:15px;flex-wrap:wrap;gap:10px;">
-                <h3 style="margin:0;color:#00ff88;font-size:18px;">📦 Apply Changes - ${componentName}</h3>
-                <button id="closeApply" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center;">✕</button>
+    modal.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:1px solid #444;padding-bottom:15px;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;color:#00ff88;font-size:18px;">📦 Apply Changes - ${componentName}</h3>
+            <button id="closeApply" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center;">✕</button>
+        </div>
+        <div style="background:rgba(255,170,0,0.1);padding:8px 12px;border-radius:4px;border-left:4px solid #ffaa00;margin-bottom:12px;">
+            <span style="color:#ffaa00;font-weight:bold;font-size:12px;">✏️ Editable:</span>
+            <span style="color:#aaa;font-size:12px;">You can modify the YAML content before applying</span>
+        </div>
+        <div style="background:#2a2a3a;border:1px solid #444;border-radius:6px;padding:15px;max-height:400px;overflow-y:auto;margin-bottom:20px;">
+            <textarea id="editableYamlContent" style="width:100%;min-height:300px;background:#1a1a2a;color:#ccc;border:1px solid #555;border-radius:4px;padding:12px;font-family:monospace;font-size:12px;resize:vertical;box-sizing:border-box;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(yamlContent)}</textarea>
+        </div>
+        <div style="background:rgba(0,224,255,0.1);padding:12px;border-radius:6px;border-left:4px solid #00e0ff;margin-bottom:20px;">
+            <div style="font-size:12px;color:#00e0ff;font-weight:bold;margin-bottom:6px;">📋 Available Actions:</div>
+            <ul style="font-size:12px;color:#ccc;margin:0;padding-left:20px;">
+                <li><strong>✏️ Edit YAML:</strong> Modify the YAML content directly in the textarea above</li>
+                <li><strong>📦 Apply Changes:</strong> Apply the (edited) YAML changes to your project</li>
+                <li><strong>❌ Close:</strong> Return to review modal without applying</li>
+            </ul>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:20px;border-top:1px solid #444;flex-wrap:wrap;gap:10px;">
+            <div style="font-size:12px;color:#888;">📋 Requirement ID: ${requirementId}</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button id="closeApplyBtn" style="padding:10px 20px;background:#666;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;">❌ Close</button>
+                <button id="confirmApplyChanges" style="padding:10px 20px;background:#00ff88;border:none;border-radius:6px;color:#000;cursor:pointer;font-weight:bold;font-size:13px;">📦 Apply Changes</button>
             </div>
-            <div style="background:#2a2a3a;border:1px solid #444;border-radius:6px;padding:15px;max-height:400px;overflow-y:auto;margin-bottom:20px;">
-                <pre style="color:#ccc;font-family:monospace;font-size:12px;margin:0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(yamlContent)}</pre>
-            </div>
-            <div style="background:rgba(0,224,255,0.1);padding:12px;border-radius:6px;border-left:4px solid #00e0ff;margin-bottom:20px;">
-                <div style="font-size:12px;color:#00e0ff;font-weight:bold;margin-bottom:6px;">📋 Available Actions:</div>
-                <ul style="font-size:12px;color:#ccc;margin:0;padding-left:20px;">
-                    <li><strong>📦 Apply Changes:</strong> Apply these YAML changes to your project</li>
-                    <li><strong>❌ Close:</strong> Return to review modal without applying</li>
-                </ul>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:20px;border-top:1px solid #444;flex-wrap:wrap;gap:10px;">
-                <div style="font-size:12px;color:#888;">📋 Requirement ID: ${requirementId}</div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                    <button id="closeApplyBtn" style="padding:10px 20px;background:#666;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;">❌ Close</button>
-                    <button id="confirmApplyChanges" style="padding:10px 20px;background:#00ff88;border:none;border-radius:6px;color:#000;cursor:pointer;font-weight:bold;font-size:13px;">📦 Apply Changes</button>
-                </div>
-            </div>
-        `;
+        </div>
+    `;
 
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-        const closeModal = registerModal(overlay);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    const closeModal = registerModal(overlay);
 
-        modal.querySelector("#closeApply")?.addEventListener("click", closeModal);
-        modal.querySelector("#closeApplyBtn")?.addEventListener("click", closeModal);
-        modal.querySelector("#confirmApplyChanges")?.addEventListener("click", () => {
-            const btn = modal.querySelector("#confirmApplyChanges");
-            btn.innerHTML = '⏳ Applying...';
-            btn.disabled = true;
-            btn.style.background = "#ffaa00";
-            applyYamlChanges(yamlContent, requirementId);
-        });
-        overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
-    }
+    modal.querySelector("#closeApply")?.addEventListener("click", closeModal);
+    modal.querySelector("#closeApplyBtn")?.addEventListener("click", closeModal);
+    modal.querySelector("#confirmApplyChanges")?.addEventListener("click", () => {
+        const btn = modal.querySelector("#confirmApplyChanges");
+        const textarea = modal.querySelector("#editableYamlContent");
+        const editedYaml = textarea ? textarea.value : yamlContent;
+
+        btn.innerHTML = '⏳ Applying...';
+        btn.disabled = true;
+        btn.style.background = "#ffaa00";
+        applyYamlChanges(editedYaml, requirementId);
+    });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+}
 
     function escapeHtml(text) {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
