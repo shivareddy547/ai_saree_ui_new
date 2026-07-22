@@ -1,17 +1,16 @@
 import React from "react";
 import {
-  Settings2,
-  Volume2,
-  FileText,
-  FileAudio,
   Mic,
+  Upload,
+  FileText,
   Loader2,
   Play,
-  X,
+  Pause,
+  Volume2,
 } from "lucide-react";
 interface VideoConfigurationProps {
   audioMode: "text" | "upload" | "record";
-  setAudioMode: (value: "text" | "upload" | "record") => void;
+  setAudioMode: (mode: "text" | "upload" | "record") => void;
   audioScript: string;
   setAudioScript: (value: string) => void;
   audioLanguage: "en" | "te" | "hi";
@@ -19,15 +18,15 @@ interface VideoConfigurationProps {
   voiceGender: "female" | "male";
   setVoiceGender: (value: "female" | "male") => void;
   customAudioFile: File | null;
-  setCustomAudioFile: (value: File | null) => void;
+  setCustomAudioFile: (file: File | null) => void;
   customAudioUrl: string | null;
-  setCustomAudioUrl: (value: string | null) => void;
+  setCustomAudioUrl: (url: string | null) => void;
   isRecording: boolean;
   setIsRecording: (value: boolean) => void;
   recordedAudioBlob: Blob | null;
-  setRecordedAudioBlob: (value: Blob | null) => void;
+  setRecordedAudioBlob: (blob: Blob | null) => void;
   recordedAudioUrl: string | null;
-  setRecordedAudioUrl: (value: string | null) => void;
+  setRecordedAudioUrl: (url: string | null) => void;
   recordingError: string | null;
   videoLength: number;
   setVideoLength: (value: number) => void;
@@ -42,6 +41,7 @@ interface VideoConfigurationProps {
   handleGenerateVideo: () => void;
   startRecording: () => void;
   stopRecording: () => void;
+  existingVideoUrl?: string | null;
 }
 const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   audioMode,
@@ -76,257 +76,382 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   handleGenerateVideo,
   startRecording,
   stopRecording,
+  existingVideoUrl,
 }) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const handleCustomAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCustomAudioFile(file);
+      const url = URL.createObjectURL(file);
+      setCustomAudioUrl(url);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+  const removeCustomAudio = () => {
+    setCustomAudioFile(null);
+    if (customAudioUrl) {
+      URL.revokeObjectURL(customAudioUrl);
+      setCustomAudioUrl(null);
+    }
+  };
+  const removeRecordedAudio = () => {
+    setRecordedAudioBlob(null);
+    if (recordedAudioUrl) {
+      URL.revokeObjectURL(recordedAudioUrl);
+      setRecordedAudioUrl(null);
+    }
+  };
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-        <Settings2 size={22} className="text-purple-600" />
+        <FileText size={22} className="text-purple-600" />
         Video Configuration
       </h2>
-      <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-4 border border-gray-200">
-        <h3 className="text-base font-semibold text-slate-700 flex items-center gap-2">
-          <Volume2 size={18} className="text-purple-500" />
-          Audio
-        </h3>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { mode: "text" as const, label: "Text to Speech", icon: FileText },
-            { mode: "upload" as const, label: "Upload Audio", icon: FileAudio },
-            { mode: "record" as const, label: "Record", icon: Mic },
-          ].map(({ mode, label, icon: Icon }) => (
-            <button
-              key={mode}
-              onClick={() => setAudioMode(mode)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium border transition-colors ${
-                audioMode === mode
-                  ? "bg-purple-100 border-purple-300 text-purple-700"
-                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-              }`}
+      {/* Existing Video Display */}
+      {existingVideoUrl && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-blue-700 flex items-center gap-2">
+            <Play size={18} />
+            Existing Video
+          </h3>
+          <div className="relative rounded-lg overflow-hidden bg-black">
+            <video
+              src={existingVideoUrl}
+              controls
+              className="w-full max-h-64 object-contain"
+              controlsList="nodownload"
             >
-              <Icon size={14} />
-              {label}
-            </button>
-          ))}
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p className="text-xs text-blue-600">
+            This video will be replaced if you generate a new one.
+          </p>
         </div>
-        {audioMode === "text" && (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Script</label>
-              <textarea
-                value={audioScript}
-                onChange={(e) => setAudioScript(e.target.value)}
-                placeholder="Enter the script for voiceover..."
-                rows={3}
-                className="input-field resize-none"
-              />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Language</label>
-                <select
-                  value={audioLanguage}
-                  onChange={(e) => setAudioLanguage(e.target.value as "en" | "te" | "hi")}
-                  className="input-field text-sm"
-                >
-                  <option value="en">English</option>
-                  <option value="hi">Hindi</option>
-                  <option value="te">Telugu</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Voice</label>
-                <select
-                  value={voiceGender}
-                  onChange={(e) => setVoiceGender(e.target.value as "female" | "male")}
-                  className="input-field text-sm"
-                >
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                </select>
-              </div>
-            </div>
+      )}
+      {/* Audio Mode Selection */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Audio Mode
+        </label>
+        <div className="grid grid-cols-3 gap-3">
+          <button
+            onClick={() => setAudioMode("text")}
+            className={`p-4 rounded-lg border-2 transition-all ${
+              audioMode === "text"
+                ? "border-purple-500 bg-purple-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <FileText className="mx-auto mb-2" size={24} />
+            <span className="text-sm font-medium">Text to Speech</span>
+          </button>
+          <button
+            onClick={() => setAudioMode("upload")}
+            className={`p-4 rounded-lg border-2 transition-all ${
+              audioMode === "upload"
+                ? "border-purple-500 bg-purple-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <Upload className="mx-auto mb-2" size={24} />
+            <span className="text-sm font-medium">Upload Audio</span>
+          </button>
+          <button
+            onClick={() => setAudioMode("record")}
+            className={`p-4 rounded-lg border-2 transition-all ${
+              audioMode === "record"
+                ? "border-purple-500 bg-purple-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <Mic className="mx-auto mb-2" size={24} />
+            <span className="text-sm font-medium">Record Voice</span>
+          </button>
+        </div>
+      </div>
+      {/* Audio Script for Text Mode */}
+      {audioMode === "text" && (
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Audio Script
+            </label>
             <button
               onClick={handlePreviewTTS}
               disabled={audioGenerating || !audioScript.trim()}
-              className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
+              className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
             >
               {audioGenerating ? (
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <Volume2 size={16} />
+                <Volume2 size={14} />
               )}
-              Preview Audio
+              Preview TTS
             </button>
-            {audioError && (
-              <p className="text-xs text-red-500">{audioError}</p>
-            )}
           </div>
-        )}
-        {audioMode === "upload" && (
-          <div className="space-y-3">
-            <div
-              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors cursor-pointer"
-              onClick={() => document.getElementById("audio-upload")?.click()}
-            >
-              <FileAudio size={32} className="mx-auto text-gray-400 mb-2" />
-              <p className="text-sm text-gray-600">Click to upload audio file</p>
-              <p className="text-xs text-gray-400 mt-1">MP3, WAV, M4A supported</p>
-              <input
-                id="audio-upload"
-                type="file"
-                accept="audio/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setCustomAudioFile(file);
-                    if (customAudioUrl) URL.revokeObjectURL(customAudioUrl);
-                    setCustomAudioUrl(URL.createObjectURL(file));
-                  }
-                }}
-              />
-            </div>
-            {customAudioUrl && (
-              <div className="flex items-center gap-3 bg-purple-50 rounded-lg p-3">
-                <FileAudio size={20} className="text-purple-500" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-700 truncate">
-                    {customAudioFile?.name || "Audio file"}
-                  </p>
-                  <audio controls className="w-full mt-1 h-8">
-                    <source src={customAudioUrl} />
-                  </audio>
+          <textarea
+            value={audioScript}
+            onChange={(e) => setAudioScript(e.target.value)}
+            placeholder="Enter the script for the AI voice to narrate..."
+            rows={4}
+            className="input-field resize-none"
+          />
+          {audioError && (
+            <p className="text-xs text-red-500 mt-1">{audioError}</p>
+          )}
+          <p className="text-xs text-gray-400 mt-1">
+            {audioScript.length} characters
+          </p>
+        </div>
+      )}
+      {/* Upload Audio for Upload Mode */}
+      {audioMode === "upload" && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Upload Audio File
+          </label>
+          {customAudioUrl ? (
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Volume2 size={20} className="text-purple-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      {customAudioFile?.name || "Audio file"}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {customAudioFile?.size
+                        ? `${(customAudioFile.size / 1024 / 1024).toFixed(2)} MB`
+                        : ""}
+                    </p>
+                  </div>
                 </div>
                 <button
-                  onClick={() => {
-                    setCustomAudioFile(null);
-                    if (customAudioUrl) URL.revokeObjectURL(customAudioUrl);
-                    setCustomAudioUrl(null);
-                  }}
-                  className="text-red-400 hover:text-red-600"
+                  onClick={removeCustomAudio}
+                  className="text-red-500 hover:text-red-700 p-1"
                 >
-                  <X size={18} />
+                  Remove
                 </button>
               </div>
-            )}
-          </div>
-        )}
-        {audioMode === "record" && (
-          <div className="space-y-3 text-center">
-            {!recordedAudioUrl ? (
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-                <Mic size={40} className="mx-auto text-gray-400 mb-2" />
-                {isRecording ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                      <span className="text-sm text-red-600 font-medium">Recording...</span>
-                    </div>
-                    <button
-                      onClick={stopRecording}
-                      className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600"
-                    >
-                      Stop Recording
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600">Click below to start recording</p>
-                    <button
-                      onClick={startRecording}
-                      className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 flex items-center gap-2 mx-auto"
-                    >
-                      <Mic size={16} />
-                      Start Recording
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-purple-50 rounded-lg p-4 space-y-2">
-                <p className="text-sm font-medium text-gray-700">Recorded Audio</p>
-                <audio controls className="w-full">
-                  <source src={recordedAudioUrl} />
-                </audio>
-                <div className="flex justify-center gap-2">
-                  <button
-                    onClick={() => {
-                      if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl);
-                      setRecordedAudioBlob(null);
-                      setRecordedAudioUrl(null);
-                    }}
-                    className="text-xs text-red-500 hover:underline"
-                  >
-                    Remove
-                  </button>
-                  <button
-                    onClick={startRecording}
-                    className="text-xs text-purple-600 hover:underline"
-                  >
-                    Re-record
-                  </button>
-                </div>
-              </div>
-            )}
-            {recordingError && (
-              <p className="text-xs text-red-500">{recordingError}</p>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="bg-gray-50 rounded-lg p-4 sm:p-6 border border-gray-200 space-y-3">
-        <h3 className="text-base font-semibold text-slate-700">Video Length</h3>
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min={15}
-            max={60}
-            step={5}
-            value={videoLength}
-            onChange={(e) => setVideoLength(Number(e.target.value))}
-            className="flex-1 accent-purple-600"
-          />
-          <span className="text-sm font-medium text-purple-700 min-w-[4rem] text-right">
-            {videoLength}s
-          </span>
+              <audio controls className="w-full mt-2">
+                <source src={customAudioUrl} />
+                Your browser does not support the audio tag.
+              </audio>
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={32} className="mx-auto text-gray-400 mb-2" />
+              <p className="text-sm text-gray-600">Click to upload audio file</p>
+              <p className="text-xs text-gray-400">MP3, WAV, M4A supported</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleCustomAudioUpload}
+                className="hidden"
+              />
+            </div>
+          )}
         </div>
-        <div className="flex justify-between text-[10px] sm:text-xs text-gray-400">
-          <span>15s</span>
+      )}
+      {/* Record Voice for Record Mode */}
+      {audioMode === "record" && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Record Voice
+          </label>
+          {recordedAudioUrl ? (
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Mic size={20} className="text-purple-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      Recorded Audio
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {recordedAudioBlob?.size
+                        ? `${(recordedAudioBlob.size / 1024 / 1024).toFixed(2)} MB`
+                        : ""}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={removeRecordedAudio}
+                  className="text-red-500 hover:text-red-700 p-1"
+                >
+                  Remove
+                </button>
+              </div>
+              <audio controls className="w-full mt-2">
+                <source src={recordedAudioUrl} />
+                Your browser does not support the audio tag.
+              </audio>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recordingError && (
+                <p className="text-sm text-red-500">{recordingError}</p>
+              )}
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`w-full py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                  isRecording
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-purple-600 text-white hover:bg-purple-700"
+                }`}
+              >
+                {isRecording ? (
+                  <>
+                    <Pause size={20} />
+                    Stop Recording
+                  </>
+                ) : (
+                  <>
+                    <Mic size={20} />
+                    Start Recording
+                  </>
+                )}
+              </button>
+              {isRecording && (
+                <p className="text-sm text-red-500 animate-pulse text-center">
+                  Recording in progress...
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Language and Voice Settings */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Language
+          </label>
+          <select
+            value={audioLanguage}
+            onChange={(e) =>
+              setAudioLanguage(e.target.value as "en" | "te" | "hi")
+            }
+            className="input-field"
+          >
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+            <option value="te">Telugu</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Voice Gender
+          </label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setVoiceGender("female")}
+              className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                voiceGender === "female"
+                  ? "border-purple-500 bg-purple-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <span className="text-sm font-medium">Female</span>
+            </button>
+            <button
+              onClick={() => setVoiceGender("male")}
+              className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                voiceGender === "male"
+                  ? "border-purple-500 bg-purple-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <span className="text-sm font-medium">Male</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      {/* Video Length */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Video Duration: {videoLength} seconds
+        </label>
+        <input
+          type="range"
+          min="5"
+          max="60"
+          value={videoLength}
+          onChange={(e) => setVideoLength(parseInt(e.target.value))}
+          className="w-full accent-purple-600"
+        />
+        <div className="flex justify-between text-xs text-gray-400">
+          <span>5s</span>
+          <span>30s</span>
           <span>60s</span>
         </div>
       </div>
-      <div className="pt-2">
+      {/* Generate Video Button */}
+      <div className="pt-4 border-t">
+        {generationError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-3">
+            {generationError}
+          </div>
+        )}
+        {isGenerating && (
+          <div className="space-y-2 mb-3">
+            <div className="flex items-center gap-2 text-sm text-purple-600">
+              <Loader2 size={16} className="animate-spin" />
+              <span>{generationMessage || "Generating video..."}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${generationProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 text-right">
+              {Math.round(generationProgress)}%
+            </p>
+          </div>
+        )}
         <button
           onClick={handleGenerateVideo}
-          disabled={isGenerating || imagesLength === 0}
-          className="btn-primary flex items-center justify-center gap-2 w-full py-3 text-lg"
+          disabled={
+            isGenerating ||
+            imagesLength === 0 ||
+            (audioMode === "text" && !audioScript.trim()) ||
+            (audioMode === "upload" && !customAudioFile) ||
+            (audioMode === "record" && !recordedAudioBlob)
+          }
+          className="w-full btn-primary flex items-center justify-center gap-2 py-3"
         >
           {isGenerating ? (
             <>
-              <Loader2 className="animate-spin" size={22} />
-              Generating... {Math.round(generationProgress)}%
+              <Loader2 size={20} className="animate-spin" />
+              Generating...
             </>
           ) : (
             <>
-              <Play size={22} />
+              <Play size={20} />
               Generate Video
             </>
           )}
         </button>
-        {isGenerating && (
-          <div className="mt-3 space-y-1">
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-purple-600 to-pink-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${generationProgress}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-500 text-center">{generationMessage}</p>
-          </div>
-        )}
-        {generationError && (
-          <p className="text-sm text-red-500 mt-2 text-center">{generationError}</p>
-        )}
+        <p className="text-xs text-gray-400 mt-2 text-center">
+          {imagesLength === 0
+            ? "Please upload at least one image first"
+            : audioMode === "text" && !audioScript.trim()
+            ? "Please enter audio script"
+            : audioMode === "upload" && !customAudioFile
+            ? "Please upload an audio file"
+            : audioMode === "record" && !recordedAudioBlob
+            ? "Please record audio first"
+            : ""}
+        </p>
       </div>
     </div>
   );

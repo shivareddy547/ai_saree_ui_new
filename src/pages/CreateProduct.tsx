@@ -274,6 +274,7 @@ const CreateProduct: React.FC = () => {
   const [postSuccess, setPostSuccess] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
+  const [existingVideoUrl, setExistingVideoUrl] = useState<string | null>(null);
   // Fetch product data if in edit mode
   useEffect(() => {
     if (editId) {
@@ -319,6 +320,7 @@ const CreateProduct: React.FC = () => {
         if (product.videoUrl) {
           setVideoUrl(product.videoUrl);
           setVideoKitUrl(product.videoKitUrl || product.videoUrl);
+          setExistingVideoUrl(product.videoUrl);
         }
       }
     } catch (err: any) {
@@ -720,6 +722,7 @@ const CreateProduct: React.FC = () => {
     setIsPosting(false);
     setPostSuccess(false);
     setCreateError(null);
+    setExistingVideoUrl(null);
   };
   const handleBack = () => {
     if (currentStep > 1) {
@@ -1138,6 +1141,7 @@ const CreateProduct: React.FC = () => {
       const finalVideoUrl = URL.createObjectURL(finalBlob);
       setVideoUrl(finalVideoUrl);
       setVideoKitUrl(finalVideoUrl);
+      setExistingVideoUrl(finalVideoUrl);
       setGenerationProgress(100);
       setGenerationMessage("Video generated successfully with audio!");
       URL.revokeObjectURL(finalAudioUrl);
@@ -1318,6 +1322,7 @@ const CreateProduct: React.FC = () => {
               handleGenerateVideo={handleGenerateVideo}
               startRecording={startRecording}
               stopRecording={stopRecording}
+              existingVideoUrl={existingVideoUrl}
             />
           )}
           {currentStep === 4 && (
