@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-purple: #7C3AED;
+  --primary-dark: #6D28D9;
+  --bg-light: #F9FAFB;
+}
+
+body {
+  @apply bg-[#F3F4F6] text-slate-900 font-sans;
+}
+
+.btn-primary {
+  @apply bg-[#7C3AED] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#6D28D9] transition-all duration-200 disabled:opacity-50;
+}
+
+.input-field {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all;
+}
+
+.card-glass {
+  @apply bg-white rounded-2xl shadow-sm border border-gray-100;
+}
