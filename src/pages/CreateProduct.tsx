@@ -275,6 +275,7 @@ const CreateProduct: React.FC = () => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [existingVideoUrl, setExistingVideoUrl] = useState<string | null>(null);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
   // Fetch product data if in edit mode
   useEffect(() => {
     if (editId) {
@@ -617,10 +618,44 @@ const CreateProduct: React.FC = () => {
     };
     window.speechSynthesis.speak(utterance);
   };
+  // Upload all images to ImageKit before saving
+  const uploadAllImages = async (): Promise<string[]> => {
+    const uploadedUrls: string[] = [];
+    for (let i = 0; i < images.length; i++) {
+      const file = images[i];
+      // Skip if it's an existing image (already has URL) or if it's a placeholder
+      if (imageKitUrls[i] && imageKitUrls[i].startsWith('http')) {
+        uploadedUrls.push(imageKitUrls[i]);
+        continue;
+      }
+      if (file && file.size > 0) {
+        try {
+          const uploadedUrl = await uploadToImageKit(file);
+          if (uploadedUrl) {
+            uploadedUrls.push(uploadedUrl);
+          } else {
+            throw new Error(`Failed to upload image ${i + 1}`);
+          }
+        } catch (err) {
+          throw new Error(`Failed to upload image ${i + 1}: ${err}`);
+        }
+      } else {
+        // If file is empty but we have a URL in imageKitUrls, use that
+        if (imageKitUrls[i] && imageKitUrls[i].startsWith('http')) {
+          uploadedUrls.push(imageKitUrls[i]);
+        }
+      }
+    }
+    return uploadedUrls;
+  };
   const handlePostToInstagram = async () => {
     setIsPosting(true);
     setCreateError(null);
     try {
+      // Upload all images first
+      setIsUploadingImages(true);
+      const uploadedImageUrls = await uploadAllImages();
+      setIsUploadingImages(false);
       const productData = {
         name: productName,
         price,
@@ -636,7 +671,7 @@ const CreateProduct: React.FC = () => {
           costPrice: v.costPrice,
           stockQuantity: v.stockQuantity,
         })),
-        images: imageKitUrls.filter(url => url && url.startsWith('http')),
+        images: uploadedImageUrls.filter(url => url && url.startsWith('http')),
         videoUrl: videoKitUrl || videoUrl,
         audioScript,
         audioLanguage,
@@ -653,7 +688,9 @@ const CreateProduct: React.FC = () => {
         setPostSuccess(true);
       }
     } catch (err: any) {
+      console.error('Error saving product:', err);
       setCreateError(err.response?.data?.message || err.message || "Failed to save product");
+      setIsUploadingImages(false);
     } finally {
       setIsPosting(false);
     }
@@ -1335,7 +1372,7 @@ const CreateProduct: React.FC = () => {
           )}
           {currentStep === 5 && (
             <PostToInstagram
-              isPosting={isPosting}
+              isPosting={isPosting || isUploadingImages}
               postSuccess={postSuccess}
               createError={createError}
               productName={productName}
