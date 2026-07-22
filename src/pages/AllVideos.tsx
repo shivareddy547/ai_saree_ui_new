@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { MoreVertical, Play, Loader2, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MoreVertical, Play, Loader2, X, Edit2, Trash2 } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3000/api";
@@ -23,25 +23,27 @@ const AllVideos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API_BASE}/products`);
-        if (response.data.success) {
-          setProducts(response.data.data);
-        } else {
-          setError('Failed to fetch products');
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch products');
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchProducts();
   }, []);
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API_BASE}/products`);
+      if (response.data.success) {
+        setProducts(response.data.data);
+      } else {
+        setError('Failed to fetch products');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch products');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -61,6 +63,25 @@ const AllVideos: React.FC = () => {
   };
 
   const closeModal = () => setSelectedVideoUrl(null);
+
+  const handleEdit = (productId: number) => {
+    navigate(`/create-product?edit=${productId}`);
+  };
+
+  const handleDelete = async (productId: number) => {
+    if (!window.confirm('Are you sure you want to delete this product?')) return;
+    
+    try {
+      const response = await axios.delete(`${API_BASE}/products/${productId}`);
+      if (response.data.success) {
+        setProducts(products.filter(p => p.id !== productId));
+      } else {
+        alert('Failed to delete product');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete product');
+    }
+  };
 
   if (loading) {
     return (
@@ -156,11 +177,31 @@ const AllVideos: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex gap-2">
-                      <button className="p-2 hover:bg-gray-200 rounded-lg text-slate-600">
-                        <Play size={16} />
+                      <button
+                        onClick={() => handleEdit(product.id)}
+                        className="p-2 hover:bg-blue-100 rounded-lg text-blue-600 transition-colors"
+                        title="Edit product"
+                      >
+                        <Edit2 size={16} />
                       </button>
-                      <button className="p-2 hover:bg-gray-200 rounded-lg text-slate-600">
-                        <MoreVertical size={16} />
+                      <button
+                        onClick={() => handleDelete(product.id)}
+                        className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
+                        title="Delete product"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => setSelectedVideoUrl(product.videoUrl || null)}
+                        disabled={!product.videoUrl}
+                        className={`p-2 rounded-lg transition-colors ${
+                          product.videoUrl
+                            ? 'hover:bg-gray-200 text-slate-600 cursor-pointer'
+                            : 'text-gray-300 cursor-not-allowed'
+                        }`}
+                        title={product.videoUrl ? 'Play video' : 'No video available'}
+                      >
+                        <Play size={16} />
                       </button>
                     </div>
                   </td>
