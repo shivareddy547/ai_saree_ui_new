@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
   ArrowLeft,
@@ -215,6 +215,9 @@ const loopAudioToDuration = async (
   return audioBufferToWav(rendered);
 };
 const CreateProduct: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('edit');
+  const isEditMode = !!editId;
   const [currentStep, setCurrentStep] = useState(1);
   const [productName, setProductName] = useState("");
   const [price, setPrice] = useState("");
@@ -270,6 +273,61 @@ const CreateProduct: React.FC = () => {
   const [isPosting, setIsPosting] = useState(false);
   const [postSuccess, setPostSuccess] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
+  // Fetch product data if in edit mode
+  useEffect(() => {
+    if (editId) {
+      fetchProductData(editId);
+    }
+  }, [editId]);
+  const fetchProductData = async (id: string) => {
+    setIsLoadingProduct(true);
+    try {
+      const response = await axios.get(`${API_BASE}/products/${id}`);
+      if (response.data.success) {
+        const product = response.data.data;
+        setProductName(product.name || '');
+        setPrice(product.basePrice?.toString() || '');
+        setSku(product.defaultSku || '');
+        setDescription(product.description || '');
+        setSelectedCategoryId(product.categoryId || '');
+        setSelectedSubcategoryId(product.subcategoryId || '');
+        setAudioMode(product.audioMode || 'text');
+        setAudioScript(product.audioScript || '');
+        setAudioLanguage((product.audioLanguage as "en" | "te" | "hi") || 'en');
+        setVoiceGender(product.voiceGender || 'female');
+        setVideoLength(product.videoLength || 30);
+        if (product.images && product.images.length > 0) {
+          const imageUrls = product.images.map((img: any) => img.url);
+          setImageKitUrls(imageUrls);
+          setImages(imageUrls.map(() => new File([], 'existing.jpg')));
+          setPreviews(imageUrls);
+          setImageUploadingStates(imageUrls.map(() => false));
+          setImageUploadErrors(imageUrls.map(() => ''));
+        }
+        if (product.variants && product.variants.length > 0) {
+          setVariants(product.variants.map((v: any) => ({
+            id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            sku: v.sku || '',
+            size: v.size || '',
+            color: v.color || '',
+            price: v.price?.toString() || '',
+            costPrice: v.costPrice?.toString() || '',
+            stockQuantity: v.stockQuantity?.toString() || '',
+          })));
+        }
+        if (product.videoUrl) {
+          setVideoUrl(product.videoUrl);
+          setVideoKitUrl(product.videoKitUrl || product.videoUrl);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch product:', err);
+      setCreateError(err.message || 'Failed to load product details');
+    } finally {
+      setIsLoadingProduct(false);
+    }
+  };
   useEffect(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.getVoices();
@@ -281,13 +339,13 @@ const CreateProduct: React.FC = () => {
     }
   }, []);
   useEffect(() => {
-    if (currentStep === 3 && audioMode === "text" && !audioScript) {
+    if (currentStep === 3 && audioMode === "text" && !audioScript && !isEditMode) {
       const script = `Introducing ${productName || "our amazing product"}. ${
         description || "This is a high-quality item designed for you."
       } Priced at just ${price || "affordable"} rupees. Don't miss out!`;
       setAudioScript(script);
     }
-  }, [currentStep, productName, description, price, audioMode, audioScript]);
+  }, [currentStep, productName, description, price, audioMode, audioScript, isEditMode]);
   useEffect(() => {
     if (ttsPreviewUrl) {
       URL.revokeObjectURL(ttsPreviewUrl);
@@ -576,19 +634,24 @@ const CreateProduct: React.FC = () => {
           costPrice: v.costPrice,
           stockQuantity: v.stockQuantity,
         })),
-        images: imageKitUrls,
+        images: imageKitUrls.filter(url => url && url.startsWith('http')),
         videoUrl: videoKitUrl || videoUrl,
         audioScript,
         audioLanguage,
         voiceGender,
         videoLength,
       };
-      const response = await axios.post(`${API_BASE}/products`, productData);
+      let response;
+      if (isEditMode) {
+        response = await axios.put(`${API_BASE}/products/${editId}`, productData);
+      } else {
+        response = await axios.post(`${API_BASE}/products`, productData);
+      }
       if (response.data) {
         setPostSuccess(true);
       }
     } catch (err: any) {
-      setCreateError(err.response?.data?.message || err.message || "Failed to create product");
+      setCreateError(err.response?.data?.message || err.message || "Failed to save product");
     } finally {
       setIsPosting(false);
     }
@@ -674,7 +737,7 @@ const CreateProduct: React.FC = () => {
       if (Object.keys(newErrors).length > 0) return;
     }
     if (currentStep === 2) {
-      if (images.length === 0) return;
+      if (images.length === 0 && imageKitUrls.length === 0) return;
     }
     if (currentStep < 5) {
       setCurrentStep(prev => prev + 1);
@@ -707,6 +770,7 @@ const CreateProduct: React.FC = () => {
       const previewUrl = URL.createObjectURL(file);
       setImages(prev => [...prev, file]);
       setPreviews(prev => [...prev, previewUrl]);
+      setImageKitUrls(prev => [...prev, '']);
       setImageUploadingStates(prev => [...prev, false]);
       setImageUploadErrors(prev => [...prev, ""]);
     } catch (err: any) {
@@ -733,6 +797,7 @@ const CreateProduct: React.FC = () => {
     }
     setImages(prev => [...prev, ...newFiles]);
     setPreviews(prev => [...prev, ...newPreviews]);
+    setImageKitUrls(prev => [...prev, ...new Array(newFiles.length).fill('')]);
     setImageUploadingStates(prev => [...prev, ...new Array(newFiles.length).fill(false)]);
     setImageUploadErrors(prev => [...prev, ...new Array(newFiles.length).fill("")]);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -842,13 +907,37 @@ const CreateProduct: React.FC = () => {
       setGenerationMessage("Loading product images...");
       setGenerationProgress(20);
       const imageElements: HTMLImageElement[] = [];
-      for (const previewUrl of previews) {
+      const imageUrls = previews.length > 0 ? previews : imageKitUrls;
+      for (const previewUrl of imageUrls) {
+        if (!previewUrl) continue;
         const img = new Image();
         await new Promise((resolve, reject) => {
           img.onload = () => resolve(img);
           img.onerror = () => reject(new Error("Failed to load image"));
           img.src = previewUrl;
         });
+        imageElements.push(img);
+      }
+      if (imageElements.length === 0) {
+        // Create a placeholder image if no images available
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d')!;
+        const gradient = ctx.createLinearGradient(0, 0, 1280, 720);
+        gradient.addColorStop(0, '#7C3AED');
+        gradient.addColorStop(1, '#6D28D9');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 1280, 720);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(productName || 'Product', 640, 360);
+        const placeholderBlob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!)));
+        const placeholderUrl = URL.createObjectURL(placeholderBlob);
+        const img = new Image();
+        await new Promise((resolve) => { img.onload = resolve; img.src = placeholderUrl; });
         imageElements.push(img);
       }
       setGenerationMessage("Creating video with embedded audio...");
@@ -873,8 +962,6 @@ const CreateProduct: React.FC = () => {
       const source = audioContext.createMediaElementSource(audioElement);
       const destination = audioContext.createMediaStreamDestination();
       source.connect(destination);
-      // Don't connect to default destination to prevent audio playback
-      // source.connect(audioContext.destination); // Comment this out to prevent audible playback
       // Combine video and audio streams
       const combinedStream = new MediaStream();
       // Add video tracks from canvas
@@ -1103,13 +1190,32 @@ const CreateProduct: React.FC = () => {
       </p>
     </div>
   );
+  if (isLoadingProduct) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8 px-3 sm:px-0">
+        <div className="flex items-center gap-4 mb-6 sm:mb-8">
+          <Link to="/all-videos" className="p-2 rounded-full hover:bg-gray-200 transition-colors">
+            <ArrowLeft size={20} />
+          </Link>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">
+            {isEditMode ? 'Edit Product' : 'Create New Product'}
+          </h1>
+        </div>
+        <div className="flex justify-center items-center h-64">
+          <Loader2 size={32} className="animate-spin text-purple-600" />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="max-w-4xl mx-auto space-y-8 px-3 sm:px-0">
       <div className="flex items-center gap-4 mb-6 sm:mb-8">
-        <Link to="/dashboard" className="p-2 rounded-full hover:bg-gray-200 transition-colors">
+        <Link to="/all-videos" className="p-2 rounded-full hover:bg-gray-200 transition-colors">
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Create New Product</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">
+          {isEditMode ? 'Edit Product' : 'Create New Product'}
+        </h1>
       </div>
       <div className="card-glass p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
         {renderProgress()}
@@ -1205,7 +1311,7 @@ const CreateProduct: React.FC = () => {
               generationProgress={generationProgress}
               generationMessage={generationMessage}
               generationError={generationError}
-              imagesLength={images.length}
+              imagesLength={images.length + imageKitUrls.filter(u => u).length}
               audioGenerating={audioGenerating}
               audioError={audioError}
               handlePreviewTTS={handlePreviewTTS}
@@ -1232,6 +1338,7 @@ const CreateProduct: React.FC = () => {
               description={description}
               handlePostToInstagram={handlePostToInstagram}
               resetAllState={resetAllState}
+              isEditMode={isEditMode}
             />
           )}
         </div>
@@ -1247,7 +1354,7 @@ const CreateProduct: React.FC = () => {
             <button
               onClick={handleNext}
               disabled={
-                (currentStep === 2 && images.length === 0) ||
+                (currentStep === 2 && images.length === 0 && imageKitUrls.filter(u => u).length === 0) ||
                 (currentStep === 3 && !videoUrl && !showConfig) ||
                 (currentStep === 3 && isGenerating) ||
                 (currentStep === 3 && generationError !== null)
