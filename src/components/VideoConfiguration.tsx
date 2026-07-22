@@ -9,7 +9,6 @@ import {
   Play,
   X,
 } from "lucide-react";
-
 interface VideoConfigurationProps {
   audioMode: "text" | "upload" | "record";
   setAudioMode: (value: "text" | "upload" | "record") => void;
@@ -44,7 +43,6 @@ interface VideoConfigurationProps {
   startRecording: () => void;
   stopRecording: () => void;
 }
-
 const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   audioMode,
   setAudioMode,
@@ -333,5 +331,4 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
     </div>
   );
 };
-
 export default VideoConfiguration;

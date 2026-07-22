@@ -14,11 +14,8 @@ import ImageUpload from "../components/ImageUpload";
 import VideoConfiguration from "../components/VideoConfiguration";
 import VideoPreviewComponent from "../components/VideoPreview";
 import PostToInstagram from "../components/PostToInstagram";
-
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3000/api";
-
 const UNSPLASH_ACCESS_KEY = "bzBups-AqyogXRdO5QpQxSkcu9peuTSc8yZXGMGcGPs";
-
 const steps = [
   { id: 1, label: "Product Details" },
   { id: 2, label: "Upload Images" },
@@ -26,7 +23,6 @@ const steps = [
   { id: 4, label: "Preview" },
   { id: 5, label: "Post to Instagram" },
 ];
-
 interface ProductVariant {
   id: string;
   sku: string;
@@ -36,18 +32,15 @@ interface ProductVariant {
   costPrice: string;
   stockQuantity: string;
 }
-
 interface Subcategory {
   id: string;
   name: string;
 }
-
 interface Category {
   id: string;
   name: string;
   subcategories: Subcategory[];
 }
-
 const createEmptyVariant = (): ProductVariant => ({
   id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   sku: "",
@@ -57,7 +50,6 @@ const createEmptyVariant = (): ProductVariant => ({
   costPrice: "",
   stockQuantity: "",
 });
-
 const INITIAL_CATEGORIES: Category[] = [
   {
     id: "cat-sarees",
@@ -97,7 +89,6 @@ const INITIAL_CATEGORIES: Category[] = [
     ],
   },
 ];
-
 const audioBufferToWav = (buffer: AudioBuffer): Blob => {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
@@ -139,7 +130,6 @@ const audioBufferToWav = (buffer: AudioBuffer): Blob => {
   }
   return new Blob([arrayBuffer], { type: "audio/wav" });
 };
-
 const generateFallbackAudio = (
   duration: number = 5,
   frequency: number = 440
@@ -163,7 +153,6 @@ const generateFallbackAudio = (
     }
   });
 };
-
 const pitchShiftBlob = async (blob: Blob, ratio: number): Promise<Blob> => {
   const audioCtx = new AudioContext();
   const arrayBuffer = await blob.arrayBuffer();
@@ -183,7 +172,6 @@ const pitchShiftBlob = async (blob: Blob, ratio: number): Promise<Blob> => {
   audioCtx.close();
   return audioBufferToWav(rendered);
 };
-
 const loopAudioToDuration = async (
   blob: Blob,
   targetDurationSec: number
@@ -226,7 +214,6 @@ const loopAudioToDuration = async (
   audioCtx.close();
   return audioBufferToWav(rendered);
 };
-
 const CreateProduct: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [productName, setProductName] = useState("");
@@ -283,7 +270,6 @@ const CreateProduct: React.FC = () => {
   const [isPosting, setIsPosting] = useState(false);
   const [postSuccess, setPostSuccess] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-
   useEffect(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.getVoices();
@@ -294,7 +280,6 @@ const CreateProduct: React.FC = () => {
       }
     }
   }, []);
-
   useEffect(() => {
     if (currentStep === 3 && audioMode === "text" && !audioScript) {
       const script = `Introducing ${productName || "our amazing product"}. ${
@@ -303,14 +288,12 @@ const CreateProduct: React.FC = () => {
       setAudioScript(script);
     }
   }, [currentStep, productName, description, price, audioMode, audioScript]);
-
   useEffect(() => {
     if (ttsPreviewUrl) {
       URL.revokeObjectURL(ttsPreviewUrl);
       setTtsPreviewUrl(null);
     }
   }, [audioScript, audioLanguage, voiceGender]);
-
   useEffect(() => {
     return () => {
       previews.forEach((url) => {
@@ -325,9 +308,7 @@ const CreateProduct: React.FC = () => {
       }
     };
   }, []);
-
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
-
   const handleCategoryChange = (categoryId: string) => {
     if (categoryId === "__add_new__") {
       setShowAddCategory(true);
@@ -355,7 +336,6 @@ const CreateProduct: React.FC = () => {
       return rest;
     });
   };
-
   const handleSubcategoryChange = (subcategoryId: string) => {
     if (subcategoryId === "__add_new__") {
       setShowAddSubcategory(true);
@@ -370,7 +350,6 @@ const CreateProduct: React.FC = () => {
       return rest;
     });
   };
-
   const handleAddNewCategory = () => {
     const name = newCategoryName.trim();
     if (!name) {
@@ -403,13 +382,11 @@ const CreateProduct: React.FC = () => {
       return rest;
     });
   };
-
   const handleCancelAddCategory = () => {
     setShowAddCategory(false);
     setNewCategoryName("");
     setNewCategoryError(null);
   };
-
   const handleAddNewSubcategory = () => {
     const name = newSubcategoryName.trim();
     if (!name) {
@@ -445,17 +422,14 @@ const CreateProduct: React.FC = () => {
     setNewSubcategoryName("");
     setNewSubcategoryError(null);
   };
-
   const handleCancelAddSubcategory = () => {
     setShowAddSubcategory(false);
     setNewSubcategoryName("");
     setNewSubcategoryError(null);
   };
-
   const handleAddVariant = () => {
     setVariants((prev) => [...prev, createEmptyVariant()]);
   };
-
   const handleRemoveVariant = (id: string) => {
     setVariants((prev) => {
       if (prev.length === 1) {
@@ -464,7 +438,6 @@ const CreateProduct: React.FC = () => {
       return prev.filter((v) => v.id !== id);
     });
   };
-
   const handleVariantChange = (
     id: string,
     field: keyof Omit<ProductVariant, "id">,
@@ -474,14 +447,12 @@ const CreateProduct: React.FC = () => {
       prev.map((v) => (v.id === id ? { ...v, [field]: value } : v))
     );
   };
-
   const handleFillAllVariantsPrice = () => {
     if (!price) return;
     setVariants((prev) =>
       prev.map((v) => ({ ...v, price: v.price || price }))
     );
   };
-
   const startRecording = async () => {
     setRecordingError(null);
     try {
@@ -517,13 +488,11 @@ const CreateProduct: React.FC = () => {
       }
     }
   };
-
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
     }
   };
-
   const generateAudioFromText = useCallback(
     async (
       text: string,
@@ -557,7 +526,6 @@ const CreateProduct: React.FC = () => {
     },
     []
   );
-
   const handlePreviewTTS = () => {
     if (!audioScript.trim()) return;
     setAudioGenerating(true);
@@ -589,7 +557,6 @@ const CreateProduct: React.FC = () => {
     };
     window.speechSynthesis.speak(utterance);
   };
-
   const handlePostToInstagram = async () => {
     setIsPosting(true);
     setCreateError(null);
@@ -626,7 +593,6 @@ const CreateProduct: React.FC = () => {
       setIsPosting(false);
     }
   };
-
   const resetAllState = () => {
     previews.forEach((url) => {
       if (url.startsWith("blob:")) URL.revokeObjectURL(url);
@@ -692,13 +658,11 @@ const CreateProduct: React.FC = () => {
     setPostSuccess(false);
     setCreateError(null);
   };
-
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
   };
-
   const handleNext = () => {
     if (currentStep === 1) {
       const newErrors: { [key: string]: string } = {};
@@ -716,7 +680,6 @@ const CreateProduct: React.FC = () => {
       setCurrentStep(prev => prev + 1);
     }
   };
-
   const handleUnsplashSearch = async () => {
     if (!unsplashQuery.trim()) return;
     setIsSearchingUnsplash(true);
@@ -733,7 +696,6 @@ const CreateProduct: React.FC = () => {
       setIsSearchingUnsplash(false);
     }
   };
-
   const handleDownloadUnsplash = async (photo: any) => {
     const photoId = photo.id;
     if (downloadingUnsplashIds.has(photoId)) return;
@@ -757,7 +719,6 @@ const CreateProduct: React.FC = () => {
       });
     }
   };
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -776,7 +737,6 @@ const CreateProduct: React.FC = () => {
     setImageUploadErrors(prev => [...prev, ...new Array(newFiles.length).fill("")]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
     setPreviews(prev => {
@@ -788,7 +748,6 @@ const CreateProduct: React.FC = () => {
     setImageUploadingStates(prev => prev.filter((_, i) => i !== index));
     setImageUploadErrors(prev => prev.filter((_, i) => i !== index));
   };
-
   const handleUploadToImageKit = async (index: number) => {
     const file = images[index];
     if (!file) return;
@@ -825,18 +784,15 @@ const CreateProduct: React.FC = () => {
       });
     }
   };
-
   const handleGenerateVideo = async () => {
     setIsGenerating(true);
     setGenerationProgress(0);
     setGenerationMessage("Preparing assets...");
     setGenerationError(null);
     setVideoUrl(null);
-
     try {
       let audioBlob: Blob | null = null;
       const targetDuration = videoLength;
-
       if (audioMode === "text") {
         setGenerationMessage("Generating voiceover...");
         setGenerationProgress(10);
@@ -868,25 +824,23 @@ const CreateProduct: React.FC = () => {
         setGenerationProgress(10);
         audioBlob = recordedAudioBlob;
       }
-
       if (!audioBlob) {
         throw new Error("No audio available for video generation");
       }
-
+      setGenerationMessage("Processing audio...");
+      setGenerationProgress(15);
+      // Create audio context for processing
       const audioCtx = new AudioContext();
       const audioBuffer = await audioCtx.decodeAudioData(await audioBlob.arrayBuffer());
       const audioDuration = audioBuffer.duration;
-      audioCtx.close();
-
       let finalAudioBlob = audioBlob;
       if (audioDuration < targetDuration) {
         setGenerationMessage(`Extending audio from ${audioDuration.toFixed(1)}s to ${targetDuration}s...`);
         finalAudioBlob = await loopAudioToDuration(audioBlob, targetDuration);
       }
-
+      audioCtx.close();
       setGenerationMessage("Loading product images...");
       setGenerationProgress(20);
-
       const imageElements: HTMLImageElement[] = [];
       for (const previewUrl of previews) {
         const img = new Image();
@@ -897,75 +851,74 @@ const CreateProduct: React.FC = () => {
         });
         imageElements.push(img);
       }
-
       setGenerationMessage("Creating video with embedded audio...");
       setGenerationProgress(30);
-
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d")!;
       const width = 1280;
       const height = 720;
       canvas.width = width;
       canvas.height = height;
-
+      // Create canvas stream for video
       const canvasStream = canvas.captureStream(30);
-
+      // Create audio element from blob
       const finalAudioUrl = URL.createObjectURL(finalAudioBlob);
       const audioElement = new Audio(finalAudioUrl);
       await new Promise((resolve) => {
         audioElement.onloadedmetadata = () => resolve(null);
         audioElement.load();
       });
-
+      // Set up audio context with media stream destination for capturing audio
       const audioContext = new AudioContext();
       const source = audioContext.createMediaElementSource(audioElement);
       const destination = audioContext.createMediaStreamDestination();
       source.connect(destination);
-      source.connect(audioContext.destination);
-
+      // Don't connect to default destination to prevent audio playback
+      // source.connect(audioContext.destination); // Comment this out to prevent audible playback
+      // Combine video and audio streams
       const combinedStream = new MediaStream();
+      // Add video tracks from canvas
       canvasStream.getVideoTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
+      // Add audio tracks from audio context
       destination.stream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
-
+      // Create media recorder with combined stream
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: "video/webm;codecs=vp9,opus",
         videoBitsPerSecond: 5000000,
         audioBitsPerSecond: 128000,
       });
-
       const chunks: Blob[] = [];
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
           chunks.push(e.data);
         }
       };
-
+      // Start recording
       mediaRecorder.start(1000);
+      // Resume audio context (required for audio to flow)
+      await audioContext.resume();
+      // Start audio playback (will be captured by destination)
       audioElement.play().catch(e => console.warn("Audio play warning:", e));
-
       const fps = 30;
       const actualDuration = audioElement.duration || targetDuration;
       const totalFrames = Math.ceil(actualDuration * fps);
       const frameInterval = 1000 / fps;
       let currentFrame = 0;
       let imageIndex = 0;
-
       setGenerationProgress(40);
-
       await new Promise<void>((resolve) => {
         const renderFrame = () => {
           if (currentFrame >= totalFrames) {
             resolve();
             return;
           }
-
           const progress = currentFrame / totalFrames;
           ctx.clearRect(0, 0, width, height);
-
+          // Dynamic background gradient
           const hue1 = (180 + progress * 120) % 360;
           const hue2 = (hue1 + 60) % 360;
           const gradient = ctx.createLinearGradient(0, 0, width, height);
@@ -974,7 +927,7 @@ const CreateProduct: React.FC = () => {
           gradient.addColorStop(1, `hsl(${(hue1 + 30) % 360}, 70%, 10%)`);
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, width, height);
-
+          // Display images
           if (imageElements.length > 0) {
             const img = imageElements[imageIndex % imageElements.length];
             const aspectRatio = img.width / img.height;
@@ -982,7 +935,6 @@ const CreateProduct: React.FC = () => {
             const padding = 60;
             const maxWidth = width - padding * 2;
             const maxHeight = height - padding * 2 - 200;
-
             if (aspectRatio > 1) {
               drawWidth = Math.min(maxWidth, img.width);
               drawHeight = drawWidth / aspectRatio;
@@ -998,15 +950,12 @@ const CreateProduct: React.FC = () => {
                 drawHeight = drawWidth / aspectRatio;
               }
             }
-
             x = (width - drawWidth) / 2;
             y = padding;
-
             ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
             ctx.shadowBlur = 20;
             ctx.shadowOffsetX = 5;
             ctx.shadowOffsetY = 5;
-
             const cornerRadius = 20;
             ctx.beginPath();
             ctx.moveTo(x + cornerRadius, y);
@@ -1020,26 +969,23 @@ const CreateProduct: React.FC = () => {
             ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
             ctx.closePath();
             ctx.clip();
-
             const zoom = 1 + Math.sin(progress * Math.PI * 4) * 0.03;
             const scaledWidth = drawWidth * zoom;
             const scaledHeight = drawHeight * zoom;
             const offsetX = (drawWidth - scaledWidth) / 2;
             const offsetY = (drawHeight - scaledHeight) / 2;
-
             ctx.drawImage(img, x + offsetX, y + offsetY, scaledWidth, scaledHeight);
             ctx.shadowBlur = 0;
           }
-
+          // Overlay gradient for text
           const overlayGradient = ctx.createLinearGradient(0, height - 180, 0, height);
           overlayGradient.addColorStop(0, "rgba(0,0,0,0)");
           overlayGradient.addColorStop(1, "rgba(0,0,0,0.7)");
           ctx.fillStyle = overlayGradient;
           ctx.fillRect(0, height - 180, width, 180);
-
+          // Product name
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
-
           const nameScale = 1 + Math.sin(progress * Math.PI * 2) * 0.02;
           ctx.save();
           ctx.translate(width / 2, height - 80);
@@ -1050,7 +996,7 @@ const CreateProduct: React.FC = () => {
           ctx.shadowBlur = 15;
           ctx.fillText(productName || "Product", 0, 0);
           ctx.restore();
-
+          // Price
           const priceScale = 1 + Math.sin(progress * Math.PI * 2 + 0.5) * 0.02;
           ctx.save();
           ctx.translate(width / 2, height - 30);
@@ -1061,7 +1007,7 @@ const CreateProduct: React.FC = () => {
           ctx.shadowBlur = 20;
           ctx.fillText(`₹${price || "0"}`, 0, 0);
           ctx.restore();
-
+          // Decorative line
           ctx.shadowBlur = 0;
           ctx.strokeStyle = `rgba(251, 191, 36, ${0.3 + Math.sin(progress * Math.PI * 4) * 0.2})`;
           ctx.lineWidth = 2;
@@ -1069,29 +1015,26 @@ const CreateProduct: React.FC = () => {
           ctx.moveTo(width / 2 - 100, height - 65);
           ctx.lineTo(width / 2 + 100, height - 65);
           ctx.stroke();
-
+          // Update progress
           const progressPercent = 40 + (currentFrame / totalFrames) * 55;
           setGenerationProgress(Math.min(progressPercent, 95));
-
+          // Switch image every 3 seconds
           if (currentFrame > 0 && currentFrame % (fps * 3) === 0) {
             imageIndex = (imageIndex + 1) % imageElements.length;
           }
-
           currentFrame++;
           setTimeout(renderFrame, frameInterval);
         };
-
         renderFrame();
       });
-
       setGenerationProgress(97);
       setGenerationMessage("Finalizing video...");
-
+      // Stop audio and recording
       audioElement.pause();
       audioElement.currentTime = 0;
       await audioContext.close();
       mediaRecorder.stop();
-
+      // Wait for final blob
       const finalBlob = await new Promise<Blob>((resolve) => {
         mediaRecorder.onstop = () => {
           const blob = new Blob(chunks, { type: "video/webm" });
@@ -1105,15 +1048,12 @@ const CreateProduct: React.FC = () => {
           }
         }, 5000);
       });
-
       const finalVideoUrl = URL.createObjectURL(finalBlob);
       setVideoUrl(finalVideoUrl);
       setVideoKitUrl(finalVideoUrl);
-
       setGenerationProgress(100);
       setGenerationMessage("Video generated successfully with audio!");
       URL.revokeObjectURL(finalAudioUrl);
-
     } catch (err: any) {
       console.error("Video generation error:", err);
       setGenerationError(err.message || "Failed to generate video");
@@ -1123,7 +1063,6 @@ const CreateProduct: React.FC = () => {
       setIsGenerating(false);
     }
   };
-
   const renderProgress = () => (
     <div className="w-full">
       <div className="flex items-center justify-between">
@@ -1164,7 +1103,6 @@ const CreateProduct: React.FC = () => {
       </p>
     </div>
   );
-
   return (
     <div className="max-w-4xl mx-auto space-y-8 px-3 sm:px-0">
       <div className="flex items-center gap-4 mb-6 sm:mb-8">
@@ -1324,5 +1262,4 @@ const CreateProduct: React.FC = () => {
     </div>
   );
 };
-
 export default CreateProduct;
