@@ -8,7 +8,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { uploadToImageKit } from "../utils/imageKitUpload";
-import { uploadToCloudinary } from "../utils/cloudinaryUpload";
+import { uploadToCloudinary, getCloudinaryVideoUrl } from "../utils/cloudinaryUpload";
 import ProductDetails from "../components/ProductDetails";
 import ImageUpload from "../components/ImageUpload";
 import VideoConfiguration from "../components/VideoConfiguration";
@@ -702,17 +702,17 @@ const CreateProduct: React.FC = () => {
               )
             );
           }
-          if (product.videoUrl) {
-            setVideoUrl(
-              product.videoUrl
-            );
-            setVideoKitUrl(
-              product.videoKitUrl ||
-                product.videoUrl
-            );
-            setExistingVideoUrl(
-              product.videoUrl
-            );
+          // Handle video URL - prefer Cloudinary URL if available
+          if (product.cloudinaryVideoPublicId) {
+            const cloudinaryUrl = getCloudinaryVideoUrl(product.cloudinaryVideoPublicId);
+            if (cloudinaryUrl) {
+              setExistingVideoUrl(cloudinaryUrl);
+              setCloudinaryPublicId(product.cloudinaryVideoPublicId);
+              setCloudinaryUploadStatus("success");
+            }
+          } else if (product.videoUrl && product.videoUrl.startsWith('http')) {
+            // Only set if it's an HTTP URL (not blob)
+            setExistingVideoUrl(product.videoUrl);
           }
           const existingAudioUrl =
             product.audioUrl ||
@@ -733,11 +733,6 @@ const CreateProduct: React.FC = () => {
             setRecordedAudioUrl(
               existingRecordedAudioUrl
             );
-          }
-          // Restore Cloudinary public ID if exists
-          if (product.cloudinaryVideoPublicId) {
-            setCloudinaryPublicId(product.cloudinaryVideoPublicId);
-            setCloudinaryUploadStatus("success");
           }
         }
       } catch (err: any) {
@@ -2874,6 +2869,11 @@ const CreateProduct: React.FC = () => {
           setCloudinaryUploadStatus("success");
           setCloudinaryUploadMessage("Video uploaded successfully!");
           setGenerationMessage("Video uploaded to Cloudinary successfully!");
+          // Update existing video URL with Cloudinary URL
+          const cloudinaryUrl = getCloudinaryVideoUrl(cloudinaryResult.publicId);
+          if (cloudinaryUrl) {
+            setExistingVideoUrl(cloudinaryUrl);
+          }
         } else {
           throw new Error("Failed to upload to Cloudinary");
         }

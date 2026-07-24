@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Mic,
   Upload,
@@ -10,8 +10,8 @@ import {
   Cloud,
   CheckCircle,
   AlertCircle,
+  ExternalLink,
 } from "lucide-react";
-
 interface VideoConfigurationProps {
   audioMode: "text" | "upload" | "record";
   setAudioMode: (mode: "text" | "upload" | "record") => void;
@@ -51,7 +51,6 @@ interface VideoConfigurationProps {
   cloudinaryUploadMessage?: string;
   cloudinaryPublicId?: string | null;
 }
-
 const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   audioMode,
   setAudioMode,
@@ -92,7 +91,12 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   cloudinaryPublicId = null,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoLoadError, setVideoLoadError] = useState(false);
+  // Reset video error when URL changes
+  useEffect(() => {
+    setVideoLoadError(false);
+  }, [existingVideoUrl]);
   const handleCustomAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -104,7 +108,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       fileInputRef.current.value = "";
     }
   };
-
   const removeCustomAudio = () => {
     setCustomAudioFile(null);
     if (customAudioUrl) {
@@ -112,7 +115,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       setCustomAudioUrl(null);
     }
   };
-
   const removeRecordedAudio = () => {
     setRecordedAudioBlob(null);
     if (recordedAudioUrl) {
@@ -120,11 +122,9 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       setRecordedAudioUrl(null);
     }
   };
-
   // Render Cloudinary upload status
   const renderCloudinaryStatus = () => {
     if (cloudinaryUploadStatus === "idle") return null;
-
     const statusConfig = {
       uploading: {
         icon: <Loader2 size={16} className="animate-spin" />,
@@ -145,10 +145,8 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
         borderColor: "border-red-200",
       },
     };
-
     const config = statusConfig[cloudinaryUploadStatus];
     if (!config) return null;
-
     return (
       <div className={`p-3 rounded-lg border ${config.bgColor} ${config.borderColor} space-y-2`}>
         <div className="flex items-center gap-2">
@@ -159,7 +157,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
             {cloudinaryUploadStatus === "error" && "Failed to upload to Cloudinary"}
           </span>
         </div>
-        
         {cloudinaryUploadStatus === "uploading" && (
           <div className="space-y-1">
             <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -171,53 +168,111 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
             <p className="text-xs text-gray-500">{cloudinaryUploadMessage}</p>
           </div>
         )}
-
         {cloudinaryUploadStatus === "success" && cloudinaryPublicId && (
           <div className="text-xs text-gray-600 bg-white p-2 rounded border border-gray-100">
             <span className="font-medium">Public ID:</span> {cloudinaryPublicId}
           </div>
         )}
-
         {cloudinaryUploadStatus === "error" && (
           <p className="text-xs text-red-600">{cloudinaryUploadMessage || "An error occurred during upload"}</p>
         )}
       </div>
     );
   };
-
+  // Render existing video with better error handling
+  const renderExistingVideo = () => {
+    if (!existingVideoUrl) return null;
+    const isCloudinaryUrl = existingVideoUrl.includes('cloudinary.com') || existingVideoUrl.includes('res.cloudinary.com');
+    const isBlobUrl = existingVideoUrl.startsWith('blob:');
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-blue-700 flex items-center gap-2">
+          <Play size={18} />
+          Existing Video
+          {isCloudinaryUrl && (
+            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+              Cloudinary
+            </span>
+          )}
+        </h3>
+        {videoLoadError ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+            <AlertCircle size={24} className="mx-auto text-yellow-600 mb-2" />
+            <p className="text-sm text-yellow-700 mb-2">
+              Unable to load video from Cloudinary
+            </p>
+            {cloudinaryPublicId && (
+              <p className="text-xs text-gray-600 mb-3">
+                Public ID: {cloudinaryPublicId}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {isCloudinaryUrl && (
+                <a
+                  href={existingVideoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <ExternalLink size={14} />
+                  Open in Browser
+                </a>
+              )}
+              <button
+                onClick={() => {
+                  setVideoLoadError(false);
+                  // Force reload by using a different URL approach
+                  if (videoRef.current) {
+                    videoRef.current.load();
+                  }
+                }}
+                className="text-xs bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative rounded-lg overflow-hidden bg-black">
+            <video
+              ref={videoRef}
+              src={existingVideoUrl}
+              controls
+              className="w-full max-h-64 object-contain"
+              controlsList="nodownload"
+              onError={() => {
+                console.error('Video failed to load:', existingVideoUrl);
+                setVideoLoadError(true);
+              }}
+              onLoadedData={() => {
+                setVideoLoadError(false);
+              }}
+            >
+              Your browser does not support the video tag.
+            </video>
+            {isCloudinaryUrl && cloudinaryPublicId && (
+              <div className="absolute bottom-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-1 rounded">
+                Cloudinary
+              </div>
+            )}
+          </div>
+        )}
+        <p className="text-xs text-blue-600">
+          This video will be replaced if you generate a new one.
+        </p>
+      </div>
+    );
+  };
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
         <FileText size={22} className="text-purple-600" />
         Video Configuration
       </h2>
-
       {/* Cloudinary Upload Status */}
       {renderCloudinaryStatus()}
-
       {/* Existing Video Display */}
-      {existingVideoUrl && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-blue-700 flex items-center gap-2">
-            <Play size={18} />
-            Existing Video
-          </h3>
-          <div className="relative rounded-lg overflow-hidden bg-black">
-            <video
-              src={existingVideoUrl}
-              controls
-              className="w-full max-h-64 object-contain"
-              controlsList="nodownload"
-            >
-              Your browser does not support the video tag.
-            </video>
-          </div>
-          <p className="text-xs text-blue-600">
-            This video will be replaced if you generate a new one.
-          </p>
-        </div>
-      )}
-
+      {renderExistingVideo()}
       {/* Audio Mode Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -259,7 +314,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </button>
         </div>
       </div>
-
       {/* Audio Script for Text Mode */}
       {audioMode === "text" && (
         <div>
@@ -295,7 +349,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </p>
         </div>
       )}
-
       {/* Upload Audio for Upload Mode */}
       {audioMode === "upload" && (
         <div>
@@ -349,7 +402,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           )}
         </div>
       )}
-
       {/* Record Voice for Record Mode */}
       {audioMode === "record" && (
         <div>
@@ -418,7 +470,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           )}
         </div>
       )}
-
       {/* Language and Voice Settings */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -465,7 +516,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </div>
         </div>
       </div>
-
       {/* Video Length */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -485,7 +535,6 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           <span>60s</span>
         </div>
       </div>
-
       {/* Generate Video Button */}
       <div className="pt-4 border-t">
         {generationError && (
@@ -556,5 +605,4 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
     </div>
   );
 };
-
 export default VideoConfiguration;
