@@ -7,6 +7,9 @@ import {
   Play,
   Pause,
   Volume2,
+  Cloud,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 
 interface VideoConfigurationProps {
@@ -43,6 +46,10 @@ interface VideoConfigurationProps {
   startRecording: () => void;
   stopRecording: () => void;
   existingVideoUrl?: string | null;
+  cloudinaryUploadStatus?: "idle" | "uploading" | "success" | "error";
+  cloudinaryUploadProgress?: number;
+  cloudinaryUploadMessage?: string;
+  cloudinaryPublicId?: string | null;
 }
 
 const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
@@ -79,6 +86,10 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   startRecording,
   stopRecording,
   existingVideoUrl,
+  cloudinaryUploadStatus = "idle",
+  cloudinaryUploadProgress = 0,
+  cloudinaryUploadMessage = "",
+  cloudinaryPublicId = null,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -110,12 +121,79 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
     }
   };
 
+  // Render Cloudinary upload status
+  const renderCloudinaryStatus = () => {
+    if (cloudinaryUploadStatus === "idle") return null;
+
+    const statusConfig = {
+      uploading: {
+        icon: <Loader2 size={16} className="animate-spin" />,
+        color: "text-blue-600",
+        bgColor: "bg-blue-50",
+        borderColor: "border-blue-200",
+      },
+      success: {
+        icon: <CheckCircle size={16} className="text-green-600" />,
+        color: "text-green-600",
+        bgColor: "bg-green-50",
+        borderColor: "border-green-200",
+      },
+      error: {
+        icon: <AlertCircle size={16} className="text-red-600" />,
+        color: "text-red-600",
+        bgColor: "bg-red-50",
+        borderColor: "border-red-200",
+      },
+    };
+
+    const config = statusConfig[cloudinaryUploadStatus];
+    if (!config) return null;
+
+    return (
+      <div className={`p-3 rounded-lg border ${config.bgColor} ${config.borderColor} space-y-2`}>
+        <div className="flex items-center gap-2">
+          {config.icon}
+          <span className={`text-sm font-medium ${config.color}`}>
+            {cloudinaryUploadStatus === "uploading" && "Uploading to Cloudinary..."}
+            {cloudinaryUploadStatus === "success" && "Video uploaded to Cloudinary successfully!"}
+            {cloudinaryUploadStatus === "error" && "Failed to upload to Cloudinary"}
+          </span>
+        </div>
+        
+        {cloudinaryUploadStatus === "uploading" && (
+          <div className="space-y-1">
+            <div className="w-full bg-gray-200 rounded-full h-1.5">
+              <div
+                className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${cloudinaryUploadProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-500">{cloudinaryUploadMessage}</p>
+          </div>
+        )}
+
+        {cloudinaryUploadStatus === "success" && cloudinaryPublicId && (
+          <div className="text-xs text-gray-600 bg-white p-2 rounded border border-gray-100">
+            <span className="font-medium">Public ID:</span> {cloudinaryPublicId}
+          </div>
+        )}
+
+        {cloudinaryUploadStatus === "error" && (
+          <p className="text-xs text-red-600">{cloudinaryUploadMessage || "An error occurred during upload"}</p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
         <FileText size={22} className="text-purple-600" />
         Video Configuration
       </h2>
+
+      {/* Cloudinary Upload Status */}
+      {renderCloudinaryStatus()}
 
       {/* Existing Video Display */}
       {existingVideoUrl && (
@@ -439,7 +517,8 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
             imagesLength === 0 ||
             (audioMode === "text" && !audioScript.trim()) ||
             (audioMode === "upload" && !customAudioFile) ||
-            (audioMode === "record" && !recordedAudioBlob)
+            (audioMode === "record" && !recordedAudioBlob) ||
+            cloudinaryUploadStatus === "uploading"
           }
           className="w-full btn-primary flex items-center justify-center gap-2 py-3"
         >
@@ -447,6 +526,11 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
             <>
               <Loader2 size={20} className="animate-spin" />
               Generating...
+            </>
+          ) : cloudinaryUploadStatus === "uploading" ? (
+            <>
+              <Cloud size={20} className="animate-pulse" />
+              Uploading to Cloudinary...
             </>
           ) : (
             <>
@@ -464,6 +548,8 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
             ? "Please upload an audio file"
             : audioMode === "record" && !recordedAudioBlob
             ? "Please record audio first"
+            : cloudinaryUploadStatus === "uploading"
+            ? "Uploading video to Cloudinary..."
             : ""}
         </p>
       </div>

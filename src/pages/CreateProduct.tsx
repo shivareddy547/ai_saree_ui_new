@@ -8,6 +8,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { uploadToImageKit } from "../utils/imageKitUpload";
+import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 import ProductDetails from "../components/ProductDetails";
 import ImageUpload from "../components/ImageUpload";
 import VideoConfiguration from "../components/VideoConfiguration";
@@ -434,14 +435,6 @@ const CreateProduct: React.FC = () => {
     createEmptyVariant(),
   ]);
 
-  /*
-   * IMPORTANT:
-   * `images` contains only actual newly selected File objects.
-   * Existing product images are stored in `imageKitUrls`
-   * and `previews`.
-   *
-   * This avoids creating fake empty Files for existing images.
-   */
   const [images, setImages] =
     useState<File[]>([]);
 
@@ -534,10 +527,6 @@ const CreateProduct: React.FC = () => {
     setCustomAudioFile,
   ] = useState<File | null>(null);
 
-  /*
-   * Existing uploaded audio URL.
-   * This is used when editing an existing product.
-   */
   const [
     customAudioUrl,
     setCustomAudioUrl,
@@ -654,12 +643,27 @@ const CreateProduct: React.FC = () => {
     setIsUploadingImages,
   ] = useState(false);
 
-  /*
-   * Convert an existing remote audio URL into a Blob.
-   *
-   * This allows edit mode to generate a new video
-   * using the previously saved uploaded audio.
-   */
+  // Cloudinary upload states
+  const [
+    cloudinaryUploadStatus,
+    setCloudinaryUploadStatus,
+  ] = useState<"idle" | "uploading" | "success" | "error">("idle");
+  
+  const [
+    cloudinaryUploadProgress,
+    setCloudinaryUploadProgress,
+  ] = useState(0);
+  
+  const [
+    cloudinaryUploadMessage,
+    setCloudinaryUploadMessage,
+  ] = useState("");
+  
+  const [
+    cloudinaryPublicId,
+    setCloudinaryPublicId,
+  ] = useState<string | null>(null);
+
   const loadAudioFromUrl =
     useCallback(
       async (
@@ -679,9 +683,6 @@ const CreateProduct: React.FC = () => {
       []
     );
 
-  /*
-   * Fetch existing product when editing.
-   */
   useEffect(() => {
     if (editId) {
       fetchProductData(editId);
@@ -751,10 +752,6 @@ const CreateProduct: React.FC = () => {
             product.videoLength || 30
           );
 
-          /*
-           * Existing images:
-           * Do NOT create fake File objects.
-           */
           if (
             product.images &&
             product.images.length > 0
@@ -794,9 +791,6 @@ const CreateProduct: React.FC = () => {
             setImageKitUrls([]);
           }
 
-          /*
-           * Existing variants.
-           */
           if (
             product.variants &&
             product.variants.length > 0
@@ -824,12 +818,6 @@ const CreateProduct: React.FC = () => {
             );
           }
 
-          /*
-           * Existing video.
-           *
-           * Keep it visible until a new video
-           * has been generated successfully.
-           */
           if (product.videoUrl) {
             setVideoUrl(
               product.videoUrl
@@ -845,16 +833,6 @@ const CreateProduct: React.FC = () => {
             );
           }
 
-          /*
-           * Existing uploaded audio.
-           *
-           * Your backend should ideally return one
-           * of these fields:
-           *
-           * audioUrl
-           * audioFileUrl
-           * audioKitUrl
-           */
           const existingAudioUrl =
             product.audioUrl ||
             product.audioFileUrl ||
@@ -867,14 +845,6 @@ const CreateProduct: React.FC = () => {
             );
           }
 
-          /*
-           * If the backend has a saved recorded
-           * audio URL, restore it as the existing
-           * recorded audio URL.
-           *
-           * The Blob itself cannot be restored into
-           * recordedAudioBlob until it is fetched.
-           */
           const existingRecordedAudioUrl =
             product.recordedAudioUrl ||
             null;
@@ -885,6 +855,12 @@ const CreateProduct: React.FC = () => {
             setRecordedAudioUrl(
               existingRecordedAudioUrl
             );
+          }
+
+          // Restore Cloudinary public ID if exists
+          if (product.cloudinaryVideoPublicId) {
+            setCloudinaryPublicId(product.cloudinaryVideoPublicId);
+            setCloudinaryUploadStatus("success");
           }
         }
       } catch (err: any) {
@@ -923,9 +899,6 @@ const CreateProduct: React.FC = () => {
     }
   }, []);
 
-  /*
-   * Auto-create default text only for create mode.
-   */
   useEffect(() => {
     if (
       currentStep === 3 &&
@@ -969,9 +942,6 @@ const CreateProduct: React.FC = () => {
     voiceGender,
   ]);
 
-  /*
-   * Cleanup local object URLs.
-   */
   useEffect(() => {
     return () => {
       previews.forEach(
@@ -1627,12 +1597,6 @@ const CreateProduct: React.FC = () => {
       );
     };
 
-  /*
-   * Upload only newly selected images.
-   *
-   * Existing images already have ImageKit URLs
-   * and are returned directly.
-   */
   const uploadAllImages =
     async (): Promise<
       string[]
@@ -1640,9 +1604,6 @@ const CreateProduct: React.FC = () => {
       const uploadedUrls: string[] =
         [];
 
-      /*
-       * First preserve existing remote URLs.
-       */
       for (
         let i = 0;
         i < imageKitUrls.length;
@@ -1663,9 +1624,6 @@ const CreateProduct: React.FC = () => {
         }
       }
 
-      /*
-       * Then upload new files.
-       */
       for (
         let i = 0;
         i < images.length;
@@ -1751,10 +1709,6 @@ const CreateProduct: React.FC = () => {
                 )
             ),
 
-          /*
-           * Newly generated video replaces
-           * the existing video automatically.
-           */
           videoUrl:
             videoKitUrl ||
             videoUrl,
@@ -1769,16 +1723,12 @@ const CreateProduct: React.FC = () => {
 
           videoLength,
 
-          /*
-           * Preserve existing audio URL
-           * if available.
-           */
           audioUrl:
             customAudioUrl ||
             undefined,
 
           cloudinaryVideoPublicId:
-            null,
+            cloudinaryPublicId,
 
           cloudinaryAudioPublicId:
             null,
@@ -1974,6 +1924,12 @@ const CreateProduct: React.FC = () => {
     setCreateError(null);
 
     setExistingVideoUrl(null);
+
+    // Reset Cloudinary states
+    setCloudinaryUploadStatus("idle");
+    setCloudinaryUploadProgress(0);
+    setCloudinaryUploadMessage("");
+    setCloudinaryPublicId(null);
   };
 
   const handleBack = () => {
@@ -2419,15 +2375,6 @@ const CreateProduct: React.FC = () => {
       }
     };
 
-  /*
-   * Generate video.
-   *
-   * IMPORTANT:
-   * Existing video is NOT cleared here.
-   *
-   * The new video only replaces the old video
-   * after successful generation.
-   */
   const handleGenerateVideo =
     async () => {
       setIsGenerating(true);
@@ -2439,15 +2386,6 @@ const CreateProduct: React.FC = () => {
       );
 
       setGenerationError(null);
-
-      /*
-       * Do NOT do:
-       *
-       * setVideoUrl(null)
-       *
-       * because edit mode may already have
-       * an existing video.
-       */
 
       let generatedVideoObjectUrl:
         | string
@@ -2461,9 +2399,6 @@ const CreateProduct: React.FC = () => {
         const targetDuration =
           videoLength;
 
-        /*
-         * TEXT AUDIO
-         */
         if (
           audioMode === "text"
         ) {
@@ -2485,15 +2420,6 @@ const CreateProduct: React.FC = () => {
             );
         }
 
-        /*
-         * UPLOADED AUDIO
-         *
-         * First use a newly selected file.
-         *
-         * If editing an existing product
-         * and no new file was selected,
-         * load the existing audio URL.
-         */
         else if (
           audioMode ===
           "upload"
@@ -2533,14 +2459,6 @@ const CreateProduct: React.FC = () => {
           }
         }
 
-        /*
-         * RECORDED AUDIO
-         *
-         * First use a newly recorded Blob.
-         *
-         * Otherwise, if edit mode has a saved
-         * recorded audio URL, load it.
-         */
         else if (
           audioMode ===
           "record"
@@ -2574,9 +2492,6 @@ const CreateProduct: React.FC = () => {
           );
         }
 
-        /*
-         * Process audio duration.
-         */
         setGenerationMessage(
           "Processing audio..."
         );
@@ -2618,15 +2533,6 @@ const CreateProduct: React.FC = () => {
 
         await audioCtx.close();
 
-        /*
-         * Load images.
-         *
-         * `previews` contains the correct order
-         * for both:
-         *
-         * - existing remote images
-         * - newly selected local images
-         */
         setGenerationMessage(
           "Loading product images..."
         );
@@ -2655,10 +2561,6 @@ const CreateProduct: React.FC = () => {
           const img =
             new Image();
 
-          /*
-           * Cross-origin support for remote
-           * ImageKit images.
-           */
           if (
             previewUrl.startsWith(
               "http"
@@ -2695,9 +2597,6 @@ const CreateProduct: React.FC = () => {
           );
         }
 
-        /*
-         * Fallback image.
-         */
         if (
           imageElements.length ===
           0
@@ -2800,9 +2699,6 @@ const CreateProduct: React.FC = () => {
           );
         }
 
-        /*
-         * Create video.
-         */
         setGenerationMessage(
           "Creating video with embedded audio..."
         );
@@ -3495,11 +3391,6 @@ const CreateProduct: React.FC = () => {
             finalBlob
           );
 
-        /*
-         * IMPORTANT:
-         *
-         * Only now replace the existing video.
-         */
         setVideoUrl(
           generatedVideoObjectUrl
         );
@@ -3513,11 +3404,37 @@ const CreateProduct: React.FC = () => {
         );
 
         setGenerationProgress(
-          100
+          98
         );
 
         setGenerationMessage(
-          "Video generated successfully with audio!"
+          "Uploading to Cloudinary..."
+        );
+
+        // Upload to Cloudinary
+        setCloudinaryUploadStatus("uploading");
+        setCloudinaryUploadProgress(0);
+        setCloudinaryUploadMessage("Starting upload...");
+
+        const cloudinaryResult = await uploadToCloudinary(
+          finalBlob,
+          (progress) => {
+            setCloudinaryUploadProgress(progress);
+            setCloudinaryUploadMessage(`Uploading... ${Math.round(progress)}%`);
+          }
+        );
+
+        if (cloudinaryResult && cloudinaryResult.publicId) {
+          setCloudinaryPublicId(cloudinaryResult.publicId);
+          setCloudinaryUploadStatus("success");
+          setCloudinaryUploadMessage("Video uploaded successfully!");
+          setGenerationMessage("Video uploaded to Cloudinary successfully!");
+        } else {
+          throw new Error("Failed to upload to Cloudinary");
+        }
+
+        setGenerationProgress(
+          100
         );
 
         URL.revokeObjectURL(
@@ -3529,14 +3446,13 @@ const CreateProduct: React.FC = () => {
           err
         );
 
-        /*
-         * If generation fails,
-         * existing video remains untouched.
-         */
         setGenerationError(
           err.message ||
             "Failed to generate video"
         );
+
+        setCloudinaryUploadStatus("error");
+        setCloudinaryUploadMessage(err.message || "Upload failed");
 
         setGenerationProgress(
           0
@@ -3943,6 +3859,10 @@ const CreateProduct: React.FC = () => {
               existingVideoUrl={
                 existingVideoUrl
               }
+              cloudinaryUploadStatus={cloudinaryUploadStatus}
+              cloudinaryUploadProgress={cloudinaryUploadProgress}
+              cloudinaryUploadMessage={cloudinaryUploadMessage}
+              cloudinaryPublicId={cloudinaryPublicId}
             />
           )}
 
@@ -4035,7 +3955,10 @@ const CreateProduct: React.FC = () => {
                 (currentStep ===
                   3 &&
                   generationError !==
-                    null)
+                    null) ||
+                (currentStep ===
+                  3 &&
+                  cloudinaryUploadStatus === "uploading")
               }
               className="btn-primary flex items-center justify-center gap-2 px-6 sm:px-8 py-2 sm:py-3"
             >
@@ -4056,4 +3979,3 @@ const CreateProduct: React.FC = () => {
 };
 
 export default CreateProduct;
-
