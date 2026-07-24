@@ -1,246 +1,210 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MoreVertical, Play, Loader2, X, Edit2, Trash2 } from 'lucide-react';
+import { Play, Eye, Calendar, PlusCircle, Loader2 } from 'lucide-react';
 import axios from 'axios';
-
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3000/api";
-
-interface Product {
-  id: number;
+const API_BASE =
+  process.env.REACT_APP_API_URL || "http://localhost:3000/api";
+// Create axios instance with auth header
+const apiClient = axios.create({
+  baseURL: API_BASE,
+});
+// Add token to all requests
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+interface Video {
+  id: string;
   name: string;
-  description?: string;
-  basePrice?: string;
-  videoLength?: number;
-  videoUrl?: string;
-  views?: number;
+  description: string;
+  basePrice: number;
+  defaultSku: string;
+  videoUrl: string;
+  videoKitUrl: string;
+  views: number;
   status: string;
   createdAt: string;
-  images?: { url: string; position: number }[];
+  images: { url: string }[];
+  variants: any[];
 }
-
 const AllVideos: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const navigate = useNavigate();
-
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Authentication check - same as Dashboard
   useEffect(() => {
-    fetchProducts();
+    const token = localStorage.getItem('authToken');
+    const sessionExpiry = localStorage.getItem('sessionExpiry');
+    if (!token || !sessionExpiry) {
+      navigate('/login');
+      return;
+    }
+    const expiryTime = parseInt(sessionExpiry, 10);
+    if (Date.now() >= expiryTime) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('sessionExpiry');
+      localStorage.removeItem('sessionId');
+      navigate('/login');
+      return;
+    }
+  }, [navigate]);
+  useEffect(() => {
+    fetchVideos();
   }, []);
-
-  const fetchProducts = async () => {
+  const fetchVideos = async () => {
+    setIsLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      const response = await axios.get(`${API_BASE}/products`);
+      const response = await apiClient.get('/products');
       if (response.data.success) {
-        setProducts(response.data.data);
+        setVideos(response.data.data || []);
       } else {
-        setError('Failed to fetch products');
+        setError('Failed to load videos');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch products');
+      console.error('Error fetching videos:', err);
+      if (err.response?.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('sessionExpiry');
+        localStorage.removeItem('sessionId');
+        navigate('/login');
+        return;
+      }
+      setError(err.message || 'Failed to load videos');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toISOString().split('T')[0];
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString();
   };
-
-  const getStatusBadgeClass = (status: string) => {
-    if (status === 'published') return 'bg-green-100 text-green-700';
-    return 'bg-yellow-100 text-yellow-700';
-  };
-
-  const getThumbnail = (product: Product) => {
-    if (product.images && product.images.length > 0) {
-      return product.images[0].url;
-    }
-    return `https://placehold.co/200x200/e2e8f0/64748b?text=${encodeURIComponent(product.name[0])}`;
-  };
-
-  const closeModal = () => setSelectedVideoUrl(null);
-
-  const handleEdit = (productId: number) => {
-    navigate(`/create-product?edit=${productId}`);
-  };
-
-  const handleDelete = async (productId: number) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) return;
-    
-    try {
-      const response = await axios.delete(`${API_BASE}/products/${productId}`);
-      if (response.data.success) {
-        setProducts(products.filter(p => p.id !== productId));
-      } else {
-        alert('Failed to delete product');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete product');
-    }
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 size={32} className="animate-spin text-purple-600" />
       </div>
     );
   }
-
-  if (error) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-red-500 mb-4">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="btn-primary"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-slate-800">All AI Videos</h1>
+        <h1 className="text-3xl font-bold text-slate-800">My Videos</h1>
         <Link to="/create-product" className="btn-primary flex items-center gap-2">
-          Create New
+          <PlusCircle size={20} /> Create New Video
         </Link>
       </div>
-
-      <div className="card-glass overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Video</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Duration</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Status</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Views</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Date</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {products.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                  No videos found. Create your first AI video!
-                </td>
-              </tr>
-            ) : (
-              products.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={getThumbnail(product)}
-                        className="w-10 h-10 rounded-lg object-cover"
-                        alt={product.name}
-                      />
-                      <span className="font-medium text-slate-800">{product.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => setSelectedVideoUrl(product.videoUrl || null)}
-                      disabled={!product.videoUrl}
-                      className={`p-2 rounded-lg transition-colors ${
-                        product.videoUrl
-                          ? 'hover:bg-gray-200 text-slate-600 cursor-pointer'
-                          : 'text-gray-300 cursor-not-allowed'
-                      }`}
-                      title={product.videoUrl ? 'Play video' : 'No video available'}
-                    >
-                      <Play size={16} />
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {product.videoLength ? `${product.videoLength}s` : 'N/A'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(product.status)}`}>
-                      {product.status.charAt(0).toUpperCase() + product.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {product.views?.toLocaleString() ?? 0}
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {formatDate(product.createdAt)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleEdit(product.id)}
-                        className="p-2 hover:bg-blue-100 rounded-lg text-blue-600 transition-colors"
-                        title="Edit product"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product.id)}
-                        className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
-                        title="Delete product"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => setSelectedVideoUrl(product.videoUrl || null)}
-                        disabled={!product.videoUrl}
-                        className={`p-2 rounded-lg transition-colors ${
-                          product.videoUrl
-                            ? 'hover:bg-gray-200 text-slate-600 cursor-pointer'
-                            : 'text-gray-300 cursor-not-allowed'
-                        }`}
-                        title={product.videoUrl ? 'Play video' : 'No video available'}
-                      >
-                        <Play size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Video Player Modal */}
-      {selectedVideoUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-          onClick={closeModal}
-        >
-          <div
-            className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={closeModal}
-              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-md hover:bg-gray-100 text-gray-600 z-10"
-            >
-              <X size={20} />
-            </button>
-            <video
-              controls
-              autoPlay
-              className="w-full h-auto max-h-[80vh] object-contain"
-              src={selectedVideoUrl}
-            >
-              Your browser does not support the video tag.
-            </video>
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+          {error}
+        </div>
+      )}
+      {videos.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+          <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Play size={32} className="text-purple-600" />
           </div>
+          <h3 className="text-xl font-semibold text-slate-700 mb-2">No Videos Yet</h3>
+          <p className="text-gray-500 mb-6">Create your first product video to get started</p>
+          <Link to="/create-product" className="btn-primary inline-flex items-center gap-2">
+            <PlusCircle size={20} /> Create Video
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {videos.map((video) => (
+            <div
+              key={video.id}
+              className="group relative rounded-2xl overflow-hidden border border-gray-100 hover:shadow-md transition-all bg-white"
+            >
+              <div className="aspect-video bg-gray-100 relative overflow-hidden">
+                {video.images && video.images.length > 0 ? (
+                  <img
+                    src={video.images[0].url}
+                    alt={video.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-100 to-purple-200">
+                    <Play size={48} className="text-purple-400" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                <div className="absolute bottom-3 left-3 right-3 text-white">
+                  <h4 className="font-bold text-sm truncate">{video.name}</h4>
+                  <div className="flex items-center justify-between text-xs opacity-90">
+                    <span className="flex items-center gap-1">
+                      <Eye size={12} />
+                      {video.views || 0} views
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Calendar size={12} />
+                      {formatDate(video.createdAt)}
+                    </span>
+                  </div>
+                </div>
+                <div className="absolute top-3 right-3">
+                  <span className={`text-[10px] font-medium px-2 py-1 rounded-md backdrop-blur-md ${
+                    video.status === 'published'
+                      ? 'bg-green-500/80 text-white'
+                      : 'bg-yellow-500/80 text-white'
+                  }`}>
+                    {video.status || 'draft'}
+                  </span>
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Price</span>
+                  <span className="font-semibold text-purple-700">₹{video.basePrice || 0}</span>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-sm text-gray-500">SKU</span>
+                  <span className="text-sm text-gray-700">{video.defaultSku || 'N/A'}</span>
+                </div>
+                <div className="flex gap-2 mt-3 pt-3 border-t">
+                  <Link
+                    to={`/create-product?edit=${video.id}`}
+                    className="flex-1 text-center text-sm bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors"
+                  >
+                    Edit
+                  </Link>
+                  <button
+                    onClick={() => {
+                      // Handle video preview
+                      if (video.videoUrl) {
+                        window.open(video.videoUrl, '_blank');
+                      }
+                    }}
+                    className="flex-1 text-center text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 };
-
 export default AllVideos;
