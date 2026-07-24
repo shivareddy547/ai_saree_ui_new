@@ -8,6 +8,7 @@ import {
   Pause,
   Volume2,
 } from "lucide-react";
+
 interface VideoConfigurationProps {
   audioMode: "text" | "upload" | "record";
   setAudioMode: (mode: "text" | "upload" | "record") => void;
@@ -43,6 +44,7 @@ interface VideoConfigurationProps {
   stopRecording: () => void;
   existingVideoUrl?: string | null;
 }
+
 const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   audioMode,
   setAudioMode,
@@ -79,6 +81,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   existingVideoUrl,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   const handleCustomAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -90,6 +93,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       fileInputRef.current.value = "";
     }
   };
+
   const removeCustomAudio = () => {
     setCustomAudioFile(null);
     if (customAudioUrl) {
@@ -97,6 +101,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       setCustomAudioUrl(null);
     }
   };
+
   const removeRecordedAudio = () => {
     setRecordedAudioBlob(null);
     if (recordedAudioUrl) {
@@ -104,12 +109,14 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       setRecordedAudioUrl(null);
     }
   };
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
         <FileText size={22} className="text-purple-600" />
         Video Configuration
       </h2>
+
       {/* Existing Video Display */}
       {existingVideoUrl && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
@@ -132,6 +139,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </p>
         </div>
       )}
+
       {/* Audio Mode Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -173,6 +181,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </button>
         </div>
       </div>
+
       {/* Audio Script for Text Mode */}
       {audioMode === "text" && (
         <div>
@@ -208,6 +217,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </p>
         </div>
       )}
+
       {/* Upload Audio for Upload Mode */}
       {audioMode === "upload" && (
         <div>
@@ -261,6 +271,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           )}
         </div>
       )}
+
       {/* Record Voice for Record Mode */}
       {audioMode === "record" && (
         <div>
@@ -329,6 +340,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           )}
         </div>
       )}
+
       {/* Language and Voice Settings */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -375,6 +387,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </div>
         </div>
       </div>
+
       {/* Video Length */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -394,6 +407,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           <span>60s</span>
         </div>
       </div>
+
       {/* Generate Video Button */}
       <div className="pt-4 border-t">
         {generationError && (
@@ -456,4 +470,5 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
     </div>
   );
 };
+
 export default VideoConfiguration;
