@@ -35,6 +35,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   }>({ connected: false });
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const apiClient = axios.create({
     baseURL: API_BASE,
   });
@@ -68,13 +70,70 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     try {
       await apiClient.post('/instagram/disconnect');
       setInstagramStatus({ connected: false });
+      setStatusError(null);
     } catch (err: any) {
       console.error('Failed to disconnect Instagram:', err);
       setStatusError(err.response?.data?.message || 'Failed to disconnect Instagram');
     }
   };
+  const handleConnectInstagram = async () => {
+    setConnectError(null);
+    setIsConnecting(true);
+    try {
+      // Get OAuth URL
+      const redirectUri = `${window.location.origin}/instagram-callback`;
+      const urlResponse = await apiClient.get('/instagram/oauth-url', {
+        params: { redirectUri }
+      });
+      if (urlResponse.data.success) {
+        // Store the redirect URI in session storage for callback
+        sessionStorage.setItem('instagram_redirect_uri', redirectUri);
+        // Redirect to Instagram OAuth
+        window.location.href = urlResponse.data.data.url;
+      }
+    } catch (err: any) {
+      console.error('Failed to get OAuth URL:', err);
+      setConnectError(err.response?.data?.message || 'Failed to initiate Instagram connection');
+      setIsConnecting(false);
+    }
+  };
   useEffect(() => {
     checkInstagramStatus();
+  }, []);
+  // Handle OAuth callback
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const error = params.get('error');
+      const redirectUri = sessionStorage.getItem('instagram_redirect_uri');
+      if (error) {
+        setConnectError(`Instagram authorization failed: ${error}`);
+        setIsConnecting(false);
+        return;
+      }
+      if (code && redirectUri) {
+        try {
+          setIsConnecting(true);
+          const response = await apiClient.post('/instagram/connect', {
+            code,
+            redirectUri
+          });
+          if (response.data.success) {
+            await checkInstagramStatus();
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (err: any) {
+          console.error('Failed to connect Instagram:', err);
+          setConnectError(err.response?.data?.message || 'Failed to connect Instagram account');
+        } finally {
+          setIsConnecting(false);
+          sessionStorage.removeItem('instagram_redirect_uri');
+        }
+      }
+    };
+    handleOAuthCallback();
   }, []);
   if (postSuccess) {
     return (
@@ -128,6 +187,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </span>
         {isEditMode ? 'Update & Post to Instagram' : 'Post to Instagram'}
       </h2>
+      {connectError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <span>{connectError}</span>
+        </div>
+      )}
       {/* Instagram Connection Status */}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected 
@@ -170,12 +235,16 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
               </button>
             ) : (
               <button
-                onClick={checkInstagramStatus}
-                disabled={isLoadingStatus}
+                onClick={handleConnectInstagram}
+                disabled={isConnecting}
                 className="text-sm text-purple-600 hover:text-purple-800 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-50 transition-colors flex items-center gap-1"
               >
-                <RefreshCw size={14} className={isLoadingStatus ? 'animate-spin' : ''} />
-                Check Connection
+                {isConnecting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                {isConnecting ? 'Connecting...' : 'Connect Instagram'}
               </button>
             )}
             <a
@@ -189,6 +258,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             </a>
           </div>
         </div>
+        {isConnecting && !instagramStatus.connected && (
+          <div className="mt-2 text-sm text-purple-600 flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            Redirecting to Instagram for authorization...
+          </div>
+        )}
       </div>
       <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
@@ -220,15 +295,20 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
         <button
           onClick={handlePostToInstagram}
-          disabled={isPosting || !instagramStatus.connected || !videoUrl}
+          disabled={isPosting || !instagramStatus.connected || !videoUrl || isConnecting}
           className={`flex-1 btn-primary flex items-center justify-center gap-2 py-3 ${
-            (!instagramStatus.connected || !videoUrl) ? 'opacity-50 cursor-not-allowed' : ''
+            (!instagramStatus.connected || !videoUrl || isConnecting) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
           {isPosting ? (
             <>
               <Loader2 size={20} className="animate-spin" />
               {isEditMode ? 'Updating...' : 'Creating...'}
+            </>
+          ) : isConnecting ? (
+            <>
+              <Loader2 size={20} className="animate-spin" />
+              Connecting...
             </>
           ) : (
             <>
@@ -248,7 +328,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           Start Over
         </button>
       </div>
-      {!instagramStatus.connected && (
+      {!instagramStatus.connected && !isConnecting && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Connect your Instagram account to enable posting
         </p>
@@ -256,6 +336,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       {!videoUrl && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Generate a video first before posting
+        </p>
+      )}
+      {isConnecting && (
+        <p className="text-sm text-purple-600 text-center">
+          🔄 Please wait while we connect your Instagram account...
         </p>
       )}
     </div>
