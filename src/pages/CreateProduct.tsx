@@ -3330,6 +3330,7 @@ const CreateProduct: React.FC = () => {
               isEditMode={
                 isEditMode
               }
+              videoUrl={videoUrl || existingVideoUrl}
             />
           )}
         </div>
