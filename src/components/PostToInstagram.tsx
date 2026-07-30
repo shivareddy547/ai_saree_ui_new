@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
 import axios from 'axios';
+
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
 interface PostToInstagramProps {
   isPosting: boolean;
   postSuccess: boolean;
@@ -14,6 +16,7 @@ interface PostToInstagramProps {
   isEditMode?: boolean;
   videoUrl?: string | null;
 }
+
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isPosting,
   postSuccess,
@@ -37,9 +40,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  
   const apiClient = axios.create({
     baseURL: API_BASE,
   });
+  
   apiClient.interceptors.request.use(
     (config) => {
       const token = localStorage.getItem('authToken');
@@ -50,6 +55,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     },
     (error) => Promise.reject(error)
   );
+  
   const checkInstagramStatus = async () => {
     setIsLoadingStatus(true);
     setStatusError(null);
@@ -66,6 +72,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setIsLoadingStatus(false);
     }
   };
+  
   const disconnectInstagram = async () => {
     try {
       await apiClient.post('/instagram/disconnect');
@@ -76,6 +83,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setStatusError(err.response?.data?.message || 'Failed to disconnect Instagram');
     }
   };
+  
   const handleConnectInstagram = async () => {
     setConnectError(null);
     setIsConnecting(true);
@@ -97,9 +105,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setIsConnecting(false);
     }
   };
+  
   useEffect(() => {
     checkInstagramStatus();
   }, []);
+  
   // Handle OAuth callback
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -107,11 +117,13 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       const code = params.get('code');
       const error = params.get('error');
       const redirectUri = sessionStorage.getItem('instagram_redirect_uri');
+      
       if (error) {
         setConnectError(`Instagram authorization failed: ${error}`);
         setIsConnecting(false);
         return;
       }
+      
       if (code && redirectUri) {
         try {
           setIsConnecting(true);
@@ -135,6 +147,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     };
     handleOAuthCallback();
   }, []);
+  
   if (postSuccess) {
     return (
       <div className="space-y-6 text-center py-8">
@@ -175,6 +188,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       </div>
     );
   }
+  
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
@@ -187,12 +201,14 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </span>
         {isEditMode ? 'Update & Post to Instagram' : 'Post to Instagram'}
       </h2>
+      
       {connectError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           <span>{connectError}</span>
         </div>
       )}
+      
       {/* Instagram Connection Status */}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected 
@@ -265,6 +281,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         )}
       </div>
+      
       <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
@@ -286,12 +303,14 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         </div>
       </div>
+      
       {createError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           <span>{createError}</span>
         </div>
       )}
+      
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
         <button
           onClick={handlePostToInstagram}
@@ -328,6 +347,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           Start Over
         </button>
       </div>
+      
       {!instagramStatus.connected && !isConnecting && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Connect your Instagram account to enable posting
@@ -346,4 +366,5 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     </div>
   );
 };
+
 export default PostToInstagram;
