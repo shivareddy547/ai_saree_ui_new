@@ -119,6 +119,21 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             setShowAuthModal(false);
           }
         }, 500);
+        // Listen for messages from the popup
+        const handleMessage = (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) return;
+          if (event.data.type === 'instagram-auth-complete' && event.data.code) {
+            handleAuthComplete(event.data.code);
+          }
+        };
+        window.addEventListener('message', handleMessage);
+        // Clean up event listener when popup closes
+        const cleanup = setInterval(() => {
+          if (popup.closed) {
+            window.removeEventListener('message', handleMessage);
+            clearInterval(cleanup);
+          }
+        }, 1000);
       }
     } catch (err: any) {
       console.error('Failed to get OAuth URL:', err);
@@ -142,6 +157,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           popupWindow.close();
           setPopupWindow(null);
         }
+        // Show success message
+        setStatusError(null);
       }
     } catch (err: any) {
       console.error('Failed to connect Instagram:', err);
@@ -151,7 +168,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       sessionStorage.removeItem('instagram_redirect_uri');
     }
   };
-  // Handle OAuth callback
+  // Handle OAuth callback when the page loads with code parameter
   useEffect(() => {
     const handleOAuthCallback = async () => {
       // Check if we're on the callback URL
