@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X } from 'lucide-react';
 import axios from 'axios';
-
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
-
 interface PostToInstagramProps {
   isPosting: boolean;
   postSuccess: boolean;
@@ -16,7 +14,6 @@ interface PostToInstagramProps {
   isEditMode?: boolean;
   videoUrl?: string | null;
 }
-
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isPosting,
   postSuccess,
@@ -40,12 +37,13 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authUrl, setAuthUrl] = useState<string>('');
+  const [popupWindow, setPopupWindow] = useState<Window | null>(null);
   const apiClient = axios.create({
     baseURL: API_BASE,
     withCredentials: true,
   });
-  
   apiClient.interceptors.request.use(
     (config) => {
       const token = localStorage.getItem('authToken');
@@ -56,7 +54,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     },
     (error) => Promise.reject(error)
   );
-  
   const checkInstagramStatus = async () => {
     setIsLoadingStatus(true);
     setStatusError(null);
@@ -73,7 +70,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setIsLoadingStatus(false);
     }
   };
-  
   const disconnectInstagram = async () => {
     try {
       await apiClient.post('/instagram/disconnect');
@@ -84,71 +80,107 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setStatusError(err.response?.data?.message || 'Failed to disconnect Instagram');
     }
   };
-  
-  const handleConnectInstagram = async () => {
+  const openAuthPopup = async () => {
     setConnectError(null);
-    setIsConnecting(true);
     try {
-      // Get OAuth URL
-      const redirectUri = `https://6113-27-6-114-179.ngrok-free.app/instagram-callback`;
+      // Use the current window location for the redirect URI
+      const redirectUri = `${window.location.origin}/instagram-callback`;
       const urlResponse = await apiClient.get('/instagram/oauth-url', {
         params: { redirectUri }
       });
       if (urlResponse.data.success) {
         // Store the redirect URI in session storage for callback
         sessionStorage.setItem('instagram_redirect_uri', redirectUri);
-        // Redirect to Instagram OAuth
-        window.location.href = urlResponse.data.data.url;
+        const authUrl = urlResponse.data.data.url;
+        setAuthUrl(authUrl);
+        setShowAuthModal(true);
+        // Open popup window
+        const width = 500;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        const popup = window.open(
+          authUrl,
+          'instagram-auth',
+          `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
+        );
+        if (!popup) {
+          // Popup blocked, show the URL in a modal instead
+          setConnectError('Please allow popups for this website to connect Instagram');
+          setShowAuthModal(true);
+          return;
+        }
+        setPopupWindow(popup);
+        // Check if popup is closed
+        const checkPopup = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopup);
+            setPopupWindow(null);
+            setShowAuthModal(false);
+          }
+        }, 500);
       }
     } catch (err: any) {
       console.error('Failed to get OAuth URL:', err);
       setConnectError(err.response?.data?.message || 'Failed to initiate Instagram connection');
-      setIsConnecting(false);
     }
   };
-  
-  useEffect(() => {
-    checkInstagramStatus();
-  }, []);
-  
+  const handleAuthComplete = async (code: string) => {
+    const redirectUri = sessionStorage.getItem('instagram_redirect_uri');
+    if (!redirectUri) return;
+    try {
+      setIsConnecting(true);
+      const response = await apiClient.post('/instagram/connect', {
+        code,
+        redirectUri
+      });
+      if (response.data.success) {
+        await checkInstagramStatus();
+        setShowAuthModal(false);
+        setConnectError(null);
+        if (popupWindow) {
+          popupWindow.close();
+          setPopupWindow(null);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to connect Instagram:', err);
+      setConnectError(err.response?.data?.message || 'Failed to connect Instagram account');
+    } finally {
+      setIsConnecting(false);
+      sessionStorage.removeItem('instagram_redirect_uri');
+    }
+  };
   // Handle OAuth callback
   useEffect(() => {
     const handleOAuthCallback = async () => {
+      // Check if we're on the callback URL
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       const error = params.get('error');
-      const redirectUri = sessionStorage.getItem('instagram_redirect_uri');
-      
       if (error) {
         setConnectError(`Instagram authorization failed: ${error}`);
-        setIsConnecting(false);
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setShowAuthModal(false);
+        if (popupWindow) {
+          popupWindow.close();
+          setPopupWindow(null);
+        }
         return;
       }
-      
-      if (code && redirectUri) {
-        try {
-          setIsConnecting(true);
-          const response = await apiClient.post('/instagram/connect', {
-            code,
-            redirectUri
-          });
-          if (response.data.success) {
-            await checkInstagramStatus();
-            // Clean up URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-          }
-        } catch (err: any) {
-          console.error('Failed to connect Instagram:', err);
-          setConnectError(err.response?.data?.message || 'Failed to connect Instagram account');
-        } finally {
-          setIsConnecting(false);
-          sessionStorage.removeItem('instagram_redirect_uri');
-        }
+      if (code) {
+        // Clean up URL first
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Process the authentication
+        await handleAuthComplete(code);
       }
     };
     handleOAuthCallback();
   }, []);
-  
+  useEffect(() => {
+    checkInstagramStatus();
+  }, []);
   if (postSuccess) {
     return (
       <div className="space-y-6 text-center py-8">
@@ -189,7 +221,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       </div>
     );
   }
-  
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
@@ -202,14 +233,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </span>
         {isEditMode ? 'Update & Post to Instagram' : 'Post to Instagram'}
       </h2>
-      
       {connectError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           <span>{connectError}</span>
         </div>
       )}
-      
       {/* Instagram Connection Status */}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected 
@@ -252,7 +281,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
               </button>
             ) : (
               <button
-                onClick={handleConnectInstagram}
+                onClick={openAuthPopup}
                 disabled={isConnecting}
                 className="text-sm text-purple-600 hover:text-purple-800 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-50 transition-colors flex items-center gap-1"
               >
@@ -278,11 +307,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         {isConnecting && !instagramStatus.connected && (
           <div className="mt-2 text-sm text-purple-600 flex items-center gap-2">
             <Loader2 size={14} className="animate-spin" />
-            Redirecting to Instagram for authorization...
+            Completing authentication...
           </div>
         )}
       </div>
-      
       <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
@@ -304,14 +332,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         </div>
       </div>
-      
       {createError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           <span>{createError}</span>
         </div>
       )}
-      
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
         <button
           onClick={handlePostToInstagram}
@@ -348,7 +374,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           Start Over
         </button>
       </div>
-      
       {!instagramStatus.connected && !isConnecting && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Connect your Instagram account to enable posting
@@ -364,8 +389,119 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           🔄 Please wait while we connect your Instagram account...
         </p>
       )}
+      {/* Instagram Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Connect Instagram</h3>
+                  <p className="text-sm text-gray-500">Authorize your Instagram account</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAuthModal(false);
+                  if (popupWindow) {
+                    popupWindow.close();
+                    setPopupWindow(null);
+                  }
+                  setConnectError('Authentication cancelled');
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            {/* Modal Body */}
+            <div className="p-6 text-center">
+              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-10 h-10 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                </svg>
+              </div>
+              <h4 className="text-lg font-semibold text-slate-800 mb-2">Redirecting to Instagram</h4>
+              <p className="text-gray-600 text-sm mb-6">
+                You'll be redirected to Instagram to authorize your account. 
+                Please allow popups if prompted.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    if (authUrl) {
+                      const width = 500;
+                      const height = 700;
+                      const left = window.screenX + (window.outerWidth - width) / 2;
+                      const top = window.screenY + (window.outerHeight - height) / 2;
+                      const popup = window.open(
+                        authUrl,
+                        'instagram-auth',
+                        `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
+                      );
+                      if (!popup) {
+                        setConnectError('Please allow popups for this website');
+                        return;
+                      }
+                      setPopupWindow(popup);
+                      setShowAuthModal(false);
+                    }
+                  }}
+                  className="btn-primary flex items-center justify-center gap-2"
+                >
+                  <ExternalLink size={18} />
+                  Open Instagram Login
+                </button>
+                <button
+                  onClick={() => {
+                    // Copy URL to clipboard
+                    navigator.clipboard.writeText(authUrl).then(() => {
+                      alert('Authorization URL copied to clipboard. You can paste it in a new tab to complete authentication.');
+                    }).catch(() => {
+                      // Fallback - show URL
+                      alert(`Please open this URL in your browser:\n\n${authUrl}`);
+                    });
+                  }}
+                  className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+                >
+                  Copy authorization URL
+                </button>
+              </div>
+            </div>
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-4 border-t bg-gray-50 rounded-b-2xl">
+              <p className="text-sm text-gray-500">
+                <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                Secure connection
+              </p>
+              <button
+                onClick={() => {
+                  setShowAuthModal(false);
+                  if (popupWindow) {
+                    popupWindow.close();
+                    setPopupWindow(null);
+                  }
+                  setConnectError('Authentication cancelled');
+                }}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
 export default PostToInstagram;
