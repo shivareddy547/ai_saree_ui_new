@@ -3416,6 +3416,7 @@ const CreateProduct: React.FC = () => {
                 isEditMode
               }
               videoUrl={videoUrl || existingVideoUrl}
+              cloudinaryPublicId={cloudinaryPublicId}
             />
           )}
         </div>
