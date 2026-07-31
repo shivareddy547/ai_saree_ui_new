@@ -2011,6 +2011,7 @@ const CreateProduct: React.FC = () => {
         );
       }
     };
+  // Modified video generation function with MP4 support
   const handleGenerateVideo =
     async () => {
       setIsGenerating(true);
@@ -2347,18 +2348,32 @@ const CreateProduct: React.FC = () => {
               );
             }
           );
-        const mediaRecorder =
-          new MediaRecorder(
-            combinedStream,
-            {
-              mimeType:
-                "video/webm;codecs=vp9,opus",
-              videoBitsPerSecond:
-                5000000,
-              audioBitsPerSecond:
-                128000,
-            }
-          );
+        // Use MP4-compatible MIME type
+        const mimeTypes = [
+          'video/mp4;codecs=avc1,mp4a',
+          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+          'video/mp4;codecs=h264',
+          'video/webm;codecs=vp9,opus', // fallback
+        ];
+        let selectedMimeType = mimeTypes[0];
+        let mediaRecorder: MediaRecorder | null = null;
+        for (const mimeType of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(mimeType)) {
+            selectedMimeType = mimeType;
+            mediaRecorder = new MediaRecorder(combinedStream, {
+              mimeType: mimeType,
+              videoBitsPerSecond: 5000000,
+              audioBitsPerSecond: 128000,
+            });
+            break;
+          }
+        }
+        if (!mediaRecorder) {
+          mediaRecorder = new MediaRecorder(combinedStream, {
+            videoBitsPerSecond: 5000000,
+            audioBitsPerSecond: 128000,
+          });
+        }
         const chunks: Blob[] =
           [];
         mediaRecorder.ondataavailable =
@@ -2806,38 +2821,107 @@ const CreateProduct: React.FC = () => {
         const finalBlob =
           await new Promise<Blob>(
             (resolve) => {
-              mediaRecorder.onstop =
-                () => {
-                  const blob =
-                    new Blob(
-                      chunks,
-                      {
-                        type: "video/webm",
-                      }
+              if (mediaRecorder) {
+                mediaRecorder.onstop =
+                  () => {
+                    const blob =
+                      new Blob(
+                        chunks,
+                        {
+                          type: selectedMimeType,
+                        }
+                      );
+                    resolve(blob);
+                  };
+                mediaRecorder.stop();
+                setTimeout(() => {
+                  if (
+                    chunks.length >
+                    0
+                  ) {
+                    resolve(
+                      new Blob(
+                        chunks,
+                        {
+                          type: selectedMimeType,
+                        }
+                      )
                     );
-                  resolve(blob);
-                };
-              mediaRecorder.stop();
-              setTimeout(() => {
-                if (
-                  chunks.length >
-                  0
-                ) {
-                  resolve(
-                    new Blob(
-                      chunks,
-                      {
-                        type: "video/webm",
-                      }
-                    )
-                  );
-                }
-              }, 5000);
+                  }
+                }, 5000);
+              } else {
+                resolve(new Blob(chunks, { type: selectedMimeType }));
+              }
             }
           );
+        // Convert to MP4 if not already MP4
+        let uploadBlob = finalBlob;
+        if (!selectedMimeType.startsWith('video/mp4')) {
+          try {
+            // Attempt to convert webm to mp4 using canvas re-encoding
+            const videoElement = document.createElement('video');
+            const videoUrl = URL.createObjectURL(finalBlob);
+            videoElement.src = videoUrl;
+            await new Promise<void>((resolve) => {
+              videoElement.onloadedmetadata = () => resolve();
+              videoElement.load();
+            });
+            // Create a canvas and re-encode as MP4
+            const canvas = document.createElement('canvas');
+            canvas.width = 1280;
+            canvas.height = 720;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              throw new Error('Could not get canvas context');
+            }
+            const stream = canvas.captureStream(30);
+            const recorder = new MediaRecorder(stream, {
+              mimeType: 'video/mp4;codecs=avc1,mp4a',
+              videoBitsPerSecond: 5000000,
+              audioBitsPerSecond: 128000,
+            });
+            const newChunks: Blob[] = [];
+            recorder.ondataavailable = (e) => {
+              if (e.data.size > 0) newChunks.push(e.data);
+            };
+            recorder.start(1000);
+            videoElement.play();
+            const duration = videoElement.duration || targetDuration;
+            const fps = 30;
+            const totalFrames = Math.ceil(duration * fps);
+            let frame = 0;
+            await new Promise<void>((resolve) => {
+              const interval = setInterval(() => {
+                if (frame >= totalFrames) {
+                  clearInterval(interval);
+                  recorder.stop();
+                  resolve();
+                  return;
+                }
+                ctx.drawImage(videoElement, 0, 0, 1280, 720);
+                frame++;
+              }, 1000 / fps);
+            });
+            URL.revokeObjectURL(videoUrl);
+            const convertedBlob = await new Promise<Blob>((resolve) => {
+              recorder.onstop = () => {
+                resolve(new Blob(newChunks, { type: 'video/mp4' }));
+              };
+              setTimeout(() => {
+                if (newChunks.length > 0) {
+                  resolve(new Blob(newChunks, { type: 'video/mp4' }));
+                }
+              }, 5000);
+            });
+            uploadBlob = convertedBlob as Blob;
+          } catch (conversionError) {
+            console.warn('MP4 conversion failed, using original format:', conversionError);
+            uploadBlob = finalBlob;
+          }
+        }
         generatedVideoObjectUrl =
           URL.createObjectURL(
-            finalBlob
+            uploadBlob
           );
         setVideoUrl(
           generatedVideoObjectUrl
@@ -2859,7 +2943,7 @@ const CreateProduct: React.FC = () => {
         setCloudinaryUploadProgress(0);
         setCloudinaryUploadMessage("Starting upload...");
         const cloudinaryResult = await uploadToCloudinary(
-          finalBlob,
+          uploadBlob,
           (progress) => {
             setCloudinaryUploadProgress(progress);
             setCloudinaryUploadMessage(`Uploading... ${Math.round(progress)}%`);

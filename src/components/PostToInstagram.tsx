@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Volume2, Edit2, Check, Send, FileText } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText } from 'lucide-react';
 import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 interface PostToInstagramProps {
@@ -61,16 +61,14 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     },
     (error) => Promise.reject(error)
   );
-  // Generate default caption from product details
   const generateDefaultCaption = () => {
     let captionText = '';
     if (productName) captionText += `✨ ${productName}`;
     if (description) captionText += `\n\n${description}`;
     if (price) captionText += `\n\n💰 Price: ₹${price}`;
-    captionText += `\n\n#Fashion #Style #NewCollection #Instagram`;
+    captionText += `\n\n#Fashion #Style #NewCollection`;
     return captionText;
   };
-  // Initialize caption when product details change
   useEffect(() => {
     if (!showCaptionEditor && !caption) {
       setCaption(generateDefaultCaption());
@@ -116,7 +114,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const openAuthPopup = async () => {
     setConnectError(null);
     try {
-      const redirectUri = `${window.location.origin}${window.location.pathname}`;
+      const redirectUri = `${window.location.origin}/instagram-callback`;
       const urlResponse = await apiClient.get('/instagram/oauth-url', {
         params: { redirectUri }
       });
@@ -147,19 +145,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             setShowAuthModal(false);
           }
         }, 500);
-        const handleMessage = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
-          if (event.data.type === 'instagram-auth-complete' && event.data.code) {
-            handleAuthComplete(event.data.code);
-          }
-        };
-        window.addEventListener('message', handleMessage);
-        const cleanup = setInterval(() => {
-          if (popup.closed) {
-            window.removeEventListener('message', handleMessage);
-            clearInterval(cleanup);
-          }
-        }, 1000);
       }
     } catch (err: any) {
       console.error('Failed to get OAuth URL:', err);
@@ -209,7 +194,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       });
       if (response.data.success) {
         setPublishSuccess('Video posted to Instagram successfully! 🎉');
-        // Also call the parent's handlePostToInstagram to save the product
         handlePostToInstagram();
       }
     } catch (err: any) {
@@ -219,7 +203,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setIsPublishing(false);
     }
   };
-  // Handle OAuth callback
   useEffect(() => {
     const handleOAuthCallback = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -245,7 +228,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   useEffect(() => {
     checkInstagramStatus();
   }, []);
-  // Video preview component
   const renderVideoPreview = () => {
     if (!videoUrl) {
       return (
@@ -281,7 +263,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       </div>
     );
   };
-  // Caption editor
   const renderCaptionEditor = () => {
     if (showCaptionEditor) {
       return (
@@ -389,7 +370,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </span>
         {isEditMode ? 'Update & Post to Instagram' : 'Post to Instagram'}
       </h2>
-      {/* Errors and Status */}
       {connectError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
@@ -408,7 +388,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           <span>{publishSuccess}</span>
         </div>
       )}
-      {/* Instagram Connection Status */}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected 
           ? 'bg-green-50 border-green-200' 
@@ -480,7 +459,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         )}
       </div>
-      {/* Video Preview */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -492,7 +470,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           {renderVideoPreview()}
         </div>
       </div>
-      {/* Caption */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -514,7 +491,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </button>
         </div>
       </div>
-      {/* Product Summary */}
       <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3 border border-gray-200">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
@@ -594,7 +570,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           📤 Posting your video to Instagram...
         </p>
       )}
-      {/* Instagram Auth Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
