@@ -43,6 +43,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   
   const apiClient = axios.create({
     baseURL: API_BASE,
+    withCredentials: true,
   });
   
   apiClient.interceptors.request.use(
@@ -89,7 +90,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     setIsConnecting(true);
     try {
       // Get OAuth URL
-      const redirectUri = `${window.location.origin}/instagram-callback`;
+      const redirectUri = `https://6113-27-6-114-179.ngrok-free.app/instagram-callback`;
       const urlResponse = await apiClient.get('/instagram/oauth-url', {
         params: { redirectUri }
       });

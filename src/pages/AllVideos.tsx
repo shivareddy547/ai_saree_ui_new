@@ -7,6 +7,7 @@ const API_BASE =
 // Create axios instance with auth header
 const apiClient = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
 });
 // Add token to all requests
 apiClient.interceptors.request.use(
