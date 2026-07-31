@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Volume2, Edit2, Check, Send, FileText } from 'lucide-react';
 import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 interface PostToInstagramProps {
@@ -40,6 +40,13 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authUrl, setAuthUrl] = useState<string>('');
   const [popupWindow, setPopupWindow] = useState<Window | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
+  const [showCaptionEditor, setShowCaptionEditor] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const apiClient = axios.create({
     baseURL: API_BASE,
     withCredentials: true,
@@ -54,6 +61,31 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     },
     (error) => Promise.reject(error)
   );
+  // Generate default caption from product details
+  const generateDefaultCaption = () => {
+    let captionText = '';
+    if (productName) captionText += `✨ ${productName}`;
+    if (description) captionText += `\n\n${description}`;
+    if (price) captionText += `\n\n💰 Price: ₹${price}`;
+    captionText += `\n\n#Fashion #Style #NewCollection #Instagram`;
+    return captionText;
+  };
+  // Initialize caption when product details change
+  useEffect(() => {
+    if (!showCaptionEditor && !caption) {
+      setCaption(generateDefaultCaption());
+    }
+  }, [productName, description, price]);
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
   const checkInstagramStatus = async () => {
     setIsLoadingStatus(true);
     setStatusError(null);
@@ -75,6 +107,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       await apiClient.post('/instagram/disconnect');
       setInstagramStatus({ connected: false });
       setStatusError(null);
+      setPublishSuccess(null);
     } catch (err: any) {
       console.error('Failed to disconnect Instagram:', err);
       setStatusError(err.response?.data?.message || 'Failed to disconnect Instagram');
@@ -83,18 +116,15 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const openAuthPopup = async () => {
     setConnectError(null);
     try {
-
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
       const urlResponse = await apiClient.get('/instagram/oauth-url', {
         params: { redirectUri }
       });
       if (urlResponse.data.success) {
-        // Store the redirect URI in session storage for callback
         sessionStorage.setItem('instagram_redirect_uri', redirectUri);
         const authUrl = urlResponse.data.data.url;
         setAuthUrl(authUrl);
         setShowAuthModal(true);
-        // Open popup window
         const width = 500;
         const height = 700;
         const left = window.screenX + (window.outerWidth - width) / 2;
@@ -105,13 +135,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
         );
         if (!popup) {
-          // Popup blocked, show the URL in a modal instead
           setConnectError('Please allow popups for this website to connect Instagram');
           setShowAuthModal(true);
           return;
         }
         setPopupWindow(popup);
-        // Check if popup is closed
         const checkPopup = setInterval(() => {
           if (popup.closed) {
             clearInterval(checkPopup);
@@ -119,7 +147,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             setShowAuthModal(false);
           }
         }, 500);
-        // Listen for messages from the popup
         const handleMessage = (event: MessageEvent) => {
           if (event.origin !== window.location.origin) return;
           if (event.data.type === 'instagram-auth-complete' && event.data.code) {
@@ -127,7 +154,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           }
         };
         window.addEventListener('message', handleMessage);
-        // Clean up event listener when popup closes
         const cleanup = setInterval(() => {
           if (popup.closed) {
             window.removeEventListener('message', handleMessage);
@@ -157,7 +183,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           popupWindow.close();
           setPopupWindow(null);
         }
-        // Show success message
         setStatusError(null);
       }
     } catch (err: any) {
@@ -168,16 +193,40 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       sessionStorage.removeItem('instagram_redirect_uri');
     }
   };
-  // Handle OAuth callback when the page loads with code parameter
+  const handlePublishToInstagram = async () => {
+    if (!videoUrl || !instagramStatus.connected) {
+      setPublishError('Please connect Instagram and generate a video first');
+      return;
+    }
+    setIsPublishing(true);
+    setPublishError(null);
+    setPublishSuccess(null);
+    try {
+      const response = await apiClient.post('/instagram/post', {
+        video_url: videoUrl,
+        media_type: 'REELS',
+        caption: caption || generateDefaultCaption()
+      });
+      if (response.data.success) {
+        setPublishSuccess('Video posted to Instagram successfully! 🎉');
+        // Also call the parent's handlePostToInstagram to save the product
+        handlePostToInstagram();
+      }
+    } catch (err: any) {
+      console.error('Failed to post to Instagram:', err);
+      setPublishError(err.response?.data?.message || 'Failed to post video to Instagram');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+  // Handle OAuth callback
   useEffect(() => {
     const handleOAuthCallback = async () => {
-      // Check if we're on the callback URL
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       const error = params.get('error');
       if (error) {
         setConnectError(`Instagram authorization failed: ${error}`);
-        // Clean up URL
         window.history.replaceState({}, document.title, window.location.pathname);
         setShowAuthModal(false);
         if (popupWindow) {
@@ -187,9 +236,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         return;
       }
       if (code) {
-        // Clean up URL first
         window.history.replaceState({}, document.title, window.location.pathname);
-        // Process the authentication
         await handleAuthComplete(code);
       }
     };
@@ -198,6 +245,98 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   useEffect(() => {
     checkInstagramStatus();
   }, []);
+  // Video preview component
+  const renderVideoPreview = () => {
+    if (!videoUrl) {
+      return (
+        <div className="bg-gray-100 rounded-lg p-8 text-center border-2 border-dashed border-gray-300">
+          <Play size={40} className="mx-auto text-gray-400 mb-3" />
+          <p className="text-gray-500">No video generated yet</p>
+          <p className="text-xs text-gray-400">Go back and generate a video first</p>
+        </div>
+      );
+    }
+    return (
+      <div className="relative bg-black rounded-lg overflow-hidden">
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          className="w-full max-h-80 object-contain"
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => setIsPlaying(false)}
+          controls={false}
+        />
+        <div className="absolute bottom-4 left-4 flex items-center gap-3">
+          <button
+            onClick={togglePlay}
+            className="bg-white/20 backdrop-blur-sm text-white p-2 rounded-full hover:bg-white/30 transition-colors"
+          >
+            {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+          </button>
+          <span className="text-white text-sm bg-black/50 px-2 py-1 rounded">
+            {videoUrl.includes('cloudinary.com') ? 'Cloudinary' : 'Local'}
+          </span>
+        </div>
+      </div>
+    );
+  };
+  // Caption editor
+  const renderCaptionEditor = () => {
+    if (showCaptionEditor) {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700">Edit Caption</label>
+            <button
+              onClick={() => {
+                setShowCaptionEditor(false);
+                setCaption(generateDefaultCaption());
+              }}
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            >
+              <RefreshCw size={12} />
+              Reset
+            </button>
+          </div>
+          <textarea
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            rows={4}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-sm"
+            placeholder="Write your Instagram caption..."
+          />
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>{caption.length} characters</span>
+            <button
+              onClick={() => setShowCaptionEditor(false)}
+              className="text-purple-600 hover:text-purple-800 font-medium"
+            >
+              <Check size={14} className="inline mr-1" />
+              Done
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <p className="text-sm text-gray-700 whitespace-pre-wrap line-clamp-3">{caption || generateDefaultCaption()}</p>
+            <p className="text-xs text-gray-400 mt-1">{caption.length} characters</p>
+          </div>
+          <button
+            onClick={() => setShowCaptionEditor(true)}
+            className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded transition-colors"
+            title="Edit caption"
+          >
+            <Edit2 size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  };
   if (postSuccess) {
     return (
       <div className="space-y-6 text-center py-8">
@@ -221,17 +360,17 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             Create Another Product
           </button>
           <button
-            onClick={handlePostToInstagram}
-            disabled={!instagramStatus.connected}
+            onClick={handlePublishToInstagram}
+            disabled={!instagramStatus.connected || isPublishing}
             className={`bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-2 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${
-              !instagramStatus.connected ? 'opacity-50 cursor-not-allowed' : ''
+              !instagramStatus.connected || isPublishing ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-            </svg>
+            {isPublishing ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
             Post to Instagram
           </button>
         </div>
@@ -250,10 +389,23 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </span>
         {isEditMode ? 'Update & Post to Instagram' : 'Post to Instagram'}
       </h2>
+      {/* Errors and Status */}
       {connectError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           <span>{connectError}</span>
+        </div>
+      )}
+      {publishError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <span>{publishError}</span>
+        </div>
+      )}
+      {publishSuccess && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 text-green-700">
+          <CheckCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <span>{publishSuccess}</span>
         </div>
       )}
       {/* Instagram Connection Status */}
@@ -328,7 +480,42 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         )}
       </div>
-      <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3">
+      {/* Video Preview */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b">
+          <h3 className="font-medium text-slate-700 flex items-center gap-2">
+            <Play size={18} className="text-purple-600" />
+            Video Preview
+          </h3>
+        </div>
+        <div className="p-4">
+          {renderVideoPreview()}
+        </div>
+      </div>
+      {/* Caption */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="font-medium text-slate-700 flex items-center gap-2">
+            <FileText size={18} className="text-purple-600" />
+            Caption
+          </h3>
+        </div>
+        <div className="p-4">
+          {renderCaptionEditor()}
+          <button
+            onClick={() => {
+              setCaption(generateDefaultCaption());
+              setShowCaptionEditor(true);
+            }}
+            className="mt-2 text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+          >
+            <RefreshCw size={12} />
+            Regenerate from product details
+          </button>
+        </div>
+      </div>
+      {/* Product Summary */}
+      <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3 border border-gray-200">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
           <div>
@@ -357,16 +544,16 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       )}
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
         <button
-          onClick={handlePostToInstagram}
-          disabled={isPosting || !instagramStatus.connected || !videoUrl || isConnecting}
+          onClick={handlePublishToInstagram}
+          disabled={isPosting || !instagramStatus.connected || !videoUrl || isConnecting || isPublishing}
           className={`flex-1 btn-primary flex items-center justify-center gap-2 py-3 ${
-            (!instagramStatus.connected || !videoUrl || isConnecting) ? 'opacity-50 cursor-not-allowed' : ''
+            (!instagramStatus.connected || !videoUrl || isConnecting || isPublishing) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
-          {isPosting ? (
+          {isPublishing || isPosting ? (
             <>
               <Loader2 size={20} className="animate-spin" />
-              {isEditMode ? 'Updating...' : 'Creating...'}
+              {isPublishing ? 'Posting to Instagram...' : isPosting ? 'Saving...' : ''}
             </>
           ) : isConnecting ? (
             <>
@@ -375,12 +562,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             </>
           ) : (
             <>
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-              </svg>
-              {isEditMode ? 'Update Product' : 'Create & Post'}
+              <Send size={20} />
+              {isEditMode ? 'Update & Post' : 'Create & Post'}
             </>
           )}
         </button>
@@ -406,11 +589,15 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           🔄 Please wait while we connect your Instagram account...
         </p>
       )}
+      {isPublishing && (
+        <p className="text-sm text-purple-600 text-center">
+          📤 Posting your video to Instagram...
+        </p>
+      )}
       {/* Instagram Auth Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
@@ -439,7 +626,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
                 <X size={20} className="text-gray-500" />
               </button>
             </div>
-            {/* Modal Body */}
             <div className="p-6 text-center">
               <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-10 h-10 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -481,11 +667,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    // Copy URL to clipboard
                     navigator.clipboard.writeText(authUrl).then(() => {
                       alert('Authorization URL copied to clipboard. You can paste it in a new tab to complete authentication.');
                     }).catch(() => {
-                      // Fallback - show URL
                       alert(`Please open this URL in your browser:\n\n${authUrl}`);
                     });
                   }}
@@ -495,7 +679,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
                 </button>
               </div>
             </div>
-            {/* Modal Footer */}
             <div className="flex items-center justify-between p-4 border-t bg-gray-50 rounded-b-2xl">
               <p className="text-sm text-gray-500">
                 <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>
