@@ -83,8 +83,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const openAuthPopup = async () => {
     setConnectError(null);
     try {
-      // Use the current window location for the redirect URI
-      const redirectUri = `${window.location.origin}/instagram-callback`;
+
+      const redirectUri = `${window.location.origin}${window.location.pathname}`;
       const urlResponse = await apiClient.get('/instagram/oauth-url', {
         params: { redirectUri }
       });
