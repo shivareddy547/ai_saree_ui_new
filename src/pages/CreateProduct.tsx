@@ -2015,7 +2015,7 @@ const CreateProduct: React.FC = () => {
         );
       }
     };
-  // Modified video generation function with MP4 support
+  // Modified video generation function with original image size
   const handleGenerateVideo =
     async () => {
       setIsGenerating(true);
@@ -2357,7 +2357,7 @@ const CreateProduct: React.FC = () => {
           'video/mp4;codecs=avc1,mp4a',
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=h264',
-          'video/webm;codecs=vp9,opus', // fallback
+          'video/webm;codecs=vp9,opus',
         ];
         let selectedMimeType = mimeTypes[0];
         let mediaRecorder: MediaRecorder | null = null;
@@ -2438,14 +2438,7 @@ const CreateProduct: React.FC = () => {
                   width,
                   height
                 );
-                const hue1 =
-                  (180 +
-                    progress *
-                      120) %
-                  360;
-                const hue2 =
-                  (hue1 + 60) %
-                  360;
+                // Dark background
                 const gradient =
                   ctx.createLinearGradient(
                     0,
@@ -2455,18 +2448,15 @@ const CreateProduct: React.FC = () => {
                   );
                 gradient.addColorStop(
                   0,
-                  `hsl(${hue1}, 70%, 15%)`
+                  "#1a1a2e"
                 );
                 gradient.addColorStop(
                   0.5,
-                  `hsl(${hue2}, 70%, 20%)`
+                  "#16213e"
                 );
                 gradient.addColorStop(
                   1,
-                  `hsl(${
-                    (hue1 + 30) %
-                    360
-                  }, 70%, 10%)`
+                  "#0f3460"
                 );
                 ctx.fillStyle =
                   gradient;
@@ -2476,6 +2466,7 @@ const CreateProduct: React.FC = () => {
                   width,
                   height
                 );
+                // Draw image at original size centered without blank space
                 if (
                   imageElements.length >
                   0
@@ -2485,81 +2476,65 @@ const CreateProduct: React.FC = () => {
                       imageIndex %
                         imageElements.length
                     ];
-                  const aspectRatio =
-                    img.width /
-                    img.height;
-                  let drawWidth;
-                  let drawHeight;
-                  let x;
-                  let y;
-                  const padding =
-                    60;
-                  const maxWidth =
-                    width -
-                    padding *
-                      2;
-                  const maxHeight =
-                    height -
-                    padding *
-                      2 -
-                    200;
-                  if (
-                    aspectRatio >
-                    1
-                  ) {
-                    drawWidth =
-                      Math.min(
-                        maxWidth,
-                        img.width
-                      );
-                    drawHeight =
-                      drawWidth /
-                      aspectRatio;
-                    if (
-                      drawHeight >
-                      maxHeight
-                    ) {
-                      drawHeight =
-                        maxHeight;
-                      drawWidth =
-                        drawHeight *
-                        aspectRatio;
-                    }
-                  } else {
-                    drawHeight =
-                      Math.min(
-                        maxHeight,
-                        img.height
-                      );
-                    drawWidth =
-                      drawHeight *
-                      aspectRatio;
-                    if (
-                      drawWidth >
-                      maxWidth
-                    ) {
-                      drawWidth =
-                        maxWidth;
-                      drawHeight =
-                        drawWidth /
-                        aspectRatio;
-                    }
-                  }
-                  x =
-                    (width -
-                      drawWidth) /
+                  const imgWidth = img.width;
+                  const imgHeight = img.height;
+                  // Calculate position to center the image at its original size
+                  let drawX = 0;
+                  let drawY = 0;
+                  let drawWidth = imgWidth;
+                  let drawHeight = imgHeight;
+                  // Scale image to fit within video while maintaining aspect ratio
+                  // but preserve original image dimensions as much as possible
+                  const scaleX = width / imgWidth;
+                  const scaleY = height / imgHeight;
+                  const scale = Math.min(scaleX, scaleY);
+                  drawWidth = imgWidth * scale;
+                  drawHeight = imgHeight * scale;
+                  // Center the image
+                  drawX = (width - drawWidth) / 2;
+                  drawY = (height - drawHeight) / 2;
+                  // Apply subtle zoom effect for visual appeal
+                  const zoom =
+                    1 +
+                    Math.sin(
+                      progress *
+                        Math.PI *
+                        4
+                    ) *
+                      0.02;
+                  const scaledWidth =
+                    drawWidth *
+                    zoom;
+                  const scaledHeight =
+                    drawHeight *
+                    zoom;
+                  const offsetX =
+                    (drawWidth -
+                      scaledWidth) /
                     2;
-                  y = padding;
+                  const offsetY =
+                    (drawHeight -
+                      scaledHeight) /
+                    2;
+                  // Draw image without any padding or blank space
+                  ctx.save();
                   ctx.shadowColor =
-                    "rgba(0, 0, 0, 0.5)";
+                    "rgba(0, 0, 0, 0.3)";
                   ctx.shadowBlur =
-                    20;
+                    30;
                   ctx.shadowOffsetX =
-                    5;
+                    0;
                   ctx.shadowOffsetY =
-                    5;
+                    0;
+                  // Use round rect for subtle border effect
                   const cornerRadius =
-                    20;
+                    12;
+                  const x =
+                    drawX +
+                    offsetX;
+                  const y =
+                    drawY +
+                    offsetY;
                   ctx.beginPath();
                   ctx.moveTo(
                     x +
@@ -2568,50 +2543,50 @@ const CreateProduct: React.FC = () => {
                   );
                   ctx.lineTo(
                     x +
-                      drawWidth -
+                      scaledWidth -
                       cornerRadius,
                     y
                   );
                   ctx.quadraticCurveTo(
                     x +
-                      drawWidth,
+                      scaledWidth,
                     y,
                     x +
-                      drawWidth,
+                      scaledWidth,
                     y +
                       cornerRadius
                   );
                   ctx.lineTo(
                     x +
-                      drawWidth,
+                      scaledWidth,
                     y +
-                      drawHeight -
+                      scaledHeight -
                       cornerRadius
                   );
                   ctx.quadraticCurveTo(
                     x +
-                      drawWidth,
+                      scaledWidth,
                     y +
-                      drawHeight,
+                      scaledHeight,
                     x +
-                      drawWidth -
+                      scaledWidth -
                       cornerRadius,
                     y +
-                      drawHeight
+                      scaledHeight
                   );
                   ctx.lineTo(
                     x +
                       cornerRadius,
                     y +
-                      drawHeight
+                      scaledHeight
                   );
                   ctx.quadraticCurveTo(
                     x,
                     y +
-                      drawHeight,
+                      scaledHeight,
                     x,
                     y +
-                      drawHeight -
+                      scaledHeight -
                       cornerRadius
                   );
                   ctx.lineTo(
@@ -2628,44 +2603,46 @@ const CreateProduct: React.FC = () => {
                   );
                   ctx.closePath();
                   ctx.clip();
-                  const zoom =
-                    1 +
-                    Math.sin(
-                      progress *
-                        Math.PI *
-                        4
-                    ) *
-                      0.03;
-                  const scaledWidth =
-                    drawWidth *
-                    zoom;
-                  const scaledHeight =
-                    drawHeight *
-                    zoom;
-                  const offsetX =
-                    (drawWidth -
-                      scaledWidth) /
-                    2;
-                  const offsetY =
-                    (drawHeight -
-                      scaledHeight) /
-                    2;
                   ctx.drawImage(
                     img,
-                    x +
+                    x,
+                    y,
+                    scaledWidth,
+                    scaledHeight
+                  );
+                  ctx.restore();
+                  // Add subtle border glow
+                  ctx.save();
+                  ctx.strokeStyle =
+                    `rgba(255, 255, 255, ${
+                      0.1 +
+                      Math.sin(
+                        progress *
+                          Math.PI *
+                          4
+                      ) *
+                        0.05
+                    })`;
+                  ctx.lineWidth = 2;
+                  ctx.shadowColor =
+                    "rgba(255, 255, 255, 0.1)";
+                  ctx.shadowBlur =
+                    15;
+                  ctx.strokeRect(
+                    drawX +
                       offsetX,
-                    y +
+                    drawY +
                       offsetY,
                     scaledWidth,
                     scaledHeight
                   );
-                  ctx.shadowBlur =
-                    0;
+                  ctx.restore();
                 }
+                // Product name overlay at bottom with gradient
                 const overlayGradient =
                   ctx.createLinearGradient(
                     0,
-                    height - 180,
+                    height - 120,
                     0,
                     height
                   );
@@ -2675,15 +2652,15 @@ const CreateProduct: React.FC = () => {
                 );
                 overlayGradient.addColorStop(
                   1,
-                  "rgba(0,0,0,0.7)"
+                  "rgba(0,0,0,0.6)"
                 );
                 ctx.fillStyle =
                   overlayGradient;
                 ctx.fillRect(
                   0,
-                  height - 180,
+                  height - 120,
                   width,
-                  180
+                  120
                 );
                 ctx.textAlign =
                   "center";
@@ -2700,14 +2677,14 @@ const CreateProduct: React.FC = () => {
                 ctx.save();
                 ctx.translate(
                   width / 2,
-                  height - 80
+                  height - 55
                 );
                 ctx.scale(
                   nameScale,
                   nameScale
                 );
                 ctx.font =
-                  "bold 48px Arial";
+                  "bold 44px Arial";
                 ctx.fillStyle =
                   "#ffffff";
                 ctx.shadowColor =
@@ -2733,14 +2710,14 @@ const CreateProduct: React.FC = () => {
                 ctx.save();
                 ctx.translate(
                   width / 2,
-                  height - 30
+                  height - 15
                 );
                 ctx.scale(
                   priceScale,
                   priceScale
                 );
                 ctx.font =
-                  "bold 32px Arial";
+                  "bold 28px Arial";
                 ctx.fillStyle =
                   "#fbbf24";
                 ctx.shadowColor =
@@ -2759,25 +2736,25 @@ const CreateProduct: React.FC = () => {
                   0;
                 ctx.strokeStyle =
                   `rgba(251, 191, 36, ${
-                    0.3 +
+                    0.2 +
                     Math.sin(
                       progress *
                         Math.PI *
                         4
                     ) *
-                      0.2
+                      0.15
                   })`;
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1.5;
                 ctx.beginPath();
                 ctx.moveTo(
                   width / 2 -
-                    100,
-                  height - 65
+                    80,
+                  height - 42
                 );
                 ctx.lineTo(
                   width / 2 +
-                    100,
-                  height - 65
+                    80,
+                  height - 42
                 );
                 ctx.stroke();
                 const progressPercent =
@@ -2795,7 +2772,7 @@ const CreateProduct: React.FC = () => {
                   currentFrame >
                     0 &&
                   currentFrame %
-                    (fps * 3) ===
+                    (fps * 4) ===
                     0
                 ) {
                   imageIndex =
@@ -2862,7 +2839,6 @@ const CreateProduct: React.FC = () => {
         let uploadBlob = finalBlob;
         if (!selectedMimeType.startsWith('video/mp4')) {
           try {
-            // Attempt to convert webm to mp4 using canvas re-encoding
             const videoElement = document.createElement('video');
             const videoUrl = URL.createObjectURL(finalBlob);
             videoElement.src = videoUrl;
@@ -2870,7 +2846,6 @@ const CreateProduct: React.FC = () => {
               videoElement.onloadedmetadata = () => resolve();
               videoElement.load();
             });
-            // Create a canvas and re-encode as MP4
             const canvas = document.createElement('canvas');
             canvas.width = 1280;
             canvas.height = 720;
