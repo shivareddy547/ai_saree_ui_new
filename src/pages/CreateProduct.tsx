@@ -14,6 +14,7 @@ import ImageUpload from "../components/ImageUpload";
 import VideoConfiguration from "../components/VideoConfiguration";
 import VideoPreviewComponent from "../components/VideoPreview";
 import PostToInstagram from "../components/PostToInstagram";
+import ImageLightbox from "../components/ImageLightbox";
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
 const UNSPLASH_ACCESS_KEY =
@@ -574,6 +575,9 @@ const CreateProduct: React.FC = () => {
     cloudinaryPublicId,
     setCloudinaryPublicId,
   ] = useState<string | null>(null);
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
   const loadAudioFromUrl =
     useCallback(
       async (
@@ -3215,58 +3219,67 @@ const CreateProduct: React.FC = () => {
             />
           )}
           {currentStep === 2 && (
-            <ImageUpload
-              images={images}
-              previews={previews}
-              imageKitUrls={
-                imageKitUrls
-              }
-              imageUploadingStates={
-                imageUploadingStates
-              }
-              imageUploadErrors={
-                imageUploadErrors
-              }
-              activeImageTab={
-                activeImageTab
-              }
-              setActiveImageTab={
-                setActiveImageTab
-              }
-              unsplashQuery={
-                unsplashQuery
-              }
-              setUnsplashQuery={
-                setUnsplashQuery
-              }
-              unsplashResults={
-                unsplashResults
-              }
-              isSearchingUnsplash={
-                isSearchingUnsplash
-              }
-              unsplashError={
-                unsplashError
-              }
-              downloadingUnsplashIds={
-                downloadingUnsplashIds
-              }
-              handleImageUpload={
-                handleImageUpload
-              }
-              removeImage={
-                removeImage
-              }
-              handleUploadToImageKit={
-                handleUploadToImageKit
-              }
-              handleUnsplashSearch={
-                handleUnsplashSearch
-              }
-              handleDownloadUnsplash={
-                handleDownloadUnsplash
-              }
-            />
+            <div>
+              <ImageUpload
+                images={images}
+                previews={previews}
+                imageKitUrls={
+                  imageKitUrls
+                }
+                imageUploadingStates={
+                  imageUploadingStates
+                }
+                imageUploadErrors={
+                  imageUploadErrors
+                }
+                activeImageTab={
+                  activeImageTab
+                }
+                setActiveImageTab={
+                  setActiveImageTab
+                }
+                unsplashQuery={
+                  unsplashQuery
+                }
+                setUnsplashQuery={
+                  setUnsplashQuery
+                }
+                unsplashResults={
+                  unsplashResults
+                }
+                isSearchingUnsplash={
+                  isSearchingUnsplash
+                }
+                unsplashError={
+                  unsplashError
+                }
+                downloadingUnsplashIds={
+                  downloadingUnsplashIds
+                }
+                handleImageUpload={
+                  handleImageUpload
+                }
+                removeImage={
+                  removeImage
+                }
+                handleUploadToImageKit={
+                  handleUploadToImageKit
+                }
+                handleUnsplashSearch={
+                  handleUnsplashSearch
+                }
+                handleDownloadUnsplash={
+                  handleDownloadUnsplash
+                }
+                onImageClick={(index: number) => {
+                  const allImages = [...previews, ...imageKitUrls.filter(Boolean)];
+                  if (allImages.length > 0) {
+                    setLightboxIndex(index < allImages.length ? index : 0);
+                    setLightboxOpen(true);
+                  }
+                }}
+              />
+            </div>
           )}
           {currentStep === 3 && (
             <VideoConfiguration
@@ -3481,6 +3494,14 @@ const CreateProduct: React.FC = () => {
           </div>
         )}
       </div>
+      {/* Image Lightbox */}
+      <ImageLightbox
+        images={[...previews, ...imageKitUrls.filter(Boolean)]}
+        currentIndex={lightboxIndex}
+        isOpen={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        onImageChange={(index: number) => setLightboxIndex(index)}
+      />
     </div>
   );
 };
