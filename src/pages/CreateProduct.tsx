@@ -2015,7 +2015,7 @@ const CreateProduct: React.FC = () => {
         );
       }
     };
-  // Modified video generation function with original image size
+  // Modified video generation function with reduced blank space
   const handleGenerateVideo =
     async () => {
       setIsGenerating(true);
@@ -2466,7 +2466,7 @@ const CreateProduct: React.FC = () => {
                   width,
                   height
                 );
-                // Draw image at original size centered without blank space
+                // Draw image with minimal blank space - scale to fill more of the frame
                 if (
                   imageElements.length >
                   0
@@ -2478,22 +2478,20 @@ const CreateProduct: React.FC = () => {
                     ];
                   const imgWidth = img.width;
                   const imgHeight = img.height;
-                  // Calculate position to center the image at its original size
-                  let drawX = 0;
-                  let drawY = 0;
-                  let drawWidth = imgWidth;
-                  let drawHeight = imgHeight;
-                  // Scale image to fit within video while maintaining aspect ratio
-                  // but preserve original image dimensions as much as possible
-                  const scaleX = width / imgWidth;
-                  const scaleY = height / imgHeight;
+                  // Calculate scale to fill the frame while maintaining aspect ratio
+                  // Use a smaller padding value (only 2%) to minimize blank space
+                  const paddingPercent = 0.02; // Only 2% padding
+                  const maxWidth = width * (1 - paddingPercent);
+                  const maxHeight = height * (1 - paddingPercent);
+                  const scaleX = maxWidth / imgWidth;
+                  const scaleY = maxHeight / imgHeight;
                   const scale = Math.min(scaleX, scaleY);
-                  drawWidth = imgWidth * scale;
-                  drawHeight = imgHeight * scale;
+                  let drawWidth = imgWidth * scale;
+                  let drawHeight = imgHeight * scale;
                   // Center the image
-                  drawX = (width - drawWidth) / 2;
-                  drawY = (height - drawHeight) / 2;
-                  // Apply subtle zoom effect for visual appeal
+                  let drawX = (width - drawWidth) / 2;
+                  let drawY = (height - drawHeight) / 2;
+                  // Apply subtle zoom effect
                   const zoom =
                     1 +
                     Math.sin(
@@ -2501,7 +2499,7 @@ const CreateProduct: React.FC = () => {
                         Math.PI *
                         4
                     ) *
-                      0.02;
+                      0.015;
                   const scaledWidth =
                     drawWidth *
                     zoom;
@@ -2516,25 +2514,25 @@ const CreateProduct: React.FC = () => {
                     (drawHeight -
                       scaledHeight) /
                     2;
-                  // Draw image without any padding or blank space
+                  // Draw image with very minimal border
                   ctx.save();
                   ctx.shadowColor =
-                    "rgba(0, 0, 0, 0.3)";
+                    "rgba(0, 0, 0, 0.2)";
                   ctx.shadowBlur =
-                    30;
+                    20;
                   ctx.shadowOffsetX =
                     0;
                   ctx.shadowOffsetY =
                     0;
-                  // Use round rect for subtle border effect
-                  const cornerRadius =
-                    12;
                   const x =
                     drawX +
                     offsetX;
                   const y =
                     drawY +
                     offsetY;
+                  // Subtle rounded corners
+                  const cornerRadius =
+                    8;
                   ctx.beginPath();
                   ctx.moveTo(
                     x +
@@ -2611,23 +2609,23 @@ const CreateProduct: React.FC = () => {
                     scaledHeight
                   );
                   ctx.restore();
-                  // Add subtle border glow
+                  // Very subtle border glow
                   ctx.save();
                   ctx.strokeStyle =
                     `rgba(255, 255, 255, ${
-                      0.1 +
+                      0.05 +
                       Math.sin(
                         progress *
                           Math.PI *
                           4
                       ) *
-                        0.05
+                        0.03
                     })`;
-                  ctx.lineWidth = 2;
+                  ctx.lineWidth = 1;
                   ctx.shadowColor =
-                    "rgba(255, 255, 255, 0.1)";
+                    "rgba(255, 255, 255, 0.05)";
                   ctx.shadowBlur =
-                    15;
+                    10;
                   ctx.strokeRect(
                     drawX +
                       offsetX,
@@ -2638,11 +2636,11 @@ const CreateProduct: React.FC = () => {
                   );
                   ctx.restore();
                 }
-                // Product name overlay at bottom with gradient
+                // Product name overlay at bottom with gradient - reduced height
                 const overlayGradient =
                   ctx.createLinearGradient(
                     0,
-                    height - 120,
+                    height - 100,
                     0,
                     height
                   );
@@ -2652,15 +2650,15 @@ const CreateProduct: React.FC = () => {
                 );
                 overlayGradient.addColorStop(
                   1,
-                  "rgba(0,0,0,0.6)"
+                  "rgba(0,0,0,0.7)"
                 );
                 ctx.fillStyle =
                   overlayGradient;
                 ctx.fillRect(
                   0,
-                  height - 120,
+                  height - 100,
                   width,
-                  120
+                  100
                 );
                 ctx.textAlign =
                   "center";
@@ -2673,24 +2671,24 @@ const CreateProduct: React.FC = () => {
                       Math.PI *
                       2
                   ) *
-                    0.02;
+                    0.015;
                 ctx.save();
                 ctx.translate(
                   width / 2,
-                  height - 55
+                  height - 45
                 );
                 ctx.scale(
                   nameScale,
                   nameScale
                 );
                 ctx.font =
-                  "bold 44px Arial";
+                  "bold 40px Arial";
                 ctx.fillStyle =
                   "#ffffff";
                 ctx.shadowColor =
                   "rgba(0, 0, 0, 0.8)";
                 ctx.shadowBlur =
-                  15;
+                  12;
                 ctx.fillText(
                   productName ||
                     "Product",
@@ -2706,24 +2704,24 @@ const CreateProduct: React.FC = () => {
                       2 +
                       0.5
                   ) *
-                    0.02;
+                    0.015;
                 ctx.save();
                 ctx.translate(
                   width / 2,
-                  height - 15
+                  height - 12
                 );
                 ctx.scale(
                   priceScale,
                   priceScale
                 );
                 ctx.font =
-                  "bold 28px Arial";
+                  "bold 24px Arial";
                 ctx.fillStyle =
                   "#fbbf24";
                 ctx.shadowColor =
                   "rgba(251, 191, 36, 0.3)";
                 ctx.shadowBlur =
-                  20;
+                  15;
                 ctx.fillText(
                   `₹${
                     price || "0"
@@ -2736,25 +2734,25 @@ const CreateProduct: React.FC = () => {
                   0;
                 ctx.strokeStyle =
                   `rgba(251, 191, 36, ${
-                    0.2 +
+                    0.15 +
                     Math.sin(
                       progress *
                         Math.PI *
                         4
                     ) *
-                      0.15
+                      0.1
                   })`;
-                ctx.lineWidth = 1.5;
+                ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(
                   width / 2 -
-                    80,
-                  height - 42
+                    70,
+                  height - 35
                 );
                 ctx.lineTo(
                   width / 2 +
-                    80,
-                  height - 42
+                    70,
+                  height - 35
                 );
                 ctx.stroke();
                 const progressPercent =
