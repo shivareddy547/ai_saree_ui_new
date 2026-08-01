@@ -1,5 +1,9 @@
 
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import {
   X,
   ChevronLeft,
@@ -17,156 +21,557 @@ interface ImageLightboxProps {
   onImageChange?: (index: number) => void;
 }
 
-const ImageLightbox: React.FC<ImageLightboxProps> = ({
+const ImageLightbox: React.FC<
+  ImageLightboxProps
+> = ({
   images,
   currentIndex,
   isOpen,
   onClose,
   onImageChange,
 }) => {
-  const [activeIndex, setActiveIndex] = useState(currentIndex);
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
+  const [activeIndex, setActiveIndex] =
+    useState(currentIndex);
 
-  const [dragStart, setDragStart] = useState({
-    x: 0,
-    y: 0,
-  });
+  const [scale, setScale] =
+    useState(1);
 
-  const [startPosition, setStartPosition] = useState({
-    x: 0,
-    y: 0,
-  });
+  const [position, setPosition] =
+    useState({
+      x: 0,
+      y: 0,
+    });
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
+  const [isDragging, setIsDragging] =
+    useState(false);
 
-  // Reset lightbox state every time it opens
+  const [dragStart, setDragStart] =
+    useState({
+      x: 0,
+      y: 0,
+    });
+
+  const [startPosition, setStartPosition] =
+    useState({
+      x: 0,
+      y: 0,
+    });
+
+  const containerRef =
+    useRef<HTMLDivElement>(null);
+
+  /*
+   * ------------------------------------------------
+   * Sync active index when lightbox opens.
+   *
+   * IMPORTANT:
+   * Only depends on primitive values.
+   * No callback dependency.
+   * ------------------------------------------------
+   */
   useEffect(() => {
-    if (isOpen) {
-      setActiveIndex(currentIndex);
-      setScale(1);
-      setPosition({ x: 0, y: 0 });
-      setIsDragging(false);
+    if (!isOpen) {
+      document.body.style.overflow =
+        "";
+      return;
+    }
 
-      document.body.style.overflow = "hidden";
+    const safeIndex =
+      images.length > 0
+        ? Math.min(
+            Math.max(
+              currentIndex,
+              0
+            ),
+            images.length - 1
+          )
+        : 0;
 
-      // Focus lightbox for keyboard controls
-      setTimeout(() => {
+    setActiveIndex(
+      safeIndex
+    );
+
+    setScale(1);
+
+    setPosition({
+      x: 0,
+      y: 0,
+    });
+
+    setIsDragging(false);
+
+    setDragStart({
+      x: 0,
+      y: 0,
+    });
+
+    setStartPosition({
+      x: 0,
+      y: 0,
+    });
+
+    document.body.style.overflow =
+      "hidden";
+
+    const timer =
+      window.setTimeout(() => {
         containerRef.current?.focus();
       }, 0);
-    } else {
-      document.body.style.overflow = "";
-    }
 
     return () => {
-      document.body.style.overflow = "";
+      window.clearTimeout(timer);
+      document.body.style.overflow =
+        "";
     };
-  }, [isOpen, currentIndex]);
+  }, [
+    isOpen,
+    currentIndex,
+  ]);
 
-  // Notify parent when active image changes
+  /*
+   * ------------------------------------------------
+   * Reset zoom and position when active image changes.
+   *
+   * IMPORTANT:
+   * Only activeIndex is used here.
+   * This prevents dependency loops.
+   * ------------------------------------------------
+   */
   useEffect(() => {
-    if (isOpen && onImageChange) {
-      onImageChange(activeIndex);
+    if (!isOpen) {
+      return;
     }
-  }, [activeIndex, isOpen, onImageChange]);
 
-  // Reset transform when image changes
-  const resetImageTransform = () => {
     setScale(1);
-    setPosition({ x: 0, y: 0 });
-    setIsDragging(false);
-  };
 
+    setPosition({
+      x: 0,
+      y: 0,
+    });
+
+    setIsDragging(false);
+
+    setDragStart({
+      x: 0,
+      y: 0,
+    });
+
+    setStartPosition({
+      x: 0,
+      y: 0,
+    });
+  }, [
+    activeIndex,
+    isOpen,
+  ]);
+
+  /*
+   * ------------------------------------------------
+   * Keyboard controls
+   * ------------------------------------------------
+   */
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handleKeyboard =
+      (event: KeyboardEvent) => {
+        switch (event.key) {
+          case "Escape":
+            event.preventDefault();
+            onClose();
+            break;
+
+          case "ArrowLeft":
+            event.preventDefault();
+
+            setActiveIndex(
+              (previousIndex) => {
+                if (
+                  previousIndex <=
+                  0
+                ) {
+                  return previousIndex;
+                }
+
+                const newIndex =
+                  previousIndex - 1;
+
+                onImageChange?.(
+                  newIndex
+                );
+
+                return newIndex;
+              }
+            );
+
+            break;
+
+          case "ArrowRight":
+            event.preventDefault();
+
+            setActiveIndex(
+              (previousIndex) => {
+                if (
+                  previousIndex >=
+                  images.length - 1
+                ) {
+                  return previousIndex;
+                }
+
+                const newIndex =
+                  previousIndex + 1;
+
+                onImageChange?.(
+                  newIndex
+                );
+
+                return newIndex;
+              }
+            );
+
+            break;
+
+          case "+":
+          case "=":
+            event.preventDefault();
+
+            setScale(
+              (previousScale) =>
+                Math.min(
+                  previousScale +
+                    0.25,
+                  3
+                )
+            );
+
+            break;
+
+          case "-":
+            event.preventDefault();
+
+            setScale(
+              (previousScale) => {
+                const newScale =
+                  Math.max(
+                    previousScale -
+                      0.25,
+                    0.5
+                  );
+
+                if (
+                  newScale <= 1
+                ) {
+                  setPosition({
+                    x: 0,
+                    y: 0,
+                  });
+                }
+
+                return newScale;
+              }
+            );
+
+            break;
+
+          default:
+            break;
+        }
+      };
+
+    window.addEventListener(
+      "keydown",
+      handleKeyboard
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyboard
+      );
+    };
+  }, [
+    isOpen,
+    images.length,
+    onClose,
+    onImageChange,
+  ]);
+
+  /*
+   * ------------------------------------------------
+   * Close
+   * ------------------------------------------------
+   */
   const handleClose = () => {
-    resetImageTransform();
-    setActiveIndex(currentIndex);
+    setScale(1);
+
+    setPosition({
+      x: 0,
+      y: 0,
+    });
+
+    setIsDragging(false);
+
     onClose();
   };
 
+  /*
+   * ------------------------------------------------
+   * Previous image
+   * ------------------------------------------------
+   */
   const handlePrevious = () => {
-    if (activeIndex <= 0) return;
+    if (
+      images.length <= 1
+    ) {
+      return;
+    }
 
-    setActiveIndex((prev) => prev - 1);
-    resetImageTransform();
+    if (
+      activeIndex <= 0
+    ) {
+      return;
+    }
+
+    const newIndex =
+      activeIndex - 1;
+
+    /*
+     * Reset BEFORE switching image.
+     */
+    setScale(1);
+
+    setPosition({
+      x: 0,
+      y: 0,
+    });
+
+    setIsDragging(false);
+
+    setActiveIndex(
+      newIndex
+    );
+
+    onImageChange?.(
+      newIndex
+    );
   };
 
+  /*
+   * ------------------------------------------------
+   * Next image
+   * ------------------------------------------------
+   */
   const handleNext = () => {
-    if (activeIndex >= images.length - 1) return;
+    if (
+      images.length <= 1
+    ) {
+      return;
+    }
 
-    setActiveIndex((prev) => prev + 1);
-    resetImageTransform();
+    if (
+      activeIndex >=
+      images.length - 1
+    ) {
+      return;
+    }
+
+    const newIndex =
+      activeIndex + 1;
+
+    /*
+     * Reset BEFORE switching image.
+     */
+    setScale(1);
+
+    setPosition({
+      x: 0,
+      y: 0,
+    });
+
+    setIsDragging(false);
+
+    setActiveIndex(
+      newIndex
+    );
+
+    onImageChange?.(
+      newIndex
+    );
   };
 
+  /*
+   * ------------------------------------------------
+   * Zoom in
+   * ------------------------------------------------
+   */
   const handleZoomIn = () => {
-    setScale((prev) => Math.min(prev + 0.25, 3));
+    setScale(
+      (previousScale) =>
+        Math.min(
+          previousScale +
+            0.25,
+          3
+        )
+    );
   };
 
+  /*
+   * ------------------------------------------------
+   * Zoom out
+   * ------------------------------------------------
+   */
   const handleZoomOut = () => {
-    setScale((prev) => {
-      const newScale = Math.max(prev - 0.25, 0.5);
+    setScale(
+      (previousScale) => {
+        const newScale =
+          Math.max(
+            previousScale -
+              0.25,
+            0.5
+          );
 
-      if (newScale <= 1) {
-        setPosition({ x: 0, y: 0 });
-        setIsDragging(false);
+        if (
+          newScale <= 1
+        ) {
+          setPosition({
+            x: 0,
+            y: 0,
+          });
+
+          setIsDragging(false);
+        }
+
+        return newScale;
+      }
+    );
+  };
+
+  /*
+   * ------------------------------------------------
+   * Download
+   * ------------------------------------------------
+   */
+  const handleDownload =
+    async () => {
+      const imageUrl =
+        images[activeIndex];
+
+      if (!imageUrl) {
+        return;
       }
 
-      return newScale;
-    });
-  };
+      try {
+        const response =
+          await fetch(
+            imageUrl
+          );
 
-  const handleDownload = () => {
-    const imageUrl = images[activeIndex];
+        const blob =
+          await response.blob();
 
-    if (!imageUrl) return;
+        const blobUrl =
+          window.URL.createObjectURL(
+            blob
+          );
 
-    const link = document.createElement("a");
-    link.href = imageUrl;
-    link.download = `image-${activeIndex + 1}.jpg`;
-    link.target = "_blank";
+        const link =
+          document.createElement(
+            "a"
+          );
 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+        link.href =
+          blobUrl;
 
-  // -----------------------------
-  // Mouse drag handlers
-  // -----------------------------
+        link.download =
+          `image-${
+            activeIndex + 1
+          }.jpg`;
 
+        document.body.appendChild(
+          link
+        );
+
+        link.click();
+
+        document.body.removeChild(
+          link
+        );
+
+        window.URL.revokeObjectURL(
+          blobUrl
+        );
+      } catch (error) {
+        console.error(
+          "Image download failed:",
+          error
+        );
+
+        window.open(
+          imageUrl,
+          "_blank",
+          "noopener,noreferrer"
+        );
+      }
+    };
+
+  /*
+   * ------------------------------------------------
+   * Mouse drag
+   * ------------------------------------------------
+   */
   const handleMouseDown = (
-    e: React.MouseEvent<HTMLDivElement>
+    event: React.MouseEvent<HTMLDivElement>
   ) => {
-    if (scale <= 1) return;
+    if (
+      scale <= 1
+    ) {
+      return;
+    }
 
-    e.preventDefault();
+    event.preventDefault();
 
     setIsDragging(true);
 
     setDragStart({
-      x: e.clientX,
-      y: e.clientY,
+      x: event.clientX,
+      y: event.clientY,
     });
 
     setStartPosition({
-      ...position,
+      x: position.x,
+      y: position.y,
     });
   };
 
   const handleMouseMove = (
-    e: React.MouseEvent<HTMLDivElement>
+    event: React.MouseEvent<HTMLDivElement>
   ) => {
-    if (!isDragging || scale <= 1) return;
+    if (
+      !isDragging ||
+      scale <= 1
+    ) {
+      return;
+    }
 
-    e.preventDefault();
+    event.preventDefault();
 
-    const deltaX = e.clientX - dragStart.x;
-    const deltaY = e.clientY - dragStart.y;
+    const deltaX =
+      event.clientX -
+      dragStart.x;
+
+    const deltaY =
+      event.clientY -
+      dragStart.y;
 
     setPosition({
-      x: startPosition.x + deltaX,
-      y: startPosition.y + deltaY,
+      x:
+        startPosition.x +
+        deltaX,
+      y:
+        startPosition.y +
+        deltaY,
     });
   };
 
@@ -174,16 +579,23 @@ const ImageLightbox: React.FC<ImageLightboxProps> = ({
     setIsDragging(false);
   };
 
-  // -----------------------------
-  // Touch drag handlers
-  // -----------------------------
-
+  /*
+   * ------------------------------------------------
+   * Touch drag
+   * ------------------------------------------------
+   */
   const handleTouchStart = (
-    e: React.TouchEvent<HTMLDivElement>
+    event: React.TouchEvent<HTMLDivElement>
   ) => {
-    if (scale <= 1 || e.touches.length !== 1) return;
+    if (
+      scale <= 1 ||
+      event.touches.length !== 1
+    ) {
+      return;
+    }
 
-    const touch = e.touches[0];
+    const touch =
+      event.touches[0];
 
     setIsDragging(true);
 
@@ -193,31 +605,42 @@ const ImageLightbox: React.FC<ImageLightboxProps> = ({
     });
 
     setStartPosition({
-      ...position,
+      x: position.x,
+      y: position.y,
     });
   };
 
   const handleTouchMove = (
-    e: React.TouchEvent<HTMLDivElement>
+    event: React.TouchEvent<HTMLDivElement>
   ) => {
     if (
       !isDragging ||
       scale <= 1 ||
-      e.touches.length !== 1
+      event.touches.length !== 1
     ) {
       return;
     }
 
-    e.preventDefault();
+    event.preventDefault();
 
-    const touch = e.touches[0];
+    const touch =
+      event.touches[0];
 
-    const deltaX = touch.clientX - dragStart.x;
-    const deltaY = touch.clientY - dragStart.y;
+    const deltaX =
+      touch.clientX -
+      dragStart.x;
+
+    const deltaY =
+      touch.clientY -
+      dragStart.y;
 
     setPosition({
-      x: startPosition.x + deltaX,
-      y: startPosition.y + deltaY,
+      x:
+        startPosition.x +
+        deltaX,
+      y:
+        startPosition.y +
+        deltaY,
     });
   };
 
@@ -225,180 +648,166 @@ const ImageLightbox: React.FC<ImageLightboxProps> = ({
     setIsDragging(false);
   };
 
-  // -----------------------------
-  // Keyboard controls
-  // -----------------------------
-
-  const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLDivElement>
-  ) => {
-    if (!isOpen) return;
-
-    switch (e.key) {
-      case "Escape":
-        e.preventDefault();
-        handleClose();
-        break;
-
-      case "ArrowLeft":
-        e.preventDefault();
-        handlePrevious();
-        break;
-
-      case "ArrowRight":
-        e.preventDefault();
-        handleNext();
-        break;
-
-      case "+":
-      case "=":
-        e.preventDefault();
-        handleZoomIn();
-        break;
-
-      case "-":
-        e.preventDefault();
-        handleZoomOut();
-        break;
-
-      default:
-        break;
-    }
-  };
-
-  if (!isOpen || images.length === 0) {
+  /*
+   * ------------------------------------------------
+   * Render
+   * ------------------------------------------------
+   */
+  if (
+    !isOpen ||
+    images.length === 0
+  ) {
     return null;
   }
 
-  const activeImage = images[activeIndex];
+  const activeImage =
+    images[activeIndex];
+
+  if (!activeImage) {
+    return null;
+  }
 
   return (
     <div
       ref={containerRef}
       className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          handleClose();
-        }
-      }}
-      onKeyDown={handleKeyDown}
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
       tabIndex={0}
+      onClick={(event) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          handleClose();
+        }
+      }}
     >
-      {/* -------------------------------- */}
-      {/* Close button */}
-      {/* -------------------------------- */}
-
+      {/* Close */}
       <button
         type="button"
-        onClick={handleClose}
+        onClick={
+          handleClose
+        }
         className="absolute top-4 right-4 z-50 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
         aria-label="Close viewer"
       >
         <X size={24} />
       </button>
 
-      {/* -------------------------------- */}
-      {/* Image counter */}
-      {/* -------------------------------- */}
-
+      {/* Counter */}
       {images.length > 1 && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-sm font-medium">
-          {activeIndex + 1} / {images.length}
+          {activeIndex + 1} /{" "}
+          {images.length}
         </div>
       )}
 
-      {/* -------------------------------- */}
-      {/* Previous button */}
-      {/* -------------------------------- */}
-
-      {images.length > 1 && activeIndex > 0 && (
-        <button
-          type="button"
-          onClick={handlePrevious}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-50 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
-          aria-label="Previous image"
-        >
-          <ChevronLeft size={28} />
-        </button>
-      )}
-
-      {/* -------------------------------- */}
-      {/* Next button */}
-      {/* -------------------------------- */}
-
+      {/* Previous */}
       {images.length > 1 &&
-        activeIndex < images.length - 1 && (
+        activeIndex > 0 && (
           <button
             type="button"
-            onClick={handleNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-50 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
-            aria-label="Next image"
+            onClick={
+              handlePrevious
+            }
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-50 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+            aria-label="Previous image"
           >
-            <ChevronRight size={28} />
+            <ChevronLeft
+              size={28}
+            />
           </button>
         )}
 
-      {/* -------------------------------- */}
-      {/* Image area */}
-      {/* -------------------------------- */}
+      {/* Next */}
+      {images.length > 1 &&
+        activeIndex <
+          images.length - 1 && (
+          <button
+            type="button"
+            onClick={
+              handleNext
+            }
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-50 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+            aria-label="Next image"
+          >
+            <ChevronRight
+              size={28}
+            />
+          </button>
+        )}
 
+      {/* Image */}
       <div
         className="relative w-full h-full flex items-center justify-center p-4 sm:p-8 overflow-hidden"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onMouseDown={
+          handleMouseDown
+        }
+        onMouseMove={
+          handleMouseMove
+        }
+        onMouseUp={
+          handleMouseUp
+        }
+        onMouseLeave={
+          handleMouseUp
+        }
+        onTouchStart={
+          handleTouchStart
+        }
+        onTouchMove={
+          handleTouchMove
+        }
+        onTouchEnd={
+          handleTouchEnd
+        }
         style={{
           touchAction:
-            scale > 1 ? "none" : "auto",
+            scale > 1
+              ? "none"
+              : "auto",
         }}
       >
         <img
-          key={activeImage}
-          ref={imageRef}
+          /*
+           * This forces React to remove
+           * the previous image DOM element
+           * and create a completely new one.
+           */
+          key={`${activeIndex}-${activeImage}`}
           src={activeImage}
-          alt={`Image ${activeIndex + 1}`}
-          className="max-h-[90vh] max-w-[95vw] object-contain select-none"
+          alt={`Image ${
+            activeIndex + 1
+          }`}
+          className="block max-h-[90vh] max-w-[95vw] w-auto h-auto object-contain select-none"
+          draggable={false}
           style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            transformOrigin: "center center",
+            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
+            transformOrigin:
+              "center center",
             cursor:
               scale > 1
                 ? isDragging
                   ? "grabbing"
                   : "grab"
                 : "default",
-            transition: isDragging
-              ? "none"
-              : "transform 0.15s ease-out",
+            transition:
+              isDragging
+                ? "none"
+                : "transform 0.15s ease-out",
             willChange:
               "transform",
           }}
-          draggable={false}
-          onLoad={() => {
-            // Always reset image position when a new image
-            // is loaded. This prevents the second-open
-            // overlap/position issue.
-            setScale(1);
-            setPosition({
-              x: 0,
-              y: 0,
-            });
-            setIsDragging(false);
-          }}
-          onError={(e) => {
+          onError={(event) => {
             const target =
-              e.target as HTMLImageElement;
+              event.currentTarget;
 
             if (
-              target.src !==
-              "/placeholder-image.jpg"
+              !target.src.includes(
+                "placeholder-image.jpg"
+              )
             ) {
               target.src =
                 "/placeholder-image.jpg";
@@ -407,31 +816,39 @@ const ImageLightbox: React.FC<ImageLightboxProps> = ({
         />
       </div>
 
-      {/* -------------------------------- */}
       {/* Bottom controls */}
-      {/* -------------------------------- */}
-
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-black/50 backdrop-blur-md rounded-full px-4 py-2">
         <button
           type="button"
-          onClick={handleZoomOut}
+          onClick={
+            handleZoomOut
+          }
           className="p-1.5 text-white hover:bg-white/20 rounded-full transition-colors disabled:opacity-50"
           aria-label="Zoom out"
-          disabled={scale <= 0.5}
+          disabled={
+            scale <= 0.5
+          }
         >
           <ZoomOut size={20} />
         </button>
 
         <span className="text-white text-sm font-medium min-w-[40px] text-center">
-          {Math.round(scale * 100)}%
+          {Math.round(
+            scale * 100
+          )}
+          %
         </span>
 
         <button
           type="button"
-          onClick={handleZoomIn}
+          onClick={
+            handleZoomIn
+          }
           className="p-1.5 text-white hover:bg-white/20 rounded-full transition-colors disabled:opacity-50"
           aria-label="Zoom in"
-          disabled={scale >= 3}
+          disabled={
+            scale >= 3
+          }
         >
           <ZoomIn size={20} />
         </button>
@@ -440,7 +857,9 @@ const ImageLightbox: React.FC<ImageLightboxProps> = ({
 
         <button
           type="button"
-          onClick={handleDownload}
+          onClick={
+            handleDownload
+          }
           className="p-1.5 text-white hover:bg-white/20 rounded-full transition-colors"
           aria-label="Download image"
         >
