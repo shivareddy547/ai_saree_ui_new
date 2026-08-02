@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ShoppingBag, 
@@ -16,64 +16,7 @@ import {
   Gift,
   Gem
 } from 'lucide-react';
-// ===== COMPONENT: HeroBanner =====
-interface HeroBannerProps {
-  title: string;
-  subtitle: string;
-  highlightText: string;
-  description: string;
-  primaryButtonText: string;
-  primaryButtonLink: string;
-  secondaryButtonText: string;
-  secondaryButtonLink: string;
-  bgGradient: string;
-}
-const HeroBanner: React.FC<HeroBannerProps> = ({
-  title,
-  subtitle,
-  highlightText,
-  description,
-  primaryButtonText,
-  primaryButtonLink,
-  secondaryButtonText,
-  secondaryButtonLink,
-  bgGradient,
-}) => {
-  return (
-    <div className={`relative overflow-hidden rounded-2xl ${bgGradient} p-8 md:p-12 text-white`}>
-      <div className="relative z-10 max-w-2xl">
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-yellow-300" />
-          <span className="text-sm font-medium text-yellow-300">New Collection</span>
-        </div>
-        <h1 className="text-3xl md:text-5xl font-bold mb-4 leading-tight">
-          {title}
-          <br />
-          <span className="text-yellow-300">{highlightText}</span>
-        </h1>
-        <p className="text-purple-100 mb-6 text-lg">{description}</p>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            to={primaryButtonLink}
-            className="inline-flex items-center gap-2 bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold hover:bg-purple-50 transition-colors shadow-lg"
-          >
-            {primaryButtonText}
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-          <Link
-            to={secondaryButtonLink}
-            className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-colors border border-white/30"
-          >
-            {secondaryButtonText}
-          </Link>
-        </div>
-      </div>
-      <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
-      <div className="absolute bottom-0 left-1/2 w-48 h-48 bg-yellow-300/20 rounded-full blur-2xl"></div>
-      <div className="absolute right-10 bottom-10 w-20 h-20 bg-pink-400/30 rounded-full blur-xl"></div>
-    </div>
-  );
-};
+import HeroBanner, { Banner } from '../../components/HeroBanner';
 // ===== COMPONENT: FeatureGrid =====
 interface Feature {
   icon: React.ElementType;
@@ -276,17 +219,6 @@ const DealBanner: React.FC<DealBannerProps> = ({
 // ===== MAIN PAGE =====
 const StoreHome: React.FC = () => {
   // Data configurations
-  const heroData = {
-    title: "Summer Collection",
-    subtitle: "New Collection",
-    highlightText: "2026",
-    description: "Explore our exclusive saree collection with up to 50% off",
-    primaryButtonText: "Shop Now",
-    primaryButtonLink: "/store/products",
-    secondaryButtonText: "View Collections",
-    secondaryButtonLink: "/store/products",
-    bgGradient: "bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600",
-  };
   const features: Feature[] = [
     { icon: Truck, label: 'Free Shipping', desc: 'On orders above ₹999' },
     { icon: Shield, label: 'Secure Payment', desc: '100% secure transactions' },
@@ -323,10 +255,18 @@ const StoreHome: React.FC = () => {
     badgeText: 'Deal of the Day',
     bgGradient: 'bg-gradient-to-r from-yellow-50 via-orange-50 to-pink-50',
   };
+  // HeroBanner configuration
+  const heroBannerConfig = {
+    autoPlayInterval: 5000,
+    showIndicators: true,
+    showArrows: true,
+    apiEndpoint: '/api/banners',
+    fetchOnMount: true,
+  };
   return (
     <div className="space-y-8">
-      {/* 1. Hero Banner Section */}
-      <HeroBanner {...heroData} />
+      {/* 1. Hero Banner Section - Carousel with API integration */}
+      <HeroBanner {...heroBannerConfig} />
       {/* 2. Features Section */}
       <FeatureGrid features={features} />
       {/* 3. Shop by Category Section */}
