@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Check,
   Loader2,
+  Edit,
 } from "lucide-react";
 import { uploadToImageKit } from "../utils/imageKitUpload";
 import { uploadToCloudinary, getCloudinaryVideoUrl } from "../utils/cloudinaryUpload";
@@ -15,6 +16,7 @@ import VideoConfiguration from "../components/VideoConfiguration";
 import VideoPreviewComponent from "../components/VideoPreview";
 import PostToInstagram from "../components/PostToInstagram";
 import ImageLightbox from "../components/ImageLightbox";
+import VideoEditor from "../components/VideoEditor";
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
 const UNSPLASH_ACCESS_KEY =
@@ -578,6 +580,10 @@ const CreateProduct: React.FC = () => {
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  // Video editor state
+  const [showVideoEditor, setShowVideoEditor] = useState(false);
+  const [editedVideoBlob, setEditedVideoBlob] = useState<Blob | null>(null);
+  const [editedVideoUrl, setEditedVideoUrl] = useState<string | null>(null);
   const loadAudioFromUrl =
     useCallback(
       async (
@@ -1635,6 +1641,10 @@ const CreateProduct: React.FC = () => {
     setCloudinaryUploadProgress(0);
     setCloudinaryUploadMessage("");
     setCloudinaryPublicId(null);
+    // Reset video editor states
+    setEditedVideoBlob(null);
+    setEditedVideoUrl(null);
+    setShowVideoEditor(false);
   };
   const handleBack = () => {
     if (currentStep > 1) {
