@@ -19,6 +19,8 @@ export interface Banner {
   badgeIcon?: string;
   order: number;
   isActive: boolean;
+  showInHero: boolean;
+  showInCategoryGrid: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -63,9 +65,9 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
       setLoading(true);
       setError(null);
       const response = await axios.get(apiEndpoint);
-      // Filter active banners and sort by order
+      // Filter active banners, show in hero, and sort by order
       const activeBanners = response.data
-        ?.filter((banner: Banner) => banner.isActive !== false)
+        ?.filter((banner: Banner) => banner.isActive !== false && banner.showInHero !== false)
         ?.sort((a: Banner, b: Banner) => a.order - b.order) || [];
       setBanners(activeBanners);
     } catch (err) {
@@ -94,6 +96,8 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
         badgeIcon: '✨',
         order: 1,
         isActive: true,
+        showInHero: true,
+        showInCategoryGrid: true,
       },
       {
         id: 2,
@@ -110,6 +114,8 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
         badgeIcon: '💒',
         order: 2,
         isActive: true,
+        showInHero: true,
+        showInCategoryGrid: true,
       },
       {
         id: 3,
@@ -126,6 +132,8 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
         badgeIcon: '🎉',
         order: 3,
         isActive: true,
+        showInHero: true,
+        showInCategoryGrid: true,
       },
     ];
   };
