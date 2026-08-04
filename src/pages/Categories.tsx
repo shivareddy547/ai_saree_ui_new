@@ -18,6 +18,8 @@ interface Category {
   parentId?: string | number | null;
   subCategories?: Category[];
   showInCategoryGrid?: boolean;
+  showInHero?: boolean;
+  permalink?: string;
   primaryButtonText?: string;
   primaryButtonLink?: string;
   secondaryButtonText?: string;
@@ -39,6 +41,8 @@ interface CategoryFormData {
   isActive: boolean;
   parentId: string | number | null;
   showInCategoryGrid: boolean;
+  showInHero: boolean;
+  permalink: string;
   primaryButtonText: string;
   primaryButtonLink: string;
   secondaryButtonText: string;
@@ -66,6 +70,8 @@ const Categories: React.FC = () => {
     isActive: true,
     parentId: null,
     showInCategoryGrid: true,
+    showInHero: false,
+    permalink: '',
     primaryButtonText: '',
     primaryButtonLink: '',
     secondaryButtonText: '',
@@ -125,6 +131,8 @@ const Categories: React.FC = () => {
         order: 1,
         isActive: true,
         showInCategoryGrid: true,
+        showInHero: true,
+        permalink: 'traditional-sarees',
         primaryButtonText: 'Shop Now',
         primaryButtonLink: '/store/categories/traditional',
         secondaryButtonText: 'View Collection',
@@ -143,6 +151,8 @@ const Categories: React.FC = () => {
             isActive: true,
             parentId: 1,
             showInCategoryGrid: true,
+            showInHero: false,
+            permalink: 'silk-sarees',
             primaryButtonText: 'Explore Silk',
             primaryButtonLink: '/store/categories/silk',
           },
@@ -159,6 +169,8 @@ const Categories: React.FC = () => {
             isActive: true,
             parentId: 1,
             showInCategoryGrid: true,
+            showInHero: false,
+            permalink: 'cotton-sarees',
             primaryButtonText: 'Shop Cotton',
             primaryButtonLink: '/store/categories/cotton',
           }
@@ -176,6 +188,8 @@ const Categories: React.FC = () => {
         order: 2,
         isActive: true,
         showInCategoryGrid: true,
+        showInHero: true,
+        permalink: 'wedding-collection',
         primaryButtonText: 'Explore Bridal',
         primaryButtonLink: '/store/categories/wedding',
         secondaryButtonText: 'View All',
@@ -194,6 +208,8 @@ const Categories: React.FC = () => {
             isActive: true,
             parentId: 2,
             showInCategoryGrid: true,
+            showInHero: false,
+            permalink: 'bridal-lehengas',
             primaryButtonText: 'View Lehengas',
             primaryButtonLink: '/store/categories/lehengas',
           }
@@ -211,6 +227,8 @@ const Categories: React.FC = () => {
         order: 3,
         isActive: true,
         showInCategoryGrid: true,
+        showInHero: false,
+        permalink: 'festive-wear',
         primaryButtonText: 'Shop Festive',
         primaryButtonLink: '/store/categories/festive',
         secondaryButtonText: 'Explore More',
@@ -218,6 +236,12 @@ const Categories: React.FC = () => {
         subCategories: []
       },
     ];
+  };
+  const generatePermalink = (name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   };
   const handleOpenModal = (category?: Category, parentId?: string | number | null) => {
     if (category) {
@@ -236,6 +260,8 @@ const Categories: React.FC = () => {
         isActive: category.isActive !== false,
         parentId: category.parentId || null,
         showInCategoryGrid: category.showInCategoryGrid !== false,
+        showInHero: category.showInHero || false,
+        permalink: category.permalink || generatePermalink(category.name),
         primaryButtonText: category.primaryButtonText || '',
         primaryButtonLink: category.primaryButtonLink || '',
         secondaryButtonText: category.secondaryButtonText || '',
@@ -258,6 +284,8 @@ const Categories: React.FC = () => {
         isActive: true,
         parentId: parentId || null,
         showInCategoryGrid: true,
+        showInHero: false,
+        permalink: '',
         primaryButtonText: '',
         primaryButtonLink: '',
         secondaryButtonText: '',
@@ -280,10 +308,20 @@ const Categories: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+    // Auto-generate permalink from name
+    if (name === 'name' && !editingCategory) {
+      const permalink = generatePermalink(value);
+      setFormData((prev) => ({
+        ...prev,
+        name: value,
+        permalink: permalink,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value,
+      }));
+    }
   };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -326,6 +364,8 @@ const Categories: React.FC = () => {
       formDataToSend.append('order', String(Number(formData.order)));
       formDataToSend.append('isActive', String(formData.isActive));
       formDataToSend.append('showInCategoryGrid', String(formData.showInCategoryGrid));
+      formDataToSend.append('showInHero', String(formData.showInHero));
+      formDataToSend.append('permalink', formData.permalink || generatePermalink(formData.name));
       formDataToSend.append('primaryButtonText', formData.primaryButtonText || '');
       formDataToSend.append('primaryButtonLink', formData.primaryButtonLink || '');
       formDataToSend.append('secondaryButtonText', formData.secondaryButtonText || '');
@@ -408,6 +448,16 @@ const Categories: React.FC = () => {
                 {category.showInCategoryGrid !== false && (
                   <span className="text-xs font-medium bg-green-500/30 backdrop-blur-sm px-2 py-1 rounded-full">
                     Show in Grid
+                  </span>
+                )}
+                {category.showInHero && (
+                  <span className="text-xs font-medium bg-yellow-500/30 backdrop-blur-sm px-2 py-1 rounded-full">
+                    Show in Hero
+                  </span>
+                )}
+                {category.permalink && (
+                  <span className="text-xs font-medium bg-purple-500/30 backdrop-blur-sm px-2 py-1 rounded-full">
+                    /{category.permalink}
                   </span>
                 )}
                 {hasSubCategories && (
@@ -586,6 +636,26 @@ const Categories: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     placeholder="Enter category name"
                   />
+                </div>
+                {/* Permalink */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Permalink
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">/</span>
+                    <input
+                      type="text"
+                      name="permalink"
+                      value={formData.permalink}
+                      onChange={handleInputChange}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="auto-generated-from-name"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    URL-friendly version of the category name. Auto-generated if left empty.
+                  </p>
                 </div>
                 {/* Subtitle */}
                 <div>
@@ -854,21 +924,38 @@ const Categories: React.FC = () => {
                     </label>
                   </div>
                 </div>
-                {/* Show in Category Grid */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Visibility
-                  </label>
-                  <label className="flex items-center gap-3 p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                    <input
-                      type="checkbox"
-                      name="showInCategoryGrid"
-                      checked={formData.showInCategoryGrid}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-700">Show in Category Grid</span>
-                  </label>
+                {/* Visibility Options */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Visibility
+                    </label>
+                    <label className="flex items-center gap-3 p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="checkbox"
+                        name="showInCategoryGrid"
+                        checked={formData.showInCategoryGrid}
+                        onChange={handleInputChange}
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-gray-700">Show in Category Grid</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Hero Banner
+                    </label>
+                    <label className="flex items-center gap-3 p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="checkbox"
+                        name="showInHero"
+                        checked={formData.showInHero}
+                        onChange={handleInputChange}
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-gray-700">Show in Hero Banners</span>
+                    </label>
+                  </div>
                 </div>
                 {submitError && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
