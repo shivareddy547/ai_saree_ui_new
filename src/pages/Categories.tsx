@@ -3,7 +3,7 @@ import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Up
 import axios from 'axios';
 // ===== INTERFACES =====
 interface Category {
-  id?: string | number;
+  id?: string;
   name: string;
   subtitle?: string;
   highlightText?: string;
@@ -15,7 +15,7 @@ interface Category {
   badgeIcon?: string;
   order: number;
   isActive: boolean;
-  parentId?: string | number | null;
+  parentId?: string | null;
   subCategories?: Category[];
   showInCategoryGrid?: boolean;
   showInHero?: boolean;
@@ -39,7 +39,7 @@ interface CategoryFormData {
   badgeIcon: string;
   order: number;
   isActive: boolean;
-  parentId: string | number | null;
+  parentId: string | null;
   showInCategoryGrid: boolean;
   showInHero: boolean;
   permalink: string;
@@ -55,7 +55,7 @@ const Categories: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string | number>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     subtitle: '',
@@ -94,6 +94,7 @@ const Categories: React.FC = () => {
   ];
   // Available badge icons
   const badgeIconOptions = ['✨', '🔥', '⭐', '🎯', '💎', '🌟', '🎉', '🏆', '👑', '💫'];
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
   // Fetch categories on mount
   useEffect(() => {
     fetchCategories();
@@ -102,140 +103,15 @@ const Categories: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      try {
-        const response = await axios.get('/api/categories');
-        setCategories(response.data);
-      } catch (apiError) {
-        console.log('API not available, using mock data');
-        setCategories(getMockCategories());
-      }
-    } catch (err) {
+      const response = await axios.get(`${API_BASE_URL}/categories`);
+      setCategories(response.data);
+    } catch (err: any) {
       console.error('Error fetching categories:', err);
       setError('Failed to load categories');
-      setCategories(getMockCategories());
+      setCategories([]);
     } finally {
       setLoading(false);
     }
-  };
-  const getMockCategories = (): Category[] => {
-    return [
-      {
-        id: 1,
-        name: 'Traditional Sarees',
-        subtitle: 'Classic Collection',
-        highlightText: 'Ethnic Wear',
-        description: 'Beautiful traditional sarees for all occasions',
-        bgGradient: 'bg-gradient-to-r from-purple-500 to-indigo-500',
-        badgeText: 'Popular',
-        badgeIcon: '✨',
-        order: 1,
-        isActive: true,
-        showInCategoryGrid: true,
-        showInHero: true,
-        permalink: 'traditional-sarees',
-        primaryButtonText: 'Shop Now',
-        primaryButtonLink: '/store/categories/traditional',
-        secondaryButtonText: 'View Collection',
-        secondaryButtonLink: '/store/categories/traditional/all',
-        subCategories: [
-          {
-            id: 4,
-            name: 'Silk Sarees',
-            subtitle: 'Premium Silk',
-            highlightText: 'Pure Silk',
-            description: 'Pure silk traditional sarees',
-            bgGradient: 'bg-gradient-to-r from-pink-500 to-rose-500',
-            badgeText: 'Premium',
-            badgeIcon: '💎',
-            order: 1,
-            isActive: true,
-            parentId: 1,
-            showInCategoryGrid: true,
-            showInHero: false,
-            permalink: 'silk-sarees',
-            primaryButtonText: 'Explore Silk',
-            primaryButtonLink: '/store/categories/silk',
-          },
-          {
-            id: 5,
-            name: 'Cotton Sarees',
-            subtitle: 'Comfort Wear',
-            highlightText: 'Breathable',
-            description: 'Comfortable cotton sarees',
-            bgGradient: 'bg-gradient-to-r from-blue-500 to-cyan-500',
-            badgeText: 'Comfort',
-            badgeIcon: '🌟',
-            order: 2,
-            isActive: true,
-            parentId: 1,
-            showInCategoryGrid: true,
-            showInHero: false,
-            permalink: 'cotton-sarees',
-            primaryButtonText: 'Shop Cotton',
-            primaryButtonLink: '/store/categories/cotton',
-          }
-        ]
-      },
-      {
-        id: 2,
-        name: 'Wedding Collection',
-        subtitle: 'Bridal Collection',
-        highlightText: 'Special Occasion',
-        description: 'Exclusive bridal saree collection',
-        bgGradient: 'bg-gradient-to-r from-pink-500 to-rose-500',
-        badgeText: 'Wedding Special',
-        badgeIcon: '💒',
-        order: 2,
-        isActive: true,
-        showInCategoryGrid: true,
-        showInHero: true,
-        permalink: 'wedding-collection',
-        primaryButtonText: 'Explore Bridal',
-        primaryButtonLink: '/store/categories/wedding',
-        secondaryButtonText: 'View All',
-        secondaryButtonLink: '/store/categories/wedding/all',
-        subCategories: [
-          {
-            id: 6,
-            name: 'Bridal Lehengas',
-            subtitle: 'Designer Lehengas',
-            highlightText: 'Premium',
-            description: 'Beautiful bridal lehengas',
-            bgGradient: 'bg-gradient-to-r from-red-500 to-pink-500',
-            badgeText: 'Bridal',
-            badgeIcon: '👑',
-            order: 1,
-            isActive: true,
-            parentId: 2,
-            showInCategoryGrid: true,
-            showInHero: false,
-            permalink: 'bridal-lehengas',
-            primaryButtonText: 'View Lehengas',
-            primaryButtonLink: '/store/categories/lehengas',
-          }
-        ]
-      },
-      {
-        id: 3,
-        name: 'Festive Wear',
-        subtitle: 'Celebration Collection',
-        highlightText: 'Festival Special',
-        description: 'Perfect for festivals and celebrations',
-        bgGradient: 'bg-gradient-to-r from-orange-500 to-amber-500',
-        badgeText: 'Festival',
-        badgeIcon: '🎉',
-        order: 3,
-        isActive: true,
-        showInCategoryGrid: true,
-        showInHero: false,
-        permalink: 'festive-wear',
-        primaryButtonText: 'Shop Festive',
-        primaryButtonLink: '/store/categories/festive',
-        secondaryButtonText: 'Explore More',
-        secondaryButtonLink: '/store/categories/festive/all',
-        subCategories: []
-      },
-    ];
   };
   const generatePermalink = (name: string): string => {
     return name
@@ -243,7 +119,7 @@ const Categories: React.FC = () => {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   };
-  const handleOpenModal = (category?: Category, parentId?: string | number | null) => {
+  const handleOpenModal = (category?: Category, parentId?: string | null) => {
     if (category) {
       setEditingCategory(category);
       setFormData({
@@ -371,7 +247,7 @@ const Categories: React.FC = () => {
       formDataToSend.append('secondaryButtonText', formData.secondaryButtonText || '');
       formDataToSend.append('secondaryButtonLink', formData.secondaryButtonLink || '');
       if (formData.parentId) {
-        formDataToSend.append('parentId', String(formData.parentId));
+        formDataToSend.append('parentId', formData.parentId);
       }
       if (formData.imageFile) {
         formDataToSend.append('image', formData.imageFile);
@@ -379,37 +255,35 @@ const Categories: React.FC = () => {
         formDataToSend.append('imageUrl', formData.image);
       }
       if (editingCategory) {
-        const response = await axios.put(`/api/categories/${editingCategory.id}`, formDataToSend, {
+        const response = await axios.put(`${API_BASE_URL}/categories/${editingCategory.id}`, formDataToSend, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        setCategories(categories.map(cat => 
-          cat.id === editingCategory.id ? response.data : cat
-        ));
+        await fetchCategories();
       } else {
-        const response = await axios.post('/api/categories', formDataToSend, {
+        const response = await axios.post(`${API_BASE_URL}/categories`, formDataToSend, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        setCategories([...categories, response.data]);
+        await fetchCategories();
       }
       handleCloseModal();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving category:', err);
-      setSubmitError('Failed to save category. Please try again.');
+      setSubmitError(err.response?.data?.message || 'Failed to save category. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
-  const handleDeleteCategory = async (id: string | number) => {
+  const handleDeleteCategory = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this category? This will also delete all subcategories.')) return;
     try {
-      await axios.delete(`/api/categories/${id}`);
-      setCategories(categories.filter(cat => cat.id !== id));
-    } catch (err) {
+      await axios.delete(`${API_BASE_URL}/categories/${id}`);
+      await fetchCategories();
+    } catch (err: any) {
       console.error('Error deleting category:', err);
-      window.alert('Failed to delete category. Please try again.');
+      window.alert(err.response?.data?.message || 'Failed to delete category. Please try again.');
     }
   };
-  const toggleExpand = (id: string | number) => {
+  const toggleExpand = (id: string) => {
     setExpandedCategories(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
