@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Upload, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
+import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Upload } from 'lucide-react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 // ===== INTERFACES =====
 interface Category {
-  id?: string;
+  id?: number;
   name: string;
   subtitle?: string;
   highlightText?: string;
@@ -15,7 +16,7 @@ interface Category {
   badgeIcon?: string;
   order: number;
   isActive: boolean;
-  parentId?: string | null;
+  parentId?: number | null;
   subCategories?: Category[];
   showInCategoryGrid?: boolean;
   showInHero?: boolean;
@@ -39,7 +40,7 @@ interface CategoryFormData {
   badgeIcon: string;
   order: number;
   isActive: boolean;
-  parentId: string | null;
+  parentId: number | null;
   showInCategoryGrid: boolean;
   showInHero: boolean;
   permalink: string;
@@ -50,12 +51,13 @@ interface CategoryFormData {
 }
 // ===== COMPONENT: Categories =====
 const Categories: React.FC = () => {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     subtitle: '',
@@ -95,6 +97,42 @@ const Categories: React.FC = () => {
   // Available badge icons
   const badgeIconOptions = ['✨', '🔥', '⭐', '🎯', '💎', '🌟', '🎉', '🏆', '👑', '💫'];
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+  // Create axios instance with auth header
+  const apiClient = axios.create({
+    baseURL: API_BASE_URL,
+    withCredentials: true,
+  });
+  // Add token to all requests
+  apiClient.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
+    }
+  );
+  // Check authentication
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const sessionExpiry = localStorage.getItem('sessionExpiry');
+    if (!token || !sessionExpiry) {
+      navigate('/login');
+      return;
+    }
+    const expiryTime = parseInt(sessionExpiry, 10);
+    if (Date.now() >= expiryTime) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('sessionExpiry');
+      localStorage.removeItem('sessionId');
+      navigate('/login');
+      return;
+    }
+  }, [navigate]);
   // Fetch categories on mount
   useEffect(() => {
     fetchCategories();
@@ -103,11 +141,19 @@ const Categories: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.get(`${API_BASE_URL}/categories`);
+      const response = await apiClient.get('/categories');
       setCategories(response.data);
     } catch (err: any) {
       console.error('Error fetching categories:', err);
-      setError('Failed to load categories');
+      if (err.response?.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('sessionExpiry');
+        localStorage.removeItem('sessionId');
+        navigate('/login');
+        return;
+      }
+      setError(err.response?.data?.message || 'Failed to load categories');
       setCategories([]);
     } finally {
       setLoading(false);
@@ -119,7 +165,7 @@ const Categories: React.FC = () => {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   };
-  const handleOpenModal = (category?: Category, parentId?: string | null) => {
+  const handleOpenModal = (category?: Category, parentId?: number | null) => {
     if (category) {
       setEditingCategory(category);
       setFormData({
@@ -247,7 +293,7 @@ const Categories: React.FC = () => {
       formDataToSend.append('secondaryButtonText', formData.secondaryButtonText || '');
       formDataToSend.append('secondaryButtonLink', formData.secondaryButtonLink || '');
       if (formData.parentId) {
-        formDataToSend.append('parentId', formData.parentId);
+        formDataToSend.append('parentId', String(formData.parentId));
       }
       if (formData.imageFile) {
         formDataToSend.append('image', formData.imageFile);
@@ -255,35 +301,50 @@ const Categories: React.FC = () => {
         formDataToSend.append('imageUrl', formData.image);
       }
       if (editingCategory) {
-        const response = await axios.put(`${API_BASE_URL}/categories/${editingCategory.id}`, formDataToSend, {
+        await apiClient.put(`/categories/${editingCategory.id}`, formDataToSend, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        await fetchCategories();
       } else {
-        const response = await axios.post(`${API_BASE_URL}/categories`, formDataToSend, {
+        await apiClient.post('/categories', formDataToSend, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        await fetchCategories();
       }
+      await fetchCategories();
       handleCloseModal();
     } catch (err: any) {
       console.error('Error saving category:', err);
+      if (err.response?.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('sessionExpiry');
+        localStorage.removeItem('sessionId');
+        navigate('/login');
+        return;
+      }
       setSubmitError(err.response?.data?.message || 'Failed to save category. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
-  const handleDeleteCategory = async (id: string) => {
+  const handleDeleteCategory = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this category? This will also delete all subcategories.')) return;
     try {
-      await axios.delete(`${API_BASE_URL}/categories/${id}`);
+      await apiClient.delete(`/categories/${id}`);
       await fetchCategories();
     } catch (err: any) {
       console.error('Error deleting category:', err);
+      if (err.response?.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('sessionExpiry');
+        localStorage.removeItem('sessionId');
+        navigate('/login');
+        return;
+      }
       window.alert(err.response?.data?.message || 'Failed to delete category. Please try again.');
     }
   };
-  const toggleExpand = (id: string) => {
+  const toggleExpand = (id: number) => {
     setExpandedCategories(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
