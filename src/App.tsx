@@ -16,6 +16,7 @@ import VideoPreview from './pages/VideoPreview';
 import InstagramPreview from './pages/InstagramPreview';
 import PostSuccess from './pages/PostSuccess';
 import AllVideos from './pages/AllVideos';
+import Categories from './pages/Categories';
 import Analytics from './pages/Analytics';
 import HelpUs from './pages/HelpUs';
 // Store Pages
@@ -26,7 +27,6 @@ import StoreCart from './pages/Store/StoreCart';
 import StoreCheckout from './pages/Store/StoreCheckout';
 import StoreOrders from './pages/Store/StoreOrders';
 import StoreOrderDetail from './pages/Store/StoreOrderDetail';
-
 const App: React.FC = () => {
   return (
     <Router>
@@ -39,7 +39,6 @@ const App: React.FC = () => {
         <Route path="/forgot-password" element={<ForgotPasswordEmail />} />
         <Route path="/forgot-password-otp" element={<ForgotPasswordOTP />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        
         {/* Main App Routes with Sidebar */}
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" />} />
@@ -50,10 +49,10 @@ const App: React.FC = () => {
           <Route path="insta-preview" element={<InstagramPreview />} />
           <Route path="post-success" element={<PostSuccess />} />
           <Route path="all-videos" element={<AllVideos />} />
+          <Route path="categories" element={<Categories />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="help-us" element={<HelpUs />} />
         </Route>
-
         {/* Store Routes with Store Layout - Only visible to logged-in users */}
         <Route path="/store" element={<StoreLayout />}>
           <Route index element={<Navigate to="/store/home" />} />
