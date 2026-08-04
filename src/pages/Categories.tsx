@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Upload, Image as ImageIcon } from 'lucide-react';
+import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Upload, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 import axios from 'axios';
 // ===== INTERFACES =====
 interface Category {
   id?: string | number;
   name: string;
+  subtitle?: string;
+  highlightText?: string;
   description: string;
   image?: string | File;
   imageUrl?: string;
@@ -15,11 +17,18 @@ interface Category {
   isActive: boolean;
   parentId?: string | number | null;
   subCategories?: Category[];
+  showInCategoryGrid?: boolean;
+  primaryButtonText?: string;
+  primaryButtonLink?: string;
+  secondaryButtonText?: string;
+  secondaryButtonLink?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 interface CategoryFormData {
   name: string;
+  subtitle: string;
+  highlightText: string;
   description: string;
   image: string;
   imageFile: File | null;
@@ -29,6 +38,11 @@ interface CategoryFormData {
   order: number;
   isActive: boolean;
   parentId: string | number | null;
+  showInCategoryGrid: boolean;
+  primaryButtonText: string;
+  primaryButtonLink: string;
+  secondaryButtonText: string;
+  secondaryButtonLink: string;
 }
 // ===== COMPONENT: Categories =====
 const Categories: React.FC = () => {
@@ -40,6 +54,8 @@ const Categories: React.FC = () => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string | number>>(new Set());
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
+    subtitle: '',
+    highlightText: '',
     description: '',
     image: '',
     imageFile: null,
@@ -49,6 +65,11 @@ const Categories: React.FC = () => {
     order: 0,
     isActive: true,
     parentId: null,
+    showInCategoryGrid: true,
+    primaryButtonText: '',
+    primaryButtonLink: '',
+    secondaryButtonText: '',
+    secondaryButtonLink: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -95,16 +116,25 @@ const Categories: React.FC = () => {
       {
         id: 1,
         name: 'Traditional Sarees',
+        subtitle: 'Classic Collection',
+        highlightText: 'Ethnic Wear',
         description: 'Beautiful traditional sarees for all occasions',
         bgGradient: 'bg-gradient-to-r from-purple-500 to-indigo-500',
         badgeText: 'Popular',
         badgeIcon: '✨',
         order: 1,
         isActive: true,
+        showInCategoryGrid: true,
+        primaryButtonText: 'Shop Now',
+        primaryButtonLink: '/store/categories/traditional',
+        secondaryButtonText: 'View Collection',
+        secondaryButtonLink: '/store/categories/traditional/all',
         subCategories: [
           {
             id: 4,
             name: 'Silk Sarees',
+            subtitle: 'Premium Silk',
+            highlightText: 'Pure Silk',
             description: 'Pure silk traditional sarees',
             bgGradient: 'bg-gradient-to-r from-pink-500 to-rose-500',
             badgeText: 'Premium',
@@ -112,10 +142,15 @@ const Categories: React.FC = () => {
             order: 1,
             isActive: true,
             parentId: 1,
+            showInCategoryGrid: true,
+            primaryButtonText: 'Explore Silk',
+            primaryButtonLink: '/store/categories/silk',
           },
           {
             id: 5,
             name: 'Cotton Sarees',
+            subtitle: 'Comfort Wear',
+            highlightText: 'Breathable',
             description: 'Comfortable cotton sarees',
             bgGradient: 'bg-gradient-to-r from-blue-500 to-cyan-500',
             badgeText: 'Comfort',
@@ -123,22 +158,34 @@ const Categories: React.FC = () => {
             order: 2,
             isActive: true,
             parentId: 1,
+            showInCategoryGrid: true,
+            primaryButtonText: 'Shop Cotton',
+            primaryButtonLink: '/store/categories/cotton',
           }
         ]
       },
       {
         id: 2,
         name: 'Wedding Collection',
+        subtitle: 'Bridal Collection',
+        highlightText: 'Special Occasion',
         description: 'Exclusive bridal saree collection',
         bgGradient: 'bg-gradient-to-r from-pink-500 to-rose-500',
         badgeText: 'Wedding Special',
         badgeIcon: '💒',
         order: 2,
         isActive: true,
+        showInCategoryGrid: true,
+        primaryButtonText: 'Explore Bridal',
+        primaryButtonLink: '/store/categories/wedding',
+        secondaryButtonText: 'View All',
+        secondaryButtonLink: '/store/categories/wedding/all',
         subCategories: [
           {
             id: 6,
             name: 'Bridal Lehengas',
+            subtitle: 'Designer Lehengas',
+            highlightText: 'Premium',
             description: 'Beautiful bridal lehengas',
             bgGradient: 'bg-gradient-to-r from-red-500 to-pink-500',
             badgeText: 'Bridal',
@@ -146,18 +193,28 @@ const Categories: React.FC = () => {
             order: 1,
             isActive: true,
             parentId: 2,
+            showInCategoryGrid: true,
+            primaryButtonText: 'View Lehengas',
+            primaryButtonLink: '/store/categories/lehengas',
           }
         ]
       },
       {
         id: 3,
         name: 'Festive Wear',
+        subtitle: 'Celebration Collection',
+        highlightText: 'Festival Special',
         description: 'Perfect for festivals and celebrations',
         bgGradient: 'bg-gradient-to-r from-orange-500 to-amber-500',
         badgeText: 'Festival',
         badgeIcon: '🎉',
         order: 3,
         isActive: true,
+        showInCategoryGrid: true,
+        primaryButtonText: 'Shop Festive',
+        primaryButtonLink: '/store/categories/festive',
+        secondaryButtonText: 'Explore More',
+        secondaryButtonLink: '/store/categories/festive/all',
         subCategories: []
       },
     ];
@@ -167,6 +224,8 @@ const Categories: React.FC = () => {
       setEditingCategory(category);
       setFormData({
         name: category.name,
+        subtitle: category.subtitle || '',
+        highlightText: category.highlightText || '',
         description: category.description,
         image: category.imageUrl || category.image as string || '',
         imageFile: null,
@@ -176,12 +235,19 @@ const Categories: React.FC = () => {
         order: category.order || 0,
         isActive: category.isActive !== false,
         parentId: category.parentId || null,
+        showInCategoryGrid: category.showInCategoryGrid !== false,
+        primaryButtonText: category.primaryButtonText || '',
+        primaryButtonLink: category.primaryButtonLink || '',
+        secondaryButtonText: category.secondaryButtonText || '',
+        secondaryButtonLink: category.secondaryButtonLink || '',
       });
       setImagePreview(category.imageUrl || category.image as string || null);
     } else {
       setEditingCategory(null);
       setFormData({
         name: '',
+        subtitle: '',
+        highlightText: '',
         description: '',
         image: '',
         imageFile: null,
@@ -191,6 +257,11 @@ const Categories: React.FC = () => {
         order: categories.length + 1,
         isActive: true,
         parentId: parentId || null,
+        showInCategoryGrid: true,
+        primaryButtonText: '',
+        primaryButtonLink: '',
+        secondaryButtonText: '',
+        secondaryButtonLink: '',
       });
       setImagePreview(null);
     }
@@ -246,12 +317,19 @@ const Categories: React.FC = () => {
     try {
       const formDataToSend = new FormData();
       formDataToSend.append('name', formData.name);
+      formDataToSend.append('subtitle', formData.subtitle || '');
+      formDataToSend.append('highlightText', formData.highlightText || '');
       formDataToSend.append('description', formData.description);
       formDataToSend.append('bgGradient', formData.bgGradient);
       formDataToSend.append('badgeText', formData.badgeText || '');
       formDataToSend.append('badgeIcon', formData.badgeIcon || '');
       formDataToSend.append('order', String(Number(formData.order)));
       formDataToSend.append('isActive', String(formData.isActive));
+      formDataToSend.append('showInCategoryGrid', String(formData.showInCategoryGrid));
+      formDataToSend.append('primaryButtonText', formData.primaryButtonText || '');
+      formDataToSend.append('primaryButtonLink', formData.primaryButtonLink || '');
+      formDataToSend.append('secondaryButtonText', formData.secondaryButtonText || '');
+      formDataToSend.append('secondaryButtonLink', formData.secondaryButtonLink || '');
       if (formData.parentId) {
         formDataToSend.append('parentId', String(formData.parentId));
       }
@@ -313,7 +391,7 @@ const Categories: React.FC = () => {
         >
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 {category.badgeIcon && (
                   <span className="text-2xl">{category.badgeIcon}</span>
                 )}
@@ -325,6 +403,11 @@ const Categories: React.FC = () => {
                 {category.parentId && (
                   <span className="text-xs font-medium bg-blue-500/30 backdrop-blur-sm px-2 py-1 rounded-full">
                     Subcategory
+                  </span>
+                )}
+                {category.showInCategoryGrid !== false && (
+                  <span className="text-xs font-medium bg-green-500/30 backdrop-blur-sm px-2 py-1 rounded-full">
+                    Show in Grid
                   </span>
                 )}
                 {hasSubCategories && (
@@ -350,7 +433,27 @@ const Categories: React.FC = () => {
                 </div>
               )}
               <h3 className="text-xl font-semibold mb-1">{category.name}</h3>
-              <p className="text-white/80 text-sm">{category.description}</p>
+              {category.subtitle && (
+                <p className="text-white/90 text-sm font-medium">{category.subtitle}</p>
+              )}
+              {category.highlightText && (
+                <p className="text-yellow-300 text-sm font-semibold">{category.highlightText}</p>
+              )}
+              <p className="text-white/80 text-sm mt-1">{category.description}</p>
+              {(category.primaryButtonText || category.secondaryButtonText) && (
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  {category.primaryButtonText && (
+                    <span className="text-xs bg-white/20 px-3 py-1 rounded-full">
+                      Primary: {category.primaryButtonText}
+                    </span>
+                  )}
+                  {category.secondaryButtonText && (
+                    <span className="text-xs bg-white/20 px-3 py-1 rounded-full">
+                      Secondary: {category.secondaryButtonText}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex items-center gap-2 text-xs flex-wrap">
                 <span className={`px-2 py-1 rounded-full ${category.isActive ? 'bg-green-500/30 text-white' : 'bg-red-500/30 text-white'}`}>
                   {category.isActive ? 'Active' : 'Inactive'}
@@ -454,7 +557,7 @@ const Categories: React.FC = () => {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-800">
                 {editingCategory ? 'Edit Category' : 'Add New Category'}
@@ -482,6 +585,34 @@ const Categories: React.FC = () => {
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     placeholder="Enter category name"
+                  />
+                </div>
+                {/* Subtitle */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Subtitle
+                  </label>
+                  <input
+                    type="text"
+                    name="subtitle"
+                    value={formData.subtitle}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="e.g., Classic Collection"
+                  />
+                </div>
+                {/* Highlight Text */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Highlight Text
+                  </label>
+                  <input
+                    type="text"
+                    name="highlightText"
+                    value={formData.highlightText}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="e.g., Special Offer"
                   />
                 </div>
                 {/* Description */}
@@ -635,6 +766,63 @@ const Categories: React.FC = () => {
                     </select>
                   </div>
                 </div>
+                {/* Primary & Secondary Buttons */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Primary Button Text
+                    </label>
+                    <input
+                      type="text"
+                      name="primaryButtonText"
+                      value={formData.primaryButtonText}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="e.g., Shop Now"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Primary Button Link
+                    </label>
+                    <input
+                      type="text"
+                      name="primaryButtonLink"
+                      value={formData.primaryButtonLink}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="/store/categories/example"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Secondary Button Text
+                    </label>
+                    <input
+                      type="text"
+                      name="secondaryButtonText"
+                      value={formData.secondaryButtonText}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="e.g., View Collection"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Secondary Button Link
+                    </label>
+                    <input
+                      type="text"
+                      name="secondaryButtonLink"
+                      value={formData.secondaryButtonLink}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="/store/categories/example/all"
+                    />
+                  </div>
+                </div>
                 {/* Order & Status */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -665,6 +853,22 @@ const Categories: React.FC = () => {
                       <span className="text-sm text-gray-700">Active</span>
                     </label>
                   </div>
+                </div>
+                {/* Show in Category Grid */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Visibility
+                  </label>
+                  <label className="flex items-center gap-3 p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      name="showInCategoryGrid"
+                      checked={formData.showInCategoryGrid}
+                      onChange={handleInputChange}
+                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-700">Show in Category Grid</span>
+                  </label>
                 </div>
                 {submitError && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
