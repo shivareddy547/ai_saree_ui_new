@@ -73,45 +73,6 @@ const createEmptyVariant = (): ProductVariant => ({
   costPrice: "",
   stockQuantity: "",
 });
-const INITIAL_CATEGORIES: Category[] = [
-  {
-    id: "cat-sarees",
-    name: "Sarees",
-    subcategories: [
-      { id: "sub-banarasi", name: "Banarasi Silk" },
-      { id: "sub-kanjeevaram", name: "Kanjeevaram" },
-      { id: "sub-cotton", name: "Cotton Saree" },
-      { id: "sub-georgette", name: "Georgette" },
-    ],
-  },
-  {
-    id: "cat-lehengas",
-    name: "Lehengas",
-    subcategories: [
-      { id: "sub-bridal", name: "Bridal Lehenga" },
-      { id: "sub-designer", name: "Designer Lehenga" },
-      { id: "sub-party", name: "Party Wear" },
-    ],
-  },
-  {
-    id: "cat-suits",
-    name: "Suits & Kurtis",
-    subcategories: [
-      { id: "sub-anarkali", name: "Anarkali" },
-      { id: "sub-straight", name: "Straight Cut" },
-      { id: "sub-palazzo", name: "Palazzo Set" },
-    ],
-  },
-  {
-    id: "cat-accessories",
-    name: "Accessories",
-    subcategories: [
-      { id: "sub-jewelry", name: "Jewelry" },
-      { id: "sub-bags", name: "Handbags" },
-      { id: "sub-stoles", name: "Stoles & Dupattas" },
-    ],
-  },
-];
 const audioBufferToWav = (buffer: AudioBuffer): Blob => {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
@@ -316,7 +277,7 @@ const loopAudioToDuration = async (
 const CreateProduct: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Authentication check - same as Dashboard
+  // Authentication check
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const sessionExpiry = localStorage.getItem('sessionExpiry');
@@ -352,10 +313,11 @@ const CreateProduct: React.FC = () => {
     useState<{
       [key: string]: string;
     }>({});
+  // Categories state
   const [categories, setCategories] =
-    useState<Category[]>(
-      INITIAL_CATEGORIES
-    );
+    useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [
     selectedCategoryId,
     setSelectedCategoryId,
@@ -388,6 +350,34 @@ const CreateProduct: React.FC = () => {
     newSubcategoryError,
     setNewSubcategoryError,
   ] = useState<string | null>(null);
+  // Fetch categories from API
+  const fetchCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const response = await apiClient.get('/categories');
+      // Convert backend category structure to frontend format with string ids
+      const cats = response.data.map((cat: any) => ({
+        id: String(cat.id),
+        name: cat.name,
+        subcategories: (cat.subCategories || []).map((sub: any) => ({
+          id: String(sub.id),
+          name: sub.name,
+        })),
+      }));
+      setCategories(cats);
+    } catch (err: any) {
+      console.error('Failed to fetch categories:', err);
+      setCategoriesError(err.response?.data?.message || 'Failed to load categories');
+      setCategories([]);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }, []);
+  // Load categories on mount
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
   const [
     variants,
     setVariants,
@@ -630,10 +620,10 @@ const CreateProduct: React.FC = () => {
             product.description || ""
           );
           setSelectedCategoryId(
-            product.categoryId || ""
+            product.categoryId ? String(product.categoryId) : ""
           );
           setSelectedSubcategoryId(
-            product.subcategoryId || ""
+            product.subcategoryId ? String(product.subcategoryId) : ""
           );
           setAudioMode(
             product.audioMode || "text"
@@ -722,7 +712,6 @@ const CreateProduct: React.FC = () => {
               setCloudinaryUploadStatus("success");
             }
           } else if (product.videoUrl && product.videoUrl.startsWith('http')) {
-            // Only set if it's an HTTP URL (not blob)
             setExistingVideoUrl(product.videoUrl);
           }
           const existingAudioUrl =
@@ -949,7 +938,8 @@ const CreateProduct: React.FC = () => {
       return rest;
     });
   };
-  const handleAddNewCategory = () => {
+  // Add new category via API
+  const handleAddNewCategory = async () => {
     const name =
       newCategoryName.trim();
     if (!name) {
@@ -958,6 +948,7 @@ const CreateProduct: React.FC = () => {
       );
       return;
     }
+    // Check if category already exists locally
     const existing =
       categories.find(
         (c) =>
@@ -970,35 +961,43 @@ const CreateProduct: React.FC = () => {
       );
       return;
     }
-    const newCat: Category = {
-      id: `cat-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 6)}`,
-      name,
-      subcategories: [],
-    };
-    setCategories((prev) => [
-      ...prev,
-      newCat,
-    ]);
-    setSelectedCategoryId(
-      newCat.id
-    );
-    setSelectedSubcategoryId("");
-    setShowAddSubcategory(false);
-    setNewSubcategoryName("");
-    setNewSubcategoryError(null);
-    setShowAddCategory(false);
-    setNewCategoryName("");
     setNewCategoryError(null);
-    setErrors((prev) => {
-      const {
-        category,
-        subcategory,
-        ...rest
-      } = prev as any;
-      return rest;
-    });
+    try {
+      // Create category via API
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('description', '');
+      formData.append('order', '0');
+      formData.append('isActive', 'true');
+      formData.append('showInCategoryGrid', 'true');
+      formData.append('showInHero', 'false');
+      const response = await apiClient.post('/categories', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const newCat = response.data;
+      // Refetch categories to get updated list
+      await fetchCategories();
+      // Select the newly created category
+      setSelectedCategoryId(String(newCat.id));
+      setSelectedSubcategoryId("");
+      setShowAddSubcategory(false);
+      setNewSubcategoryName("");
+      setNewSubcategoryError(null);
+      setShowAddCategory(false);
+      setNewCategoryName("");
+      setNewCategoryError(null);
+      setErrors((prev) => {
+        const {
+          category,
+          subcategory,
+          ...rest
+        } = prev as any;
+        return rest;
+      });
+    } catch (err: any) {
+      console.error('Error creating category:', err);
+      setNewCategoryError(err.response?.data?.message || 'Failed to create category');
+    }
   };
   const handleCancelAddCategory =
     () => {
@@ -1006,67 +1005,68 @@ const CreateProduct: React.FC = () => {
       setNewCategoryName("");
       setNewCategoryError(null);
     };
-  const handleAddNewSubcategory =
-    () => {
-      const name =
-        newSubcategoryName.trim();
-      if (!name) {
-        setNewSubcategoryError(
-          "Subcategory name cannot be empty"
-        );
-        return;
-      }
-      if (!selectedCategoryId) {
-        setNewSubcategoryError(
-          "Please select a category first"
-        );
-        return;
-      }
-      const existing =
-        categories
-          .find(
-            (c) =>
-              c.id ===
-              selectedCategoryId
-          )
-          ?.subcategories.find(
-            (s) =>
-              s.name.toLowerCase() ===
-              name.toLowerCase()
-          );
-      if (existing) {
-        setNewSubcategoryError(
-          "A subcategory with this name already exists"
-        );
-        return;
-      }
-      const newSub: Subcategory = {
-        id: `sub-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 6)}`,
-        name,
-      };
-      setCategories((prev) =>
-        prev.map((c) =>
-          c.id ===
-          selectedCategoryId
-            ? {
-                ...c,
-                subcategories: [
-                  ...c.subcategories,
-                  newSub,
-                ],
-              }
-            : c
+  // Add new subcategory via API
+  const handleAddNewSubcategory = async () => {
+    const name =
+      newSubcategoryName.trim();
+    if (!name) {
+      setNewSubcategoryError(
+        "Subcategory name cannot be empty"
+      );
+      return;
+    }
+    if (!selectedCategoryId) {
+      setNewSubcategoryError(
+        "Please select a category first"
+      );
+      return;
+    }
+    // Check if subcategory already exists in the selected category
+    const existing =
+      categories
+        .find(
+          (c) =>
+            c.id ===
+            selectedCategoryId
         )
+        ?.subcategories.find(
+          (s) =>
+            s.name.toLowerCase() ===
+            name.toLowerCase()
+        );
+    if (existing) {
+      setNewSubcategoryError(
+        "A subcategory with this name already exists"
       );
-      setSelectedSubcategoryId(
-        newSub.id
-      );
+      return;
+    }
+    setNewSubcategoryError(null);
+    try {
+      // Create subcategory via API with parentId
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('parentId', selectedCategoryId);
+      formData.append('description', '');
+      formData.append('order', '0');
+      formData.append('isActive', 'true');
+      formData.append('showInCategoryGrid', 'true');
+      formData.append('showInHero', 'false');
+      const response = await apiClient.post('/categories', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const newSub = response.data;
+      // Refetch categories
+      await fetchCategories();
+      // Select the newly created subcategory
+      setSelectedSubcategoryId(String(newSub.id));
       setShowAddSubcategory(false);
       setNewSubcategoryName("");
       setNewSubcategoryError(null);
-    };
+    } catch (err: any) {
+      console.error('Error creating subcategory:', err);
+      setNewSubcategoryError(err.response?.data?.message || 'Failed to create subcategory');
+    }
+  };
   const handleCancelAddSubcategory =
     () => {
       setShowAddSubcategory(false);
@@ -1448,10 +1448,8 @@ const CreateProduct: React.FC = () => {
           price,
           sku,
           description,
-          categoryId:
-            selectedCategoryId,
-          subcategoryId:
-            selectedSubcategoryId,
+          categoryId: selectedCategoryId ? parseInt(selectedCategoryId, 10) : null,
+          subcategoryId: selectedSubcategoryId ? parseInt(selectedSubcategoryId, 10) : null,
           variants:
             variants.map((v) => ({
               sku: v.sku,
