@@ -579,6 +579,9 @@ const CreateProduct: React.FC = () => {
   const [showVideoEditor, setShowVideoEditor] = useState(false);
   const [editedVideoBlob, setEditedVideoBlob] = useState<Blob | null>(null);
   const [editedVideoUrl, setEditedVideoUrl] = useState<string | null>(null);
+  // Update only states
+  const [isUpdatingOnly, setIsUpdatingOnly] = useState(false);
+  const [updateOnlyError, setUpdateOnlyError] = useState<string | null>(null);
   const loadAudioFromUrl =
     useCallback(
       async (
@@ -1444,92 +1447,124 @@ const CreateProduct: React.FC = () => {
       }
       return uploadedUrls;
     };
+  // Core function to save product to database (used by both post and update-only)
+  const saveProductToDB = async () => {
+    setIsUploadingImages(true);
+    try {
+      const uploadedImageUrls =
+        await uploadAllImages();
+      setIsUploadingImages(false);
+      const productData = {
+        name: productName,
+        price,
+        sku,
+        description,
+        categoryId: selectedCategoryId ? parseInt(selectedCategoryId, 10) : null,
+        subcategoryId: selectedSubcategoryId ? parseInt(selectedSubcategoryId, 10) : null,
+        showInFeaturedProducts,
+        showInBestSellers,
+        showInNewArrivals,
+        showInPremiumProducts,
+        variants:
+          variants.map((v) => ({
+            sku: v.sku,
+            size: v.size,
+            color: v.color,
+            price: v.price,
+            costPrice:
+              v.costPrice,
+            stockQuantity:
+              v.stockQuantity,
+          })),
+        images:
+          uploadedImageUrls.filter(
+            (url) =>
+              url &&
+              url.startsWith(
+                "http"
+              )
+          ),
+        videoUrl:
+          videoKitUrl ||
+          videoUrl,
+        audioMode,
+        audioScript,
+        audioLanguage,
+        voiceGender,
+        videoLength,
+        audioUrl:
+          customAudioUrl ||
+          undefined,
+        cloudinaryVideoPublicId:
+          cloudinaryPublicId,
+        cloudinaryAudioPublicId:
+          null,
+      };
+      let response;
+      if (isEditMode) {
+        response =
+          await apiClient.put(
+            `/products/${editId}`,
+            productData
+          );
+      } else {
+        response =
+          await apiClient.post(
+            `/products`,
+            productData
+          );
+      }
+      if (response.data) {
+        return response.data;
+      } else {
+        throw new Error('Failed to save product');
+      }
+    } catch (err: any) {
+      console.error(
+        "Error saving product:",
+        err
+      );
+      throw err;
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+  // Handler for "Create & Post" or "Update & Post" (saves and then sets postSuccess)
   const handlePostToInstagram =
     async () => {
       setIsPosting(true);
       setCreateError(null);
       try {
-        setIsUploadingImages(true);
-        const uploadedImageUrls =
-          await uploadAllImages();
-        setIsUploadingImages(false);
-        const productData = {
-          name: productName,
-          price,
-          sku,
-          description,
-          categoryId: selectedCategoryId ? parseInt(selectedCategoryId, 10) : null,
-          subcategoryId: selectedSubcategoryId ? parseInt(selectedSubcategoryId, 10) : null,
-          showInFeaturedProducts,
-          showInBestSellers,
-          showInNewArrivals,
-          showInPremiumProducts,
-          variants:
-            variants.map((v) => ({
-              sku: v.sku,
-              size: v.size,
-              color: v.color,
-              price: v.price,
-              costPrice:
-                v.costPrice,
-              stockQuantity:
-                v.stockQuantity,
-            })),
-          images:
-            uploadedImageUrls.filter(
-              (url) =>
-                url &&
-                url.startsWith(
-                  "http"
-                )
-            ),
-          videoUrl:
-            videoKitUrl ||
-            videoUrl,
-          audioMode,
-          audioScript,
-          audioLanguage,
-          voiceGender,
-          videoLength,
-          audioUrl:
-            customAudioUrl ||
-            undefined,
-          cloudinaryVideoPublicId:
-            cloudinaryPublicId,
-          cloudinaryAudioPublicId:
-            null,
-        };
-        let response;
-        if (isEditMode) {
-          response =
-            await apiClient.put(
-              `/products/${editId}`,
-              productData
-            );
-        } else {
-          response =
-            await apiClient.post(
-              `/products`,
-              productData
-            );
-        }
-        if (response.data) {
-          setPostSuccess(true);
-        }
+        await saveProductToDB();
+        setPostSuccess(true);
       } catch (err: any) {
-        console.error(
-          "Error saving product:",
-          err
-        );
         setCreateError(
           err.response?.data
             ?.message ||
             err.message ||
             "Failed to save product"
         );
-        setIsUploadingImages(false);
       } finally {
         setIsPosting(false);
+      }
+    };
+  // Handler for "Update Only" (saves without posting)
+  const handleUpdateOnly =
+    async () => {
+      setIsUpdatingOnly(true);
+      setUpdateOnlyError(null);
+      try {
+        await saveProductToDB();
+        setPostSuccess(true); // Show success message
+      } catch (err: any) {
+        setUpdateOnlyError(
+          err.response?.data
+            ?.message ||
+            err.message ||
+            "Failed to update product"
+        );
+      } finally {
+        setIsUpdatingOnly(false);
       }
     };
   const resetAllState = () => {
@@ -1661,6 +1696,9 @@ const CreateProduct: React.FC = () => {
     setEditedVideoBlob(null);
     setEditedVideoUrl(null);
     setShowVideoEditor(false);
+    // Reset update-only states
+    setIsUpdatingOnly(false);
+    setUpdateOnlyError(null);
   };
   const handleBack = () => {
     if (currentStep > 1) {
@@ -3437,6 +3475,9 @@ const CreateProduct: React.FC = () => {
               }
               videoUrl={videoUrl || existingVideoUrl}
               cloudinaryPublicId={cloudinaryPublicId}
+              onUpdateProductOnly={handleUpdateOnly}
+              isUpdatingOnly={isUpdatingOnly}
+              updateOnlyError={updateOnlyError}
             />
           )}
         </div>
