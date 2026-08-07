@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save } from 'lucide-react';
 import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 interface PostToInstagramProps {
@@ -14,6 +14,10 @@ interface PostToInstagramProps {
   isEditMode?: boolean;
   videoUrl?: string | null;
   cloudinaryPublicId?: string | null;
+  // New props for update-only functionality
+  onUpdateProductOnly?: () => void;   // callback to save product details only
+  isUpdatingOnly?: boolean;           // loading state for update only
+  updateOnlyError?: string | null;    // error for update only
 }
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isPosting,
@@ -27,6 +31,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isEditMode = false,
   videoUrl = null,
   cloudinaryPublicId = null,
+  onUpdateProductOnly,
+  isUpdatingOnly = false,
+  updateOnlyError = null,
 }) => {
   const [instagramStatus, setInstagramStatus] = useState<{
     connected: boolean;
@@ -407,6 +414,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           <span>{publishSuccess}</span>
         </div>
       )}
+      {updateOnlyError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <span>{updateOnlyError}</span>
+        </div>
+      )}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected 
           ? 'bg-green-50 border-green-200' 
@@ -544,11 +557,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </div>
       )}
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+        {/* Primary button: Update & Post or Create & Post */}
         <button
           onClick={handlePublishToInstagram}
-          disabled={isPosting || !instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing}
+          disabled={isPosting || !instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly}
           className={`flex-1 btn-primary flex items-center justify-center gap-2 py-3 ${
-            (!instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing) ? 'opacity-50 cursor-not-allowed' : ''
+            (!instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
           {isPublishing || isPosting ? (
@@ -568,6 +582,34 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             </>
           )}
         </button>
+        {/* Update Only button - visible only in edit mode */}
+        {isEditMode && (
+          <button
+            onClick={() => {
+              if (onUpdateProductOnly) {
+                onUpdateProductOnly();
+              } else {
+                console.warn('onUpdateProductOnly prop is not provided');
+              }
+            }}
+            disabled={isUpdatingOnly || isPosting || isPublishing || isConnecting}
+            className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+              (isUpdatingOnly || isPosting || isPublishing || isConnecting) ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
+            {isUpdatingOnly ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>
+                <Save size={20} />
+                Update Only
+              </>
+            )}
+          </button>
+        )}
         <button
           onClick={resetAllState}
           className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
