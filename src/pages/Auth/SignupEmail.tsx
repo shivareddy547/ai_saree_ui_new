@@ -1,23 +1,21 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signup } from '../../services/authService';
-
 const SignupEmail: React.FC = () => {
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
         setLoading(true);
-
         try {
-            const response = await signup({ fullName, email, password });
-
+            const role = isAdmin ? 'admin' : 'user';
+            const response = await signup({ fullName, email, password, role });
             if (response.success) {
                 navigate('/signup-otp', { state: { email } });
             } else {
@@ -29,7 +27,6 @@ const SignupEmail: React.FC = () => {
             setLoading(false);
         }
     };
-
     return (
         <div className="min-h-screen flex bg-[#F3F4F6] items-center justify-center p-4">
             <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl overflow-hidden flex">
@@ -41,7 +38,6 @@ const SignupEmail: React.FC = () => {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                 </div>
-
                 <div className="w-full md:w-1/2 p-12 flex flex-col justify-center">
                     <div className="flex justify-center mb-8">
                         <div className="flex items-center gap-2">
@@ -51,21 +47,17 @@ const SignupEmail: React.FC = () => {
                             </span>
                         </div>
                     </div>
-
                     <h2 className="text-2xl font-bold text-center mb-2 text-slate-800">
                         Create your account
                     </h2>
-
                     <p className="text-center text-slate-500 mb-8">
                         Join SareeVibe and expand your business
                     </p>
-
                     {error && (
                         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
                             {error}
                         </div>
                     )}
-
                     <form className="space-y-4" onSubmit={handleSubmit}>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -81,7 +73,6 @@ const SignupEmail: React.FC = () => {
                                 disabled={loading}
                             />
                         </div>
-
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">
                                 Email address
@@ -96,7 +87,6 @@ const SignupEmail: React.FC = () => {
                                 disabled={loading}
                             />
                         </div>
-
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">
                                 Password
@@ -112,7 +102,19 @@ const SignupEmail: React.FC = () => {
                                 minLength={6}
                             />
                         </div>
-
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                id="admin"
+                                checked={isAdmin}
+                                onChange={(e) => setIsAdmin(e.target.checked)}
+                                disabled={loading}
+                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                            />
+                            <label htmlFor="admin" className="text-sm text-slate-700 font-medium">
+                                Register as Admin
+                            </label>
+                        </div>
                         <button
                             type="submit"
                             className="btn-primary w-full py-3 text-lg mt-4"
@@ -121,7 +123,6 @@ const SignupEmail: React.FC = () => {
                             {loading ? 'Signing up...' : 'Sign Up'}
                         </button>
                     </form>
-
                     <div className="mt-8 text-center">
                         <p className="text-slate-500">
                             Already have an account?{' '}
@@ -138,5 +139,4 @@ const SignupEmail: React.FC = () => {
         </div>
     );
 };
-
 export default SignupEmail;

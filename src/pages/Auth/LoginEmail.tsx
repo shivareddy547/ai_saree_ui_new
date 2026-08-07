@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { login } from '../../services/authService';
-
 // Session timeout duration in minutes (as per AUTH-001: 30 minutes inactivity)
 const SESSION_TIMEOUT_MINUTES = 30;
-
 // Basic JWT validation – checks structure and expiration
 const isTokenValid = (token: string): boolean => {
     try {
@@ -21,25 +19,28 @@ const isTokenValid = (token: string): boolean => {
         return false;
     }
 };
-
 const LoginEmail: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
-
-    // AUTH-001 Requirement 2: Session Validation
     // Check for existing valid session on component mount
     useEffect(() => {
         const token = localStorage.getItem('authToken');
         const sessionExpiry = localStorage.getItem('sessionExpiry');
-
+        const userStr = localStorage.getItem('user');
         if (token && sessionExpiry) {
             const expiryTime = parseInt(sessionExpiry, 10);
             if (Date.now() < expiryTime && isTokenValid(token)) {
-                // Session is still valid → redirect to dashboard
-                navigate('/dashboard');
+                // Session is still valid → redirect based on role
+                const user = userStr ? JSON.parse(userStr) : null;
+                console.log('[LoginEmail] Existing session user:', user);
+                if (user?.role === 'admin') {
+                    navigate('/dashboard');
+                } else {
+                    navigate('/store');
+                }
             } else {
                 // Session has expired or token invalid → clear storage
                 localStorage.removeItem('authToken');
@@ -49,57 +50,57 @@ const LoginEmail: React.FC = () => {
             }
         }
     }, [navigate]);
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
         setLoading(true);
-
         try {
             const response = await login({ email, password });
-
             if (response.success) {
-                // Extract user data from the nested structure
-                const userData = response.data?.data;
-
-                // Step 1: Ensure token is present
-                if (!userData?.token) {
+                // response.data = { success: true, data: { user: {...}, token } }
+                const result = response.data?.data;
+                if (!result) {
+                    setError('Invalid response from server. Please try again.');
+                    return;
+                }
+                const user = result.user;
+                const token = result.token;
+                // Log the full response for debugging
+                console.log('[LoginEmail] Full login response:', response.data);
+                console.log('[LoginEmail] User object from backend:', user);
+                // Step 1: Ensure token is present and valid
+                if (!token || typeof token !== 'string' || token.trim() === '') {
                     setError('Authentication failed. No token received. Please try again.');
                     return;
                 }
-
-                // Step 2: Ensure token is a non-empty string
-                if (typeof userData.token !== 'string' || userData.token.trim() === '') {
-                    setError('Authentication failed. No token received. Please try again.');
-                    return;
-                }
-
-                // Step 3: Validate the token (e.g., JWT format and expiration)
-                if (!isTokenValid(userData.token)) {
+                if (!isTokenValid(token)) {
                     setError('Authentication failed. Invalid token received. Please try again.');
                     return;
                 }
-
-                // All validations passed → store session data
-                localStorage.setItem('authToken', userData.token);
-
-                // Store user details (including isEmailVerified)
-                localStorage.setItem(
-                    'user',
-                    JSON.stringify({
-                        id: userData.id,
-                        fullName: userData.fullName,
-                        email: userData.email,
-                        isEmailVerified: userData.isEmailVerified ?? false,
-                    })
-                );
-
+                // Store token
+                localStorage.setItem('authToken', token);
+                // Store user details (including role)
+                const userData = {
+                    id: user.id,
+                    fullName: user.fullName,
+                    email: user.email,
+                    isEmailVerified: user.isEmailVerified ?? false,
+                    role: user.role || 'user',
+                };
+                localStorage.setItem('user', JSON.stringify(userData));
                 // Set session expiry (30 minutes from now)
                 const expiryTime = Date.now() + SESSION_TIMEOUT_MINUTES * 60 * 1000;
                 localStorage.setItem('sessionExpiry', expiryTime.toString());
-
-                // Navigate to dashboard after successful authentication
-                navigate('/dashboard');
+                // Log stored user data
+                console.log('[LoginEmail] Stored userData:', userData);
+                // Navigate based on role
+                const role = user.role || 'user';
+                console.log('[LoginEmail] Role determined:', role);
+                if (role === 'admin') {
+                    navigate('/dashboard');
+                } else {
+                    navigate('/store');
+                }
             } else {
                 setError(response.error || 'Login failed. Please try again.');
             }
@@ -109,13 +110,12 @@ const LoginEmail: React.FC = () => {
             setLoading(false);
         }
     };
-
     return (
         <div className="min-h-screen flex bg-[#F3F4F6] items-center justify-center p-4">
             <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl overflow-hidden flex">
                 <div className="hidden md:block w-1/2 relative">
                     <img
-                        src="https://images.unsplash.com/photo-1610030469983-9857967a0196?au&fit=crop&q=80&w=800"
+                        src="https://images.unsplash.com/photo-1610030469983-9857967a0196?auto=format&fit=crop&q=80&w=800"
                         className="h-full w-full object-cover"
                         alt="Saree Display"
                     />
@@ -136,13 +136,11 @@ const LoginEmail: React.FC = () => {
                     <p className="text-center text-slate-500 mb-8">
                         Login to your account
                     </p>
-
                     {error && (
                         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
                             {error}
                         </div>
                     )}
-
                     <form className="space-y-4" onSubmit={handleSubmit}>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -188,7 +186,6 @@ const LoginEmail: React.FC = () => {
                             {loading ? 'Logging in...' : 'Login'}
                         </button>
                     </form>
-
                     <div className="mt-8 text-center">
                         <p className="text-slate-500">
                             Don't have an account?{' '}
@@ -205,5 +202,4 @@ const LoginEmail: React.FC = () => {
         </div>
     );
 };
-
 export default LoginEmail;
