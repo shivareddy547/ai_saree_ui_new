@@ -3478,6 +3478,7 @@ const CreateProduct: React.FC = () => {
               onUpdateProductOnly={handleUpdateOnly}
               isUpdatingOnly={isUpdatingOnly}
               updateOnlyError={updateOnlyError}
+              onBack={handleBack}
             />
           )}
         </div>
