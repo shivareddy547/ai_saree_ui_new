@@ -20,6 +20,8 @@ interface PostToInstagramProps {
   updateOnlyError?: string | null;    // error for update only
   // Back button prop
   onBack?: () => void;                // callback to go back to previous step
+  // Product ID to check if product is saved
+  productId?: string | null;
 }
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isPosting,
@@ -37,6 +39,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isUpdatingOnly = false,
   updateOnlyError = null,
   onBack,
+  productId = null,
 }) => {
   const [instagramStatus, setInstagramStatus] = useState<{
     connected: boolean;
@@ -213,7 +216,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       });
       if (response.data.success) {
         setPublishSuccess('Video posted to Instagram successfully! 🎉');
-        handlePostToInstagram();
+        // Do not call handlePostToInstagram (which would save product again)
+        // Just show success message; product is already saved.
       }
     } catch (err: any) {
       console.error('Failed to post to Instagram:', err);
@@ -551,6 +555,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             <span className="text-gray-500">Cloudinary Video:</span>
             <span className="ml-2 font-medium">{cloudinaryPublicId ? '✅ Uploaded' : '❌ Not uploaded'}</span>
           </div>
+          <div className="sm:col-span-2">
+            <span className="text-gray-500">Product Saved:</span>
+            <span className="ml-2 font-medium">{productId ? '✅ Yes' : '❌ No'}</span>
+          </div>
         </div>
       </div>
       {createError && (
@@ -571,12 +579,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             Back
           </button>
         )}
-        {/* Primary button: Update & Post or Create & Post */}
+        {/* Primary button: Post to Instagram (only posts, assumes product saved) */}
         <button
           onClick={handlePublishToInstagram}
-          disabled={isPosting || !instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly}
+          disabled={isPosting || !instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly || !productId}
           className={`flex-1 btn-primary flex items-center justify-center gap-2 py-3 ${
-            (!instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly) ? 'opacity-50 cursor-not-allowed' : ''
+            (!instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly || !productId) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
           {isPublishing || isPosting ? (
@@ -592,7 +600,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           ) : (
             <>
               <Send size={20} />
-              {!cloudinaryPublicId ? 'Upload to Cloudinary First' : (isEditMode ? 'Update & Post' : 'Create & Post')}
+              {!cloudinaryPublicId ? 'Upload to Cloudinary First' : 'Post to Instagram'}
             </>
           )}
         </button>
@@ -629,6 +637,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           Start Over
         </button>
       </div>
+      {!productId && !isEditMode && (
+        <p className="text-sm text-yellow-600 text-center">
+          ⚠️ Please save the product first before posting to Instagram.
+        </p>
+      )}
       {!instagramStatus.connected && !isConnecting && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Connect your Instagram account to enable posting

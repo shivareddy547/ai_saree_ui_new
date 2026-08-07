@@ -582,6 +582,8 @@ const CreateProduct: React.FC = () => {
   // Update only states
   const [isUpdatingOnly, setIsUpdatingOnly] = useState(false);
   const [updateOnlyError, setUpdateOnlyError] = useState<string | null>(null);
+  // Product ID for tracking saved product
+  const [productId, setProductId] = useState<string | null>(null);
   const loadAudioFromUrl =
     useCallback(
       async (
@@ -614,6 +616,7 @@ const CreateProduct: React.FC = () => {
         if (response.data.success) {
           const product =
             response.data.data;
+          setProductId(id);
           setProductName(
             product.name || ""
           );
@@ -1515,6 +1518,12 @@ const CreateProduct: React.FC = () => {
           );
       }
       if (response.data) {
+        // Store product ID for future reference
+        if (!isEditMode && response.data?.data?.id) {
+          setProductId(response.data.data.id);
+        } else if (isEditMode) {
+          setProductId(editId);
+        }
         return response.data;
       } else {
         throw new Error('Failed to save product');
@@ -1529,27 +1538,8 @@ const CreateProduct: React.FC = () => {
       setIsUploadingImages(false);
     }
   };
-  // Handler for "Create & Post" or "Update & Post" (saves and then sets postSuccess)
-  const handlePostToInstagram =
-    async () => {
-      setIsPosting(true);
-      setCreateError(null);
-      try {
-        await saveProductToDB();
-        setPostSuccess(true);
-      } catch (err: any) {
-        setCreateError(
-          err.response?.data
-            ?.message ||
-            err.message ||
-            "Failed to save product"
-        );
-      } finally {
-        setIsPosting(false);
-      }
-    };
-  // Handler for "Update Only" (saves without posting)
-  const handleUpdateOnly =
+  // Handler for "Save" button (saves without posting)
+  const handleSaveOnly =
     async () => {
       setIsUpdatingOnly(true);
       setUpdateOnlyError(null);
@@ -1561,12 +1551,21 @@ const CreateProduct: React.FC = () => {
           err.response?.data
             ?.message ||
             err.message ||
-            "Failed to update product"
+            "Failed to save product"
         );
       } finally {
         setIsUpdatingOnly(false);
       }
     };
+  // Handler for "Post to Instagram" (only posts, assumes product is already saved)
+  const handlePostToInstagram = async () => {
+    // This function is called after a successful post to Instagram
+    // It just sets a flag or does nothing; product is already saved.
+    // We keep it to satisfy the prop requirement, but no operation is performed.
+    // Optionally, we could set a state to indicate that posting succeeded.
+    // But we already have publishSuccess in PostToInstagram component.
+    // So we do nothing.
+  };
   const resetAllState = () => {
     previews.forEach(
       (url) => {
@@ -1699,6 +1698,8 @@ const CreateProduct: React.FC = () => {
     // Reset update-only states
     setIsUpdatingOnly(false);
     setUpdateOnlyError(null);
+    // Reset productId
+    setProductId(null);
   };
   const handleBack = () => {
     if (currentStep > 1) {
@@ -3475,10 +3476,11 @@ const CreateProduct: React.FC = () => {
               }
               videoUrl={videoUrl || existingVideoUrl}
               cloudinaryPublicId={cloudinaryPublicId}
-              onUpdateProductOnly={handleUpdateOnly}
+              onUpdateProductOnly={handleSaveOnly}
               isUpdatingOnly={isUpdatingOnly}
               updateOnlyError={updateOnlyError}
               onBack={handleBack}
+              productId={productId}
             />
           )}
         </div>
