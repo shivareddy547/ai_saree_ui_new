@@ -350,6 +350,11 @@ const CreateProduct: React.FC = () => {
     newSubcategoryError,
     setNewSubcategoryError,
   ] = useState<string | null>(null);
+  // New flag states
+  const [showInFeaturedProducts, setShowInFeaturedProducts] = useState(false);
+  const [showInBestSellers, setShowInBestSellers] = useState(false);
+  const [showInNewArrivals, setShowInNewArrivals] = useState(false);
+  const [showInPremiumProducts, setShowInPremiumProducts] = useState(false);
   // Fetch categories from API
   const fetchCategories = useCallback(async () => {
     setCategoriesLoading(true);
@@ -625,6 +630,11 @@ const CreateProduct: React.FC = () => {
           setSelectedSubcategoryId(
             product.subcategoryId ? String(product.subcategoryId) : ""
           );
+          // Set flags
+          setShowInFeaturedProducts(product.showInFeaturedProducts || false);
+          setShowInBestSellers(product.showInBestSellers || false);
+          setShowInNewArrivals(product.showInNewArrivals || false);
+          setShowInPremiumProducts(product.showInPremiumProducts || false);
           setAudioMode(
             product.audioMode || "text"
           );
@@ -1450,6 +1460,10 @@ const CreateProduct: React.FC = () => {
           description,
           categoryId: selectedCategoryId ? parseInt(selectedCategoryId, 10) : null,
           subcategoryId: selectedSubcategoryId ? parseInt(selectedSubcategoryId, 10) : null,
+          showInFeaturedProducts,
+          showInBestSellers,
+          showInNewArrivals,
+          showInPremiumProducts,
           variants:
             variants.map((v) => ({
               sku: v.sku,
@@ -1589,6 +1603,10 @@ const CreateProduct: React.FC = () => {
     setShowAddSubcategory(false);
     setNewSubcategoryName("");
     setNewSubcategoryError(null);
+    setShowInFeaturedProducts(false);
+    setShowInBestSellers(false);
+    setShowInNewArrivals(false);
+    setShowInPremiumProducts(false);
     setVariants([
       createEmptyVariant(),
     ]);
@@ -3197,6 +3215,14 @@ const CreateProduct: React.FC = () => {
               handleSubcategoryChange={
                 handleSubcategoryChange
               }
+              showInFeaturedProducts={showInFeaturedProducts}
+              setShowInFeaturedProducts={setShowInFeaturedProducts}
+              showInBestSellers={showInBestSellers}
+              setShowInBestSellers={setShowInBestSellers}
+              showInNewArrivals={showInNewArrivals}
+              setShowInNewArrivals={setShowInNewArrivals}
+              showInPremiumProducts={showInPremiumProducts}
+              setShowInPremiumProducts={setShowInPremiumProducts}
             />
           )}
           {currentStep === 2 && (

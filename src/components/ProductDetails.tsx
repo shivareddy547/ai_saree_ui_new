@@ -61,6 +61,15 @@ interface ProductDetailsProps {
   handleCancelAddSubcategory: () => void;
   handleCategoryChange: (categoryId: string) => void;
   handleSubcategoryChange: (subcategoryId: string) => void;
+  // New flag props
+  showInFeaturedProducts: boolean;
+  setShowInFeaturedProducts: (value: boolean) => void;
+  showInBestSellers: boolean;
+  setShowInBestSellers: (value: boolean) => void;
+  showInNewArrivals: boolean;
+  setShowInNewArrivals: (value: boolean) => void;
+  showInPremiumProducts: boolean;
+  setShowInPremiumProducts: (value: boolean) => void;
 }
 
 const createEmptyVariant = (): ProductVariant => ({
@@ -112,6 +121,14 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   handleCancelAddSubcategory,
   handleCategoryChange,
   handleSubcategoryChange,
+  showInFeaturedProducts,
+  setShowInFeaturedProducts,
+  showInBestSellers,
+  setShowInBestSellers,
+  showInNewArrivals,
+  setShowInNewArrivals,
+  showInPremiumProducts,
+  setShowInPremiumProducts,
 }) => {
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
 
@@ -363,6 +380,59 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           )}
         </div>
       </div>
+
+      {/* New Flags Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            id="showInFeaturedProducts"
+            checked={showInFeaturedProducts}
+            onChange={(e) => setShowInFeaturedProducts(e.target.checked)}
+            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          <label htmlFor="showInFeaturedProducts" className="text-sm font-medium text-gray-700">
+            Show in Featured Products
+          </label>
+        </div>
+        <div className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            id="showInBestSellers"
+            checked={showInBestSellers}
+            onChange={(e) => setShowInBestSellers(e.target.checked)}
+            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          <label htmlFor="showInBestSellers" className="text-sm font-medium text-gray-700">
+            Show in Best Sellers
+          </label>
+        </div>
+        <div className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            id="showInNewArrivals"
+            checked={showInNewArrivals}
+            onChange={(e) => setShowInNewArrivals(e.target.checked)}
+            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          <label htmlFor="showInNewArrivals" className="text-sm font-medium text-gray-700">
+            Show in New Arrivals
+          </label>
+        </div>
+        <div className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            id="showInPremiumProducts"
+            checked={showInPremiumProducts}
+            onChange={(e) => setShowInPremiumProducts(e.target.checked)}
+            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          <label htmlFor="showInPremiumProducts" className="text-sm font-medium text-gray-700">
+            Show in Premium Products
+          </label>
+        </div>
+      </div>
+
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-700">Variants</h3>
