@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Upload } from 'lucide-react';
+import { X, Plus, Save, Edit2, Trash2, FolderPlus, ChevronDown, ChevronRight, Upload, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 // ===== INTERFACES =====
@@ -33,8 +33,8 @@ interface CategoryFormData {
   subtitle: string;
   highlightText: string;
   description: string;
-  image: string;
-  imageFile: File | null;
+  image: string;               // Cloudinary URL
+  imageFile: File | null;      // kept for reference, but not sent
   bgGradient: string;
   badgeText: string;
   badgeIcon: string;
@@ -82,7 +82,12 @@ const Categories: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Cloudinary configuration
+  const CLOUDINARY_CLOUD_NAME = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || '';
+  const CLOUDINARY_UPLOAD_PRESET = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET || '';
   // Available gradient options
   const gradientOptions = [
     'bg-gradient-to-r from-purple-500 to-indigo-500',
@@ -165,6 +170,26 @@ const Categories: React.FC = () => {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   };
+  // Upload image to Cloudinary
+  const uploadToCloudinary = async (file: File): Promise<string> => {
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      throw new Error('Cloudinary configuration missing. Please set REACT_APP_CLOUDINARY_CLOUD_NAME and REACT_APP_CLOUDINARY_UPLOAD_PRESET.');
+    }
+    const formDataUpload = new FormData();
+    formDataUpload.append('file', file);
+    formDataUpload.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formDataUpload,
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || 'Failed to upload image');
+    }
+    const data = await response.json();
+    return data.secure_url;
+  };
   const handleOpenModal = (category?: Category, parentId?: number | null) => {
     if (category) {
       setEditingCategory(category);
@@ -216,6 +241,8 @@ const Categories: React.FC = () => {
       setImagePreview(null);
     }
     setSubmitError(null);
+    setUploadError(null);
+    setIsUploading(false);
     setIsModalOpen(true);
   };
   const handleCloseModal = () => {
@@ -223,6 +250,8 @@ const Categories: React.FC = () => {
     setEditingCategory(null);
     setSubmitError(null);
     setImagePreview(null);
+    setUploadError(null);
+    setIsUploading(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -245,27 +274,42 @@ const Categories: React.FC = () => {
       }));
     }
   };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+    // Clear previous errors
+    setUploadError(null);
+    setIsUploading(true);
+    try {
+      // Upload to Cloudinary
+      const url = await uploadToCloudinary(file);
+      // Update form data with Cloudinary URL
       setFormData((prev) => ({
         ...prev,
-        imageFile: file,
+        image: url,
+        imageFile: null, // not needed anymore
       }));
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setImagePreview(url);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      setUploadError(err.message || 'Failed to upload image. Please try again.');
+      // Keep existing image if any
+    } finally {
+      setIsUploading(false);
     }
   };
   const handleRemoveImage = () => {
     setFormData((prev) => ({
       ...prev,
-      imageFile: null,
       image: '',
+      imageFile: null,
     }));
     setImagePreview(null);
+    setUploadError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -295,11 +339,12 @@ const Categories: React.FC = () => {
       if (formData.parentId) {
         formDataToSend.append('parentId', String(formData.parentId));
       }
-      if (formData.imageFile) {
-        formDataToSend.append('image', formData.imageFile);
-      } else if (formData.image) {
+      // Send Cloudinary URL if present
+      if (formData.image) {
         formDataToSend.append('imageUrl', formData.image);
       }
+      // If editing, send file if any (for backward compatibility, but we are not sending file anymore)
+      // So we skip file attachment.
       if (editingCategory) {
         await apiClient.put(`/categories/${editingCategory.id}`, formDataToSend, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -635,7 +680,7 @@ const Categories: React.FC = () => {
                     placeholder="Enter category description"
                   />
                 </div>
-                {/* Image Upload */}
+                {/* Image Upload with Cloudinary */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Category Image
@@ -646,10 +691,20 @@ const Categories: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors flex items-center gap-2"
+                          disabled={isUploading}
+                          className="px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Upload className="w-4 h-4" />
-                          <span>Upload Image</span>
+                          {isUploading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Uploading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4" />
+                              <span>Upload Image</span>
+                            </>
+                          )}
                         </button>
                         <input
                           ref={fileInputRef}
@@ -657,19 +712,24 @@ const Categories: React.FC = () => {
                           accept="image/*"
                           onChange={handleFileChange}
                           className="hidden"
+                          disabled={isUploading}
                         />
                         {imagePreview && (
                           <button
                             type="button"
                             onClick={handleRemoveImage}
                             className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                            disabled={isUploading}
                           >
                             Remove
                           </button>
                         )}
                       </div>
+                      {uploadError && (
+                        <p className="mt-1 text-sm text-red-500">{uploadError}</p>
+                      )}
                       <div className="mt-2 text-xs text-gray-500">
-                        Supported formats: JPG, PNG, GIF, WebP (Max 5MB)
+                        Supported formats: JPG, PNG, GIF, WebP (Max 10MB). Uploads to Cloudinary.
                       </div>
                       <div className="mt-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -907,7 +967,7 @@ const Categories: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isUploading}
                     className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {isSubmitting ? (
