@@ -1,22 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  ShoppingBag, 
-  Star, 
+import {
+  Star,
   Heart,
   ChevronRight,
   Clock,
   Truck,
   Shield,
-  ArrowRight,
-  Sparkles,
-  TrendingUp,
   Award,
+  TrendingUp,
   Zap,
   Gift,
   Gem
 } from 'lucide-react';
-import HeroBanner, { Banner } from '../../components/HeroBanner';
+import HeroBanner from '../../components/HeroBanner';
+
 // ===== COMPONENT: FeatureGrid =====
 interface Feature {
   icon: React.ElementType;
@@ -39,6 +37,7 @@ const FeatureGrid: React.FC<FeatureGridProps> = ({ features }) => {
     </div>
   );
 };
+
 // ===== COMPONENT: CategoryGrid =====
 interface Category {
   name: string;
@@ -77,6 +76,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ categories, viewAllLink, ti
     </div>
   );
 };
+
 // ===== COMPONENT: ProductCard =====
 interface Product {
   id: number;
@@ -93,7 +93,7 @@ interface ProductCardProps {
   link: string;
 }
 const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
-  const discount = product.originalPrice 
+  const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
   return (
@@ -133,6 +133,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
     </Link>
   );
 };
+
 // ===== COMPONENT: ProductGrid =====
 interface ProductGridProps {
   products: Product[];
@@ -140,11 +141,11 @@ interface ProductGridProps {
   viewAllLink: string;
   productLinkPrefix: string;
 }
-const ProductGrid: React.FC<ProductGridProps> = ({ 
-  products, 
-  title, 
-  viewAllLink, 
-  productLinkPrefix 
+const ProductGrid: React.FC<ProductGridProps> = ({
+  products,
+  title,
+  viewAllLink,
+  productLinkPrefix
 }) => {
   return (
     <div>
@@ -157,9 +158,9 @@ const ProductGrid: React.FC<ProductGridProps> = ({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {products.map((product) => (
-          <ProductCard 
-            key={product.id} 
-            product={product} 
+          <ProductCard
+            key={product.id}
+            product={product}
             link={`${productLinkPrefix}/${product.id}`}
           />
         ))}
@@ -167,6 +168,7 @@ const ProductGrid: React.FC<ProductGridProps> = ({
     </div>
   );
 };
+
 // ===== COMPONENT: DealBanner =====
 interface DealBannerProps {
   title: string;
@@ -216,6 +218,7 @@ const DealBanner: React.FC<DealBannerProps> = ({
     </div>
   );
 };
+
 // ===== MAIN PAGE =====
 const StoreHome: React.FC = () => {
   // Data configurations
@@ -255,42 +258,49 @@ const StoreHome: React.FC = () => {
     badgeText: 'Deal of the Day',
     bgGradient: 'bg-gradient-to-r from-yellow-50 via-orange-50 to-pink-50',
   };
-  // HeroBanner configuration
+  // HeroBanner now fetches from /categories (categories with showInHero=true),
+  // authenticated with the logged-in user's token.
   const heroBannerConfig = {
     autoPlayInterval: 5000,
     showIndicators: true,
     showArrows: true,
-    apiEndpoint: '/api/banners',
+    apiEndpoint: '/categories',
     fetchOnMount: true,
   };
   return (
     <div className="space-y-8">
-      {/* 1. Hero Banner Section - Carousel with API integration */}
+      {/* 1. Hero Banner Section - now backed by the categories API */}
       <HeroBanner {...heroBannerConfig} />
+
       {/* 2. Features Section */}
       <FeatureGrid features={features} />
+
       {/* 3. Shop by Category Section */}
-      <CategoryGrid 
-        categories={categories} 
-        viewAllLink="/store/products" 
+      <CategoryGrid
+        categories={categories}
+        viewAllLink="/store/products"
         title="Shop by Category"
       />
+
       {/* 4. Featured Products Section */}
-      <ProductGrid 
+      <ProductGrid
         products={featuredProducts}
         title="Featured Products"
         viewAllLink="/store/products"
         productLinkPrefix="/store/product"
       />
+
       {/* 5. Deal of the Day Section */}
       <DealBanner {...dealData} />
+
       {/* 6. New Arrivals Section */}
-      <ProductGrid 
+      <ProductGrid
         products={newArrivals}
         title="New Arrivals"
         viewAllLink="/store/products"
         productLinkPrefix="/store/product"
       />
+
       {/* 7. Quick Links / CTA Section */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
@@ -312,4 +322,5 @@ const StoreHome: React.FC = () => {
     </div>
   );
 };
+
 export default StoreHome;

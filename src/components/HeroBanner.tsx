@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import axios from 'axios';
+
 // ===== INTERFACES =====
 export interface Banner {
   id: string | number;
@@ -24,6 +25,31 @@ export interface Banner {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// Shape returned by GET /api/categories
+interface CategoryApiItem {
+  id: number;
+  name: string;
+  subtitle?: string;
+  highlightText?: string;
+  description?: string;
+  imageUrl?: string;
+  bgGradient?: string;
+  badgeText?: string;
+  badgeIcon?: string;
+  order: number;
+  isActive: boolean;
+  showInHero: boolean;
+  showInCategoryGrid: boolean;
+  permalink?: string;
+  primaryButtonText?: string;
+  primaryButtonLink?: string;
+  secondaryButtonText?: string;
+  secondaryButtonLink?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 interface HeroBannerProps {
   banners?: Banner[];
   autoPlayInterval?: number;
@@ -32,13 +58,116 @@ interface HeroBannerProps {
   apiEndpoint?: string;
   fetchOnMount?: boolean;
 }
+
+// ===== STATIC FALLBACK DATA (used if API fails / returns nothing) =====
+const FALLBACK_BANNERS: Banner[] = [
+  {
+    id: 1,
+    title: 'Summer Collection',
+    subtitle: 'New Collection',
+    highlightText: '2026',
+    description: 'Explore our exclusive saree collection with up to 50% off',
+    primaryButtonText: 'Shop Now',
+    primaryButtonLink: '/store/products',
+    secondaryButtonText: 'View Collections',
+    secondaryButtonLink: '/store/products',
+    bgGradient: 'bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600',
+    badgeText: 'New Collection',
+    badgeIcon: '✨',
+    order: 1,
+    isActive: true,
+    showInHero: true,
+    showInCategoryGrid: true,
+  },
+  {
+    id: 2,
+    title: 'Wedding Special',
+    subtitle: 'Bridal Collection',
+    highlightText: '2026',
+    description: 'Stunning bridal sarees for your special day',
+    primaryButtonText: 'Explore Now',
+    primaryButtonLink: '/store/products?category=wedding',
+    secondaryButtonText: 'View Collection',
+    secondaryButtonLink: '/store/products',
+    bgGradient: 'bg-gradient-to-r from-rose-600 via-pink-600 to-rose-600',
+    badgeText: 'Wedding Special',
+    badgeIcon: '💒',
+    order: 2,
+    isActive: true,
+    showInHero: true,
+    showInCategoryGrid: true,
+  },
+  {
+    id: 3,
+    title: 'Festive Collection',
+    subtitle: 'Festival Special',
+    highlightText: '2026',
+    description: 'Celebrate the festivals with our exquisite collection',
+    primaryButtonText: 'Shop Now',
+    primaryButtonLink: '/store/products',
+    secondaryButtonText: 'View Collection',
+    secondaryButtonLink: '/store/products',
+    bgGradient: 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600',
+    badgeText: 'Festival Special',
+    badgeIcon: '🎉',
+    order: 3,
+    isActive: true,
+    showInHero: true,
+    showInCategoryGrid: true,
+  },
+];
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
+// Auth-aware axios instance, mirroring the pattern used in Categories.tsx
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Map a Category API item into the Banner shape used by this component
+const mapCategoryToBanner = (category: CategoryApiItem): Banner => ({
+  id: category.id,
+  title: category.name,
+  subtitle: category.subtitle,
+  highlightText: category.highlightText,
+  description: category.description || '',
+  primaryButtonText: category.primaryButtonText || 'Shop Now',
+  primaryButtonLink:
+    category.primaryButtonLink ||
+    (category.permalink ? `/store/products?category=${category.permalink}` : '/store/products'),
+  secondaryButtonText: category.secondaryButtonText,
+  secondaryButtonLink: category.secondaryButtonLink,
+  image: category.imageUrl,
+  bgGradient: category.bgGradient || 'bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600',
+  badgeText: category.badgeText,
+  badgeIcon: category.badgeIcon,
+  order: category.order,
+  isActive: category.isActive,
+  showInHero: category.showInHero,
+  showInCategoryGrid: category.showInCategoryGrid,
+  createdAt: category.createdAt,
+  updatedAt: category.updatedAt,
+});
+
 // ===== COMPONENT: HeroBanner =====
 const HeroBanner: React.FC<HeroBannerProps> = ({
   banners: propBanners,
   autoPlayInterval = 5000,
   showIndicators = true,
   showArrows = true,
-  apiEndpoint = '/api/banners',
+  apiEndpoint = '/categories',
   fetchOnMount = true,
 }) => {
   const [banners, setBanners] = useState<Banner[]>(propBanners || []);
@@ -47,96 +176,44 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
-  // Fetch banners from API
+
+  // Fetch categories from the authenticated API and use showInHero ones as banners
   useEffect(() => {
     if (fetchOnMount && !propBanners) {
       fetchBanners();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchOnMount, propBanners]);
+
   // Set up auto-play
   useEffect(() => {
     if (banners.length > 1 && autoPlayInterval > 0) {
       startAutoPlay();
     }
     return () => stopAutoPlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banners.length, autoPlayInterval, currentIndex]);
+
   const fetchBanners = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.get(apiEndpoint);
-      // Filter active banners, show in hero, and sort by order
-      const activeBanners = response.data
-        ?.filter((banner: Banner) => banner.isActive !== false && banner.showInHero !== false)
-        ?.sort((a: Banner, b: Banner) => a.order - b.order) || [];
-      setBanners(activeBanners);
+      const response = await apiClient.get<CategoryApiItem[]>(apiEndpoint);
+      const activeBanners = (response.data || [])
+        .filter((category) => category.isActive !== false && category.showInHero === true)
+        .sort((a, b) => a.order - b.order)
+        .map(mapCategoryToBanner);
+      setBanners(activeBanners.length > 0 ? activeBanners : FALLBACK_BANNERS);
     } catch (err) {
       console.error('Error fetching banners:', err);
       setError('Failed to load banners');
-      // Use fallback banners if API fails
-      setBanners(getFallbackBanners());
+      // Use fallback banners if API fails (including auth failures)
+      setBanners(FALLBACK_BANNERS);
     } finally {
       setLoading(false);
     }
   };
-  const getFallbackBanners = (): Banner[] => {
-    return [
-      {
-        id: 1,
-        title: 'Summer Collection',
-        subtitle: 'New Collection',
-        highlightText: '2026',
-        description: 'Explore our exclusive saree collection with up to 50% off',
-        primaryButtonText: 'Shop Now',
-        primaryButtonLink: '/store/products',
-        secondaryButtonText: 'View Collections',
-        secondaryButtonLink: '/store/products',
-        bgGradient: 'bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600',
-        badgeText: 'New Collection',
-        badgeIcon: '✨',
-        order: 1,
-        isActive: true,
-        showInHero: true,
-        showInCategoryGrid: true,
-      },
-      {
-        id: 2,
-        title: 'Wedding Special',
-        subtitle: 'Bridal Collection',
-        highlightText: '2026',
-        description: 'Stunning bridal sarees for your special day',
-        primaryButtonText: 'Explore Now',
-        primaryButtonLink: '/store/products?category=wedding',
-        secondaryButtonText: 'View Collection',
-        secondaryButtonLink: '/store/products',
-        bgGradient: 'bg-gradient-to-r from-rose-600 via-pink-600 to-rose-600',
-        badgeText: 'Wedding Special',
-        badgeIcon: '💒',
-        order: 2,
-        isActive: true,
-        showInHero: true,
-        showInCategoryGrid: true,
-      },
-      {
-        id: 3,
-        title: 'Festive Collection',
-        subtitle: 'Festival Special',
-        highlightText: '2026',
-        description: 'Celebrate the festivals with our exquisite collection',
-        primaryButtonText: 'Shop Now',
-        primaryButtonLink: '/store/products',
-        secondaryButtonText: 'View Collection',
-        secondaryButtonLink: '/store/products',
-        bgGradient: 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600',
-        badgeText: 'Festival Special',
-        badgeIcon: '🎉',
-        order: 3,
-        isActive: true,
-        showInHero: true,
-        showInCategoryGrid: true,
-      },
-    ];
-  };
+
   const startAutoPlay = () => {
     if (autoPlayRef.current) {
       clearInterval(autoPlayRef.current);
@@ -147,38 +224,45 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
       }, autoPlayInterval);
     }
   };
+
   const stopAutoPlay = () => {
     if (autoPlayRef.current) {
       clearInterval(autoPlayRef.current);
       autoPlayRef.current = null;
     }
   };
+
   const goToNext = () => {
     if (isTransitioning || banners.length === 0) return;
     setIsTransitioning(true);
     setCurrentIndex((prev) => (prev + 1) % banners.length);
     setTimeout(() => setIsTransitioning(false), 500);
   };
+
   const goToPrevious = () => {
     if (isTransitioning || banners.length === 0) return;
     setIsTransitioning(true);
     setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
     setTimeout(() => setIsTransitioning(false), 500);
   };
+
   const goToSlide = (index: number) => {
     if (isTransitioning || index === currentIndex || banners.length === 0) return;
     setIsTransitioning(true);
     setCurrentIndex(index);
     setTimeout(() => setIsTransitioning(false), 500);
   };
+
   const handleMouseEnter = () => {
     stopAutoPlay();
   };
+
   const handleMouseLeave = () => {
     if (banners.length > 1 && autoPlayInterval > 0) {
       startAutoPlay();
     }
   };
+
   // Loading state
   if (loading) {
     return (
@@ -189,6 +273,7 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
       </div>
     );
   }
+
   // Error state with fallback
   if (error && banners.length === 0) {
     return (
@@ -196,7 +281,7 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
         <div className="text-red-600 text-center">
           <p className="font-semibold">Unable to load banners</p>
           <p className="text-sm mt-2">{error}</p>
-          <button 
+          <button
             onClick={fetchBanners}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
@@ -206,6 +291,7 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
       </div>
     );
   }
+
   // No banners available
   if (banners.length === 0) {
     return (
@@ -216,9 +302,11 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
       </div>
     );
   }
+
   const currentBanner = banners[currentIndex];
+
   return (
-    <div 
+    <div
       className="relative overflow-hidden rounded-2xl group"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -323,4 +411,5 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
     </div>
   );
 };
+
 export default HeroBanner;
