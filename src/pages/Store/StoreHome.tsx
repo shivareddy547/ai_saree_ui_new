@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Star,
@@ -13,8 +13,47 @@ import {
   Gift,
   Gem
 } from 'lucide-react';
+import axios from 'axios';
 import HeroBanner from '../../components/HeroBanner';
-
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+// Shape returned by GET /api/categories
+interface CategoryApiItem {
+  id: number;
+  name: string;
+  subtitle?: string;
+  highlightText?: string;
+  description?: string;
+  imageUrl?: string;
+  bgGradient?: string;
+  badgeText?: string;
+  badgeIcon?: string;
+  order: number;
+  isActive: boolean;
+  showInHero: boolean;
+  showInCategoryGrid: boolean;
+  permalink?: string;
+  primaryButtonText?: string;
+  primaryButtonLink?: string;
+  secondaryButtonText?: string;
+  secondaryButtonLink?: string;
+  subCategories?: { id: number; name: string }[];
+  createdAt?: string;
+  updatedAt?: string;
+}
 // ===== COMPONENT: FeatureGrid =====
 interface Feature {
   icon: React.ElementType;
@@ -37,20 +76,85 @@ const FeatureGrid: React.FC<FeatureGridProps> = ({ features }) => {
     </div>
   );
 };
-
-// ===== COMPONENT: CategoryGrid =====
+// ===== COMPONENT: CategoryGrid (current UI, dynamic data) =====
 interface Category {
+  id: number;
   name: string;
   icon: string;
   count: number;
-  color?: string;
+  permalink?: string;
+  link: string;
 }
 interface CategoryGridProps {
   categories: Category[];
   viewAllLink: string;
   title: string;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
-const CategoryGrid: React.FC<CategoryGridProps> = ({ categories, viewAllLink, title }) => {
+const CategoryGrid: React.FC<CategoryGridProps> = ({
+  categories,
+  viewAllLink,
+  title,
+  loading,
+  error,
+  onRetry,
+}) => {
+  if (loading) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 h-28 animate-pulse"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <p className="text-red-600 font-medium">{error}</p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-3 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (categories.length === 0) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+          <Link to={viewAllLink} className="text-purple-600 text-sm font-medium flex items-center gap-1 hover:text-purple-700 transition-colors">
+            View All
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+          <p className="text-gray-500">No categories available</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -63,20 +167,21 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ categories, viewAllLink, ti
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {categories.map((category) => (
           <Link
-            key={category.name}
-            to={viewAllLink}
+            key={category.id}
+            to={category.link}
             className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 text-center hover:shadow-md transition-all group hover:-translate-y-1"
           >
             <div className="text-3xl mb-2">{category.icon}</div>
             <h3 className="font-medium text-gray-900 text-sm">{category.name}</h3>
-            <p className="text-xs text-gray-500">{category.count} items</p>
+            {category.count > 0 && (
+              <p className="text-xs text-gray-500">{category.count} items</p>
+            )}
           </Link>
         ))}
       </div>
     </div>
   );
 };
-
 // ===== COMPONENT: ProductCard =====
 interface Product {
   id: number;
@@ -133,7 +238,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
     </Link>
   );
 };
-
 // ===== COMPONENT: ProductGrid =====
 interface ProductGridProps {
   products: Product[];
@@ -168,7 +272,6 @@ const ProductGrid: React.FC<ProductGridProps> = ({
     </div>
   );
 };
-
 // ===== COMPONENT: DealBanner =====
 interface DealBannerProps {
   title: string;
@@ -218,23 +321,51 @@ const DealBanner: React.FC<DealBannerProps> = ({
     </div>
   );
 };
-
 // ===== MAIN PAGE =====
 const StoreHome: React.FC = () => {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const fetchCategories = async () => {
+    try {
+      setCategoriesLoading(true);
+      setCategoriesError(null);
+      const response = await apiClient.get<CategoryApiItem[]>('/categories');
+      const activeCategories = (response.data || [])
+        .filter(
+          (cat) => cat.isActive !== false && cat.showInCategoryGrid === true
+        )
+        .sort((a, b) => a.order - b.order)
+        .map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          icon: cat.badgeIcon || '👗',
+          count: Array.isArray(cat.subCategories) ? cat.subCategories.length : 0,
+          permalink: cat.permalink,
+          link:
+            cat.primaryButtonLink ||
+            (cat.permalink
+              ? `/store/products?category=${cat.permalink}`
+              : '/store/products'),
+        }));
+      setCategories(activeCategories);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+      setCategoriesError('Failed to load categories');
+      setCategories([]);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+  useEffect(() => {
+    fetchCategories();
+  }, []);
   // Data configurations
   const features: Feature[] = [
     { icon: Truck, label: 'Free Shipping', desc: 'On orders above ₹999' },
     { icon: Shield, label: 'Secure Payment', desc: '100% secure transactions' },
     { icon: Clock, label: 'Easy Returns', desc: '30-day return policy' },
     { icon: Award, label: 'Quality Assured', desc: 'Premium quality products' },
-  ];
-  const categories: Category[] = [
-    { name: 'Silk Sarees', icon: '👗', count: 45 },
-    { name: 'Cotton Sarees', icon: '👘', count: 32 },
-    { name: 'Designer Sarees', icon: '✨', count: 28 },
-    { name: 'Party Wear', icon: '💃', count: 19 },
-    { name: 'Daily Wear', icon: '🛍️', count: 56 },
-    { name: 'Wedding Collection', icon: '💒', count: 23 },
   ];
   const featuredProducts: Product[] = [
     { id: 1, name: 'Designer Silk Saree', price: 2499, originalPrice: 3499, rating: 4.8, reviews: 120, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
@@ -271,17 +402,17 @@ const StoreHome: React.FC = () => {
     <div className="space-y-8">
       {/* 1. Hero Banner Section - now backed by the categories API */}
       <HeroBanner {...heroBannerConfig} />
-
       {/* 2. Features Section */}
       <FeatureGrid features={features} />
-
-      {/* 3. Shop by Category Section */}
+      {/* 3. Shop by Category Section - dynamic from categories API */}
       <CategoryGrid
         categories={categories}
         viewAllLink="/store/products"
         title="Shop by Category"
+        loading={categoriesLoading}
+        error={categoriesError}
+        onRetry={fetchCategories}
       />
-
       {/* 4. Featured Products Section */}
       <ProductGrid
         products={featuredProducts}
@@ -289,10 +420,8 @@ const StoreHome: React.FC = () => {
         viewAllLink="/store/products"
         productLinkPrefix="/store/product"
       />
-
       {/* 5. Deal of the Day Section */}
       <DealBanner {...dealData} />
-
       {/* 6. New Arrivals Section */}
       <ProductGrid
         products={newArrivals}
@@ -300,7 +429,6 @@ const StoreHome: React.FC = () => {
         viewAllLink="/store/products"
         productLinkPrefix="/store/product"
       />
-
       {/* 7. Quick Links / CTA Section */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
@@ -322,5 +450,4 @@ const StoreHome: React.FC = () => {
     </div>
   );
 };
-
 export default StoreHome;
