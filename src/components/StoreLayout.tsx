@@ -16,7 +16,6 @@ import {
   Store,
   ChevronRight
 } from 'lucide-react';
-
 const StoreLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,27 +23,43 @@ const StoreLayout: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [cartCount, setCartCount] = useState(3);
   const [wishlistCount, setWishlistCount] = useState(5);
-
+  // Get user info from localStorage
+  const userStr = localStorage.getItem('user');
+  let userName = 'User';
+  let userEmail = 'user@example.com';
+  let userInitials = 'U';
+  if (userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      userName = user.fullName || 'User';
+      userEmail = user.email || 'user@example.com';
+      userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+    } catch (e) {
+      // ignore
+    }
+  }
   // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
-
   const navItems = [
     { path: '/store/home', label: 'Home', icon: Home },
     { path: '/store/products', label: 'Products', icon: Package },
     { path: '/store/orders', label: 'Orders', icon: ShoppingBag },
     { path: '/store/cart', label: 'Cart', icon: ShoppingBag },
   ];
-
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
-
   const handleLogout = () => {
+    // Clear all authentication data
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+    localStorage.removeItem('sessionExpiry');
+    localStorage.removeItem('sessionId');
+    // Navigate to login page
     navigate('/login');
   };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       {/* Top Header */}
@@ -60,7 +75,6 @@ const StoreLayout: React.FC = () => {
                 SareeStore
               </span>
             </Link>
-
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-1">
               {navItems.map((item) => (
@@ -77,7 +91,6 @@ const StoreLayout: React.FC = () => {
                 </Link>
               ))}
             </nav>
-
             {/* Right Actions */}
             <div className="flex items-center gap-2">
               {/* Search - Desktop */}
@@ -89,7 +102,6 @@ const StoreLayout: React.FC = () => {
                   className="w-48 pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
                 />
               </div>
-
               {/* Wishlist */}
               <Link
                 to="/store/wishlist"
@@ -102,7 +114,6 @@ const StoreLayout: React.FC = () => {
                   </span>
                 )}
               </Link>
-
               {/* Cart */}
               <Link
                 to="/store/cart"
@@ -115,7 +126,6 @@ const StoreLayout: React.FC = () => {
                   </span>
                 )}
               </Link>
-
               {/* Profile */}
               <div className="relative">
                 <button
@@ -123,20 +133,20 @@ const StoreLayout: React.FC = () => {
                   className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm">
-                    JD
+                    {userInitials}
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
                 </button>
-
                 {showProfileMenu && (
                   <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
                     <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="font-medium text-gray-900">John Doe</p>
-                      <p className="text-sm text-gray-500">john@example.com</p>
+                      <p className="font-medium text-gray-900">{userName}</p>
+                      <p className="text-sm text-gray-500">{userEmail}</p>
                     </div>
                     <Link
                       to="/store/orders"
                       className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors text-gray-700"
+                      onClick={() => setShowProfileMenu(false)}
                     >
                       <Package className="w-4 h-4" />
                       <span className="text-sm">My Orders</span>
@@ -144,6 +154,7 @@ const StoreLayout: React.FC = () => {
                     <Link
                       to="/store/wishlist"
                       className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors text-gray-700"
+                      onClick={() => setShowProfileMenu(false)}
                     >
                       <Heart className="w-4 h-4" />
                       <span className="text-sm">Wishlist</span>
@@ -151,6 +162,7 @@ const StoreLayout: React.FC = () => {
                     <Link
                       to="/store/settings"
                       className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors text-gray-700"
+                      onClick={() => setShowProfileMenu(false)}
                     >
                       <Settings className="w-4 h-4" />
                       <span className="text-sm">Settings</span>
@@ -167,7 +179,6 @@ const StoreLayout: React.FC = () => {
                   </div>
                 )}
               </div>
-
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -181,7 +192,6 @@ const StoreLayout: React.FC = () => {
               </button>
             </div>
           </div>
-
           {/* Mobile Search */}
           <div className="md:hidden pb-3">
             <div className="relative">
@@ -194,7 +204,6 @@ const StoreLayout: React.FC = () => {
             </div>
           </div>
         </div>
-
         {/* Mobile Menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 py-2">
@@ -236,12 +245,10 @@ const StoreLayout: React.FC = () => {
           </div>
         )}
       </header>
-
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Outlet />
       </main>
-
       {/* Footer */}
       <footer className="bg-white/80 backdrop-blur-md border-t border-purple-100 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -283,5 +290,4 @@ const StoreLayout: React.FC = () => {
     </div>
   );
 };
-
 export default StoreLayout;
