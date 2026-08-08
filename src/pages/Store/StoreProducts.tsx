@@ -42,13 +42,19 @@ const ProductCard: React.FC<{ product: Product; link: string }> = ({ product, li
     e.stopPropagation();
     const firstVariant = product.variants && product.variants.length > 0 ? product.variants[0] : null;
     if (!firstVariant) {
-      console.error('No variant available for product');
+      alert('This product is not configured correctly. Please contact support.');
+      return;
+    }
+    // Use product.price (computed from basePrice or variant) instead of firstVariant.price directly
+    const price = product.price;
+    if (typeof price !== 'number' || price <= 0) {
+      alert('This product has an invalid price.');
       return;
     }
     await addToCart({
       id: product.id,
       name: product.name,
-      price: product.price,
+      price: price,
       image: product.image,
       variantId: firstVariant.id,
     });
@@ -114,13 +120,28 @@ const StoreProducts: React.FC = () => {
     }
   };
   const mapProduct = (apiProduct: any): Product => {
-    const firstVariant = apiProduct.variants && apiProduct.variants.length > 0 ? apiProduct.variants[0] : null;
-    const price = firstVariant ? parseFloat(firstVariant.price) : 0;
-    const costPrice = firstVariant && firstVariant.costPrice ? parseFloat(firstVariant.costPrice) : null;
-    const originalPrice = costPrice && costPrice > price ? costPrice : undefined;
+    let price = 0;
+    let originalPrice = undefined;
+    let colors: string[] = [];
+    let sizes: string[] = [];
+    if (apiProduct.variants && apiProduct.variants.length > 0) {
+      const firstVariant = apiProduct.variants[0];
+      const variantPrice = parseFloat(firstVariant.price);
+      if (!isNaN(variantPrice) && variantPrice > 0) {
+        price = variantPrice;
+      } else {
+        price = apiProduct.basePrice ? parseFloat(apiProduct.basePrice) : 0;
+      }
+      const costPrice = firstVariant.costPrice ? parseFloat(firstVariant.costPrice) : null;
+      if (costPrice && costPrice > price) {
+        originalPrice = costPrice;
+      }
+      colors = apiProduct.variants.map((v: any) => v.color).filter(Boolean);
+      sizes = apiProduct.variants.map((v: any) => v.size).filter(Boolean);
+    } else {
+      price = apiProduct.basePrice ? parseFloat(apiProduct.basePrice) : 0;
+    }
     const image = apiProduct.images && apiProduct.images.length > 0 ? apiProduct.images[0].url : 'https://via.placeholder.com/300x400?text=No+Image';
-    const colors = apiProduct.variants ? apiProduct.variants.map((v: any) => v.color).filter(Boolean) : [];
-    const sizes = apiProduct.variants ? apiProduct.variants.map((v: any) => v.size).filter(Boolean) : [];
     return {
       id: apiProduct.id,
       name: apiProduct.name,
