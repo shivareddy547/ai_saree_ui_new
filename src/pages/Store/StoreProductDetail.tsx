@@ -16,11 +16,14 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
+
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
@@ -31,6 +34,7 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
 // Types
 interface ProductVariant {
   id: string;
@@ -41,16 +45,20 @@ interface ProductVariant {
   costPrice?: number;
   stockQuantity: number;
 }
+
 interface ProductImage {
   id: string;
   url: string;
   position: number;
 }
+
 interface Product {
   id: string;
   name: string;
   description: string;
   basePrice: number;
+  costPrice?: number;
+  stockQuantity?: number;
   defaultSku: string;
   videoUrl?: string;
   variants: ProductVariant[];
@@ -64,6 +72,7 @@ interface Product {
   createdAt: string;
   updatedAt: string;
 }
+
 const StoreProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { addToCart } = useCart();
@@ -73,18 +82,22 @@ const StoreProductDetail: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
+
   // Variant selection
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
+
   // Derived: unique colors and sizes from variants
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
+
   useEffect(() => {
     if (id) {
       fetchProduct(id);
     }
   }, [id]);
+
   const fetchProduct = async (productId: string) => {
     try {
       setLoading(true);
@@ -92,22 +105,33 @@ const StoreProductDetail: React.FC = () => {
       const response = await apiClient.get(`/store/products/${productId}`);
       const data = response.data.data;
       setProduct(data);
+
       let variants = data.variants || [];
-      // If no variants, create a synthetic one from basePrice and defaultSku
-      if (variants.length === 0) {
+
+      // Check if there are any meaningful variants (with a non-empty SKU)
+      const meaningfulVariants = variants.filter((v: ProductVariant) => v.sku && v.sku.trim() !== '');
+
+      // If no meaningful variants, create a synthetic one using product-level fields
+      if (meaningfulVariants.length === 0) {
         const syntheticVariant: ProductVariant = {
-          id: data.id + '-default', // dummy ID, will be handled by backend if needed
-          sku: data.defaultSku || 'default',
+          id: data.id + '-default',
+          sku: data.defaultSku || 'N/A',
           size: '',
           color: '',
           price: data.basePrice || 0,
-          stockQuantity: 999999, // mark as in stock
+          costPrice: data.costPrice !== undefined ? data.costPrice : undefined,
+          stockQuantity: data.stockQuantity !== undefined ? data.stockQuantity : 0,
         };
         variants = [syntheticVariant];
+      } else {
+        // Use only meaningful variants for selection
+        variants = meaningfulVariants;
       }
+
       // Find first available variant with stock > 0, else first
       const firstAvailable = variants.find((v: ProductVariant) => v.stockQuantity > 0) || variants[0];
       setSelectedVariant(firstAvailable);
+
       // Extract unique colors and sizes
       const colorSet = new Set<string>();
       const sizeSet = new Set<string>();
@@ -117,6 +141,7 @@ const StoreProductDetail: React.FC = () => {
       });
       setColors(Array.from(colorSet));
       setSizes(Array.from(sizeSet));
+
       if (firstAvailable.color) setSelectedColor(firstAvailable.color);
       if (firstAvailable.size) setSelectedSize(firstAvailable.size);
     } catch (err: any) {
@@ -126,34 +151,48 @@ const StoreProductDetail: React.FC = () => {
       setLoading(false);
     }
   };
+
   // Update selected variant when color or size changes
   useEffect(() => {
-    if (!product || !product.variants || product.variants.length === 0) {
-      // If no variants, we already have a synthetic variant set, do nothing
+    if (!product) return;
+    if (!product.variants || product.variants.length === 0) {
+      // No variants, synthetic variant already set, do nothing
       return;
     }
-    let matched = product.variants.find(v =>
+    // Use only meaningful variants for matching
+    const meaningfulVariants = product.variants.filter((v: ProductVariant) => v.sku && v.sku.trim() !== '');
+    if (meaningfulVariants.length === 0) return;
+
+    let matched = meaningfulVariants.find((v: ProductVariant) =>
       (selectedColor ? v.color === selectedColor : true) &&
       (selectedSize ? v.size === selectedSize : true)
     );
-    if (!matched && product.variants.length > 0) {
-      matched = product.variants[0];
+    if (!matched && meaningfulVariants.length > 0) {
+      matched = meaningfulVariants[0];
     }
     setSelectedVariant(matched || null);
   }, [selectedColor, selectedSize, product]);
+
   const handleQuantityChange = (delta: number) => {
     setQuantity(Math.max(1, quantity + delta));
   };
+
   const handleAddToCart = async () => {
     if (!product) return;
+
     // Determine the variant to use
     let variant = selectedVariant;
     let price = variant ? variant.price : product.basePrice || 0;
-    // If no variant selected but product has variants, use first
+
+    // If no variant selected but product has variants, use first meaningful variant
     if (!variant && product.variants && product.variants.length > 0) {
-      variant = product.variants[0];
-      price = variant.price;
+      const meaningful = product.variants.filter((v: ProductVariant) => v.sku && v.sku.trim() !== '');
+      if (meaningful.length > 0) {
+        variant = meaningful[0];
+        price = variant.price;
+      }
     }
+
     // If still no variant, fallback to synthetic (should not happen)
     if (!variant) {
       // Create synthetic variant from product data
@@ -161,15 +200,15 @@ const StoreProductDetail: React.FC = () => {
         id: product.id + '-default',
         sku: product.defaultSku || 'default',
         price: product.basePrice || 0,
-        stockQuantity: 999999,
+        stockQuantity: product.stockQuantity !== undefined ? product.stockQuantity : 0,
         size: '',
         color: '',
       };
       price = variant.price;
     }
+
     // Validate price
     if (typeof price !== 'number' || price <= 0) {
-      // Fallback to basePrice if variant price is 0
       if (product.basePrice && product.basePrice > 0) {
         price = product.basePrice;
       } else {
@@ -177,6 +216,7 @@ const StoreProductDetail: React.FC = () => {
         return;
       }
     }
+
     await addToCart({
       id: product.id,
       name: product.name,
@@ -185,9 +225,11 @@ const StoreProductDetail: React.FC = () => {
       variantId: variant.id,
     });
   };
+
   const toggleVideo = () => {
     setShowVideo(!showVideo);
   };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -206,6 +248,7 @@ const StoreProductDetail: React.FC = () => {
       </div>
     );
   }
+
   if (error || !product) {
     return (
       <div className="text-center py-12">
@@ -216,21 +259,37 @@ const StoreProductDetail: React.FC = () => {
       </div>
     );
   }
+
   // Compute discount from selected variant or base
   const variantPrice = selectedVariant ? selectedVariant.price : product.basePrice || 0;
   const costPrice = selectedVariant ? selectedVariant.costPrice : null;
   const originalPrice = (costPrice && costPrice > variantPrice) ? costPrice : undefined;
   const discount = originalPrice ? Math.round(((originalPrice - variantPrice) / originalPrice) * 100) : 0;
+
   // Images: use product.images, fallback to placeholder
   const images = product.images && product.images.length > 0
     ? product.images.map(img => img.url)
     : ['https://via.placeholder.com/600x800?text=No+Image'];
-  const hasVariants = product.variants && product.variants.length > 0;
-  // For stock display: show selected variant's stock quantity if available, else treat as in stock with high number
-  const stockQuantity = selectedVariant ? selectedVariant.stockQuantity : 999999;
+
+  // Determine if there are any meaningful variants (with non-empty SKU)
+  const meaningfulVariants = product.variants ? product.variants.filter((v: ProductVariant) => v.sku && v.sku.trim() !== '') : [];
+  const hasVariants = meaningfulVariants.length > 0;
+
+  // For stock display: show selected variant's stock quantity if available, else treat as out of stock
+  const stockQuantity = selectedVariant ? selectedVariant.stockQuantity : 0;
   const isInStock = stockQuantity > 0;
-  // Enable add to cart if we have a variant (selected or synthetic)
-  const canAddToCart = selectedVariant !== null;
+
+  // Enable add to cart only if we have a variant and it's in stock
+  const canAddToCart = selectedVariant !== null && isInStock;
+
+  // Determine SKU to display
+  let displaySku = 'N/A';
+  if (hasVariants) {
+    displaySku = selectedVariant ? selectedVariant.sku : product.defaultSku || 'N/A';
+  } else {
+    displaySku = product.defaultSku || 'N/A';
+  }
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
@@ -241,6 +300,7 @@ const StoreProductDetail: React.FC = () => {
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium truncate">{product.name}</span>
       </nav>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Product Images / Video */}
         <div>
@@ -308,6 +368,7 @@ const StoreProductDetail: React.FC = () => {
             )}
           </div>
         </div>
+
         {/* Product Info */}
         <div className="space-y-6">
           <div>
@@ -333,6 +394,7 @@ const StoreProductDetail: React.FC = () => {
               <button className="text-sm text-purple-600 hover:text-purple-700 font-medium">Write a review</button>
             </div>
           </div>
+
           {/* Price */}
           <div className="flex items-center gap-3">
             <span className="text-3xl font-bold text-purple-600">₹{variantPrice}</span>
@@ -345,11 +407,14 @@ const StoreProductDetail: React.FC = () => {
               </span>
             )}
           </div>
+
           {/* Description */}
           <p className="text-gray-600 leading-relaxed">{product.description || 'No description available.'}</p>
-          {/* SKU */}
-          <p className="text-sm text-gray-400">SKU: {selectedVariant ? selectedVariant.sku : product.defaultSku}</p>
-          {/* Variant Selection */}
+
+          {/* SKU - always show product defaultSku if no variants, else selected variant's sku */}
+          <p className="text-sm text-gray-400">SKU: {displaySku}</p>
+
+          {/* Variant Selection - only show if there are meaningful variants */}
           {hasVariants && (
             <>
               {colors.length > 0 && (
@@ -392,9 +457,7 @@ const StoreProductDetail: React.FC = () => {
               )}
             </>
           )}
-          {!hasVariants && (
-            <div className="text-sm text-yellow-600">This product has no configured variants, but you can still purchase it.</div>
-          )}
+
           {/* Quantity and Stock */}
           <div>
             <h3 className="font-medium text-gray-900 mb-2">Quantity</h3>
@@ -403,6 +466,7 @@ const StoreProductDetail: React.FC = () => {
                 <button
                   onClick={() => handleQuantityChange(-1)}
                   className="px-3 py-2 hover:bg-gray-50 transition-colors text-gray-600"
+                  disabled={!isInStock}
                 >
                   <Minus className="w-4 h-4" />
                 </button>
@@ -412,6 +476,7 @@ const StoreProductDetail: React.FC = () => {
                 <button
                   onClick={() => handleQuantityChange(1)}
                   className="px-3 py-2 hover:bg-gray-50 transition-colors text-gray-600"
+                  disabled={!isInStock}
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -421,21 +486,27 @@ const StoreProductDetail: React.FC = () => {
               </span>
             </div>
           </div>
+
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleAddToCart}
               disabled={!canAddToCart}
-              className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`flex-1 px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all ${
+                canAddToCart
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:shadow-lg'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
               <ShoppingBag className="w-5 h-5" />
-              Add to Cart
+              {isInStock ? 'Add to Cart' : 'Out of Stock'}
             </button>
             <button className="flex-1 bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold border-2 border-purple-600 hover:bg-purple-50 transition-colors flex items-center justify-center gap-2">
               <Share2 className="w-5 h-5" />
               Buy Now
             </button>
           </div>
+
           {/* Features */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-gray-200">
             {[
@@ -454,6 +525,7 @@ const StoreProductDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
       {/* Reviews Section (static) */}
       <div className="mt-8 pt-8 border-t border-gray-200">
         <h2 className="text-xl font-bold text-gray-900 mb-6">Customer Reviews</h2>
@@ -491,4 +563,5 @@ const StoreProductDetail: React.FC = () => {
     </div>
   );
 };
+
 export default StoreProductDetail;
