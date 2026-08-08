@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import HeroBanner from '../../components/HeroBanner';
+import { useCart } from '../../context/CartContext';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -30,7 +31,6 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
-// Shape returned by GET /api/categories
 interface CategoryApiItem {
   id: number;
   name: string;
@@ -54,16 +54,12 @@ interface CategoryApiItem {
   createdAt?: string;
   updatedAt?: string;
 }
-// ===== COMPONENT: FeatureGrid =====
 interface Feature {
   icon: React.ElementType;
   label: string;
   desc: string;
 }
-interface FeatureGridProps {
-  features: Feature[];
-}
-const FeatureGrid: React.FC<FeatureGridProps> = ({ features }) => {
+const FeatureGrid: React.FC<{ features: Feature[] }> = ({ features }) => {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {features.map((feature, index) => (
@@ -76,7 +72,6 @@ const FeatureGrid: React.FC<FeatureGridProps> = ({ features }) => {
     </div>
   );
 };
-// ===== COMPONENT: CategoryGrid (current UI, dynamic data) =====
 interface Category {
   id: number;
   name: string;
@@ -182,7 +177,6 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
     </div>
   );
 };
-// ===== COMPONENT: ProductCard =====
 interface Product {
   id: number;
   name: string;
@@ -192,19 +186,33 @@ interface Product {
   reviews: number;
   image: string;
   discount?: number;
+  colors?: string[];
+  sizes?: string[];
 }
 interface ProductCardProps {
   product: Product;
   link: string;
 }
 const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
+  const { addToCart } = useCart();
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
+  const hasVariants = (product.colors && product.colors.length > 0) || (product.sizes && product.sizes.length > 0);
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.image,
+    });
+  };
   return (
     <Link
       to={link}
-      className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
+      className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col"
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
         <img
@@ -221,7 +229,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
           </span>
         )}
       </div>
-      <div className="p-4">
+      <div className="p-4 flex-1 flex flex-col">
         <h3 className="font-medium text-gray-900 mb-1 truncate">{product.name}</h3>
         <div className="flex items-center gap-2 mb-2">
           <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
@@ -234,11 +242,28 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
             <span className="text-sm text-gray-400 line-through">₹{product.originalPrice}</span>
           )}
         </div>
+        <div className="mt-3">
+          {hasVariants ? (
+            <Link
+              to={link}
+              className="block w-full text-center bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Select Options
+            </Link>
+          ) : (
+            <button
+              onClick={handleAddToCart}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+            >
+              Add to Cart
+            </button>
+          )}
+        </div>
       </div>
     </Link>
   );
 };
-// ===== COMPONENT: ProductGrid =====
 interface ProductGridProps {
   products: Product[];
   title: string;
@@ -272,7 +297,6 @@ const ProductGrid: React.FC<ProductGridProps> = ({
     </div>
   );
 };
-// ===== COMPONENT: DealBanner =====
 interface DealBannerProps {
   title: string;
   description: string;
@@ -321,7 +345,6 @@ const DealBanner: React.FC<DealBannerProps> = ({
     </div>
   );
 };
-// ===== MAIN PAGE =====
 const StoreHome: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -360,7 +383,6 @@ const StoreHome: React.FC = () => {
   useEffect(() => {
     fetchCategories();
   }, []);
-  // Data configurations
   const features: Feature[] = [
     { icon: Truck, label: 'Free Shipping', desc: 'On orders above ₹999' },
     { icon: Shield, label: 'Secure Payment', desc: '100% secure transactions' },
@@ -389,8 +411,6 @@ const StoreHome: React.FC = () => {
     badgeText: 'Deal of the Day',
     bgGradient: 'bg-gradient-to-r from-yellow-50 via-orange-50 to-pink-50',
   };
-  // HeroBanner now fetches from /categories (categories with showInHero=true),
-  // authenticated with the logged-in user's token.
   const heroBannerConfig = {
     autoPlayInterval: 5000,
     showIndicators: true,
@@ -400,11 +420,8 @@ const StoreHome: React.FC = () => {
   };
   return (
     <div className="space-y-8">
-      {/* 1. Hero Banner Section - now backed by the categories API */}
       <HeroBanner {...heroBannerConfig} />
-      {/* 2. Features Section */}
       <FeatureGrid features={features} />
-      {/* 3. Shop by Category Section - dynamic from categories API */}
       <CategoryGrid
         categories={categories}
         viewAllLink="/store/products"
@@ -413,23 +430,19 @@ const StoreHome: React.FC = () => {
         error={categoriesError}
         onRetry={fetchCategories}
       />
-      {/* 4. Featured Products Section */}
       <ProductGrid
         products={featuredProducts}
         title="Featured Products"
         viewAllLink="/store/products"
         productLinkPrefix="/store/product"
       />
-      {/* 5. Deal of the Day Section */}
       <DealBanner {...dealData} />
-      {/* 6. New Arrivals Section */}
       <ProductGrid
         products={newArrivals}
         title="New Arrivals"
         viewAllLink="/store/products"
         productLinkPrefix="/store/product"
       />
-      {/* 7. Quick Links / CTA Section */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { icon: Zap, label: 'Best Sellers', color: 'from-yellow-400 to-orange-500' },

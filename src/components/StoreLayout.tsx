@@ -16,14 +16,15 @@ import {
   Store,
   ChevronRight
 } from 'lucide-react';
+import CartPopup from './CartPopup';
+import { useCart } from '../context/CartContext';
 const StoreLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [cartCount, setCartCount] = useState(3);
+  const { totalItems } = useCart();
   const [wishlistCount, setWishlistCount] = useState(5);
-  // Get user info from localStorage
   const userStr = localStorage.getItem('user');
   let userName = 'User';
   let userEmail = 'user@example.com';
@@ -38,7 +39,6 @@ const StoreLayout: React.FC = () => {
       // ignore
     }
   }
-  // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
@@ -52,21 +52,17 @@ const StoreLayout: React.FC = () => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
   const handleLogout = () => {
-    // Clear all authentication data
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     localStorage.removeItem('sessionExpiry');
     localStorage.removeItem('sessionId');
-    // Navigate to login page
     navigate('/login');
   };
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-      {/* Top Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-purple-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
             <Link to="/store/home" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
                 <Store className="w-5 h-5 text-white" />
@@ -75,7 +71,6 @@ const StoreLayout: React.FC = () => {
                 SareeStore
               </span>
             </Link>
-            {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-1">
               {navItems.map((item) => (
                 <Link
@@ -91,9 +86,7 @@ const StoreLayout: React.FC = () => {
                 </Link>
               ))}
             </nav>
-            {/* Right Actions */}
             <div className="flex items-center gap-2">
-              {/* Search - Desktop */}
               <div className="hidden lg:block relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
@@ -102,7 +95,6 @@ const StoreLayout: React.FC = () => {
                   className="w-48 pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
                 />
               </div>
-              {/* Wishlist */}
               <Link
                 to="/store/wishlist"
                 className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -114,19 +106,17 @@ const StoreLayout: React.FC = () => {
                   </span>
                 )}
               </Link>
-              {/* Cart */}
               <Link
                 to="/store/cart"
                 className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <ShoppingBag className="w-5 h-5 text-gray-600" />
-                {cartCount > 0 && (
+                {totalItems > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-purple-600 text-white text-xs rounded-full flex items-center justify-center font-medium">
-                    {cartCount}
+                    {totalItems}
                   </span>
                 )}
               </Link>
-              {/* Profile */}
               <div className="relative">
                 <button
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -179,7 +169,6 @@ const StoreLayout: React.FC = () => {
                   </div>
                 )}
               </div>
-              {/* Mobile Menu Button */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -192,7 +181,6 @@ const StoreLayout: React.FC = () => {
               </button>
             </div>
           </div>
-          {/* Mobile Search */}
           <div className="md:hidden pb-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -204,7 +192,6 @@ const StoreLayout: React.FC = () => {
             </div>
           </div>
         </div>
-        {/* Mobile Menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 py-2">
             <div className="max-w-7xl mx-auto px-4 space-y-1">
@@ -220,9 +207,9 @@ const StoreLayout: React.FC = () => {
                 >
                   <item.icon className="w-5 h-5" />
                   <span>{item.label}</span>
-                  {item.path === '/store/cart' && cartCount > 0 && (
+                  {item.path === '/store/cart' && totalItems > 0 && (
                     <span className="ml-auto bg-purple-600 text-white text-xs px-2 py-1 rounded-full">
-                      {cartCount}
+                      {totalItems}
                     </span>
                   )}
                   {item.path === '/store/wishlist' && wishlistCount > 0 && (
@@ -245,11 +232,10 @@ const StoreLayout: React.FC = () => {
           </div>
         )}
       </header>
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Outlet />
       </main>
-      {/* Footer */}
+      <CartPopup />
       <footer className="bg-white/80 backdrop-blur-md border-t border-purple-100 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
