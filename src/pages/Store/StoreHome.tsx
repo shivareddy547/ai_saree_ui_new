@@ -105,10 +105,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 h-28 animate-pulse"
-            />
+            <div key={i} className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 h-28 animate-pulse" />
           ))}
         </div>
       </div>
@@ -123,10 +120,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
           <p className="text-red-600 font-medium">{error}</p>
           {onRetry && (
-            <button
-              onClick={onRetry}
-              className="mt-3 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-            >
+            <button onClick={onRetry} className="mt-3 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
               Retry
             </button>
           )}
@@ -140,8 +134,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <Link to={viewAllLink} className="text-purple-600 text-sm font-medium flex items-center gap-1 hover:text-purple-700 transition-colors">
-            View All
-            <ChevronRight className="w-4 h-4" />
+            View All <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
@@ -155,22 +148,15 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-900">{title}</h2>
         <Link to={viewAllLink} className="text-purple-600 text-sm font-medium flex items-center gap-1 hover:text-purple-700 transition-colors">
-          View All
-          <ChevronRight className="w-4 h-4" />
+          View All <ChevronRight className="w-4 h-4" />
         </Link>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {categories.map((category) => (
-          <Link
-            key={category.id}
-            to={category.link}
-            className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 text-center hover:shadow-md transition-all group hover:-translate-y-1"
-          >
+          <Link key={category.id} to={category.link} className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 text-center hover:shadow-md transition-all group hover:-translate-y-1">
             <div className="text-3xl mb-2">{category.icon}</div>
             <h3 className="font-medium text-gray-900 text-sm">{category.name}</h3>
-            {category.count > 0 && (
-              <p className="text-xs text-gray-500">{category.count} items</p>
-            )}
+            {category.count > 0 && <p className="text-xs text-gray-500">{category.count} items</p>}
           </Link>
         ))}
       </div>
@@ -178,7 +164,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
   );
 };
 interface Product {
-  id: number;
+  id: string;
   name: string;
   price: number;
   originalPrice?: number;
@@ -188,6 +174,7 @@ interface Product {
   discount?: number;
   colors?: string[];
   sizes?: string[];
+  variants: any[];
 }
 interface ProductCardProps {
   product: Product;
@@ -199,27 +186,26 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
   const hasVariants = (product.colors && product.colors.length > 0) || (product.sizes && product.sizes.length > 0);
-  const handleAddToCart = (e: React.MouseEvent) => {
+  const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addToCart({
+    const firstVariant = product.variants && product.variants.length > 0 ? product.variants[0] : null;
+    if (!firstVariant) {
+      console.error('No variant available for product');
+      return;
+    }
+    await addToCart({
       id: product.id,
       name: product.name,
       price: product.price,
       image: product.image,
+      variantId: firstVariant.id,
     });
   };
   return (
-    <Link
-      to={link}
-      className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col"
-    >
+    <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
       <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
-        <img
-          src={product.image}
-          alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        />
+        <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         <button className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors">
           <Heart className="w-4 h-4 text-gray-400 hover:text-red-500" />
         </button>
@@ -238,24 +224,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-purple-600">₹{product.price}</span>
-          {product.originalPrice && (
-            <span className="text-sm text-gray-400 line-through">₹{product.originalPrice}</span>
-          )}
+          {product.originalPrice && <span className="text-sm text-gray-400 line-through">₹{product.originalPrice}</span>}
         </div>
         <div className="mt-3">
           {hasVariants ? (
-            <Link
-              to={link}
-              className="block w-full text-center bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <Link to={link} className="block w-full text-center bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors" onClick={(e) => e.stopPropagation()}>
               Select Options
             </Link>
           ) : (
-            <button
-              onClick={handleAddToCart}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
-            >
+            <button onClick={handleAddToCart} className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all">
               Add to Cart
             </button>
           )}
@@ -270,28 +247,18 @@ interface ProductGridProps {
   viewAllLink: string;
   productLinkPrefix: string;
 }
-const ProductGrid: React.FC<ProductGridProps> = ({
-  products,
-  title,
-  viewAllLink,
-  productLinkPrefix
-}) => {
+const ProductGrid: React.FC<ProductGridProps> = ({ products, title, viewAllLink, productLinkPrefix }) => {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-900">{title}</h2>
         <Link to={viewAllLink} className="text-purple-600 text-sm font-medium flex items-center gap-1 hover:text-purple-700 transition-colors">
-          View All
-          <ChevronRight className="w-4 h-4" />
+          View All <ChevronRight className="w-4 h-4" />
         </Link>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {products.map((product) => (
-          <ProductCard
-            key={product.id}
-            product={product}
-            link={`${productLinkPrefix}/${product.id}`}
-          />
+          <ProductCard key={product.id} product={product} link={`${productLinkPrefix}/${product.id}`} />
         ))}
       </div>
     </div>
@@ -324,9 +291,7 @@ const DealBanner: React.FC<DealBannerProps> = ({
         <div className="flex items-center gap-4">
           <div className="text-4xl">🔥</div>
           <div>
-            <span className="inline-block bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full mb-3">
-              {badgeText}
-            </span>
+            <span className="inline-block bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full mb-3">{badgeText}</span>
             <h3 className="text-xl font-bold text-gray-900">{title}</h3>
             <p className="text-gray-600 text-sm mt-1">{description}</p>
             <div className="flex items-center gap-3 mt-3">
@@ -335,10 +300,7 @@ const DealBanner: React.FC<DealBannerProps> = ({
             </div>
           </div>
         </div>
-        <Link
-          to={buttonLink}
-          className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg transition-all whitespace-nowrap"
-        >
+        <Link to={buttonLink} className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg transition-all whitespace-nowrap">
           {buttonText}
         </Link>
       </div>
@@ -349,27 +311,24 @@ const StoreHome: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [newArrivals, setNewArrivals] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true);
       setCategoriesError(null);
       const response = await apiClient.get<CategoryApiItem[]>('/categories');
       const activeCategories = (response.data || [])
-        .filter(
-          (cat) => cat.isActive !== false && cat.showInCategoryGrid === true
-        )
+        .filter(cat => cat.isActive !== false && cat.showInCategoryGrid === true)
         .sort((a, b) => a.order - b.order)
-        .map((cat) => ({
+        .map(cat => ({
           id: cat.id,
           name: cat.name,
           icon: cat.badgeIcon || '👗',
           count: Array.isArray(cat.subCategories) ? cat.subCategories.length : 0,
           permalink: cat.permalink,
-          link:
-            cat.primaryButtonLink ||
-            (cat.permalink
-              ? `/store/products?category=${cat.permalink}`
-              : '/store/products'),
+          link: cat.primaryButtonLink || (cat.permalink ? `/store/products?category=${cat.permalink}` : '/store/products'),
         }));
       setCategories(activeCategories);
     } catch (err) {
@@ -380,26 +339,53 @@ const StoreHome: React.FC = () => {
       setCategoriesLoading(false);
     }
   };
+  const fetchProducts = async () => {
+    try {
+      setProductsLoading(true);
+      const featuredRes = await apiClient.get('/store/products?featured=true');
+      const featuredData = featuredRes.data.data;
+      const featuredMapped = featuredData.map((p: any) => mapProduct(p));
+      setFeaturedProducts(featuredMapped);
+      const newRes = await apiClient.get('/store/products?newArrivals=true');
+      const newData = newRes.data.data;
+      const newMapped = newData.map((p: any) => mapProduct(p));
+      setNewArrivals(newMapped);
+    } catch (err) {
+      console.error('Error fetching products:', err);
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+  const mapProduct = (apiProduct: any): Product => {
+    const firstVariant = apiProduct.variants && apiProduct.variants.length > 0 ? apiProduct.variants[0] : null;
+    const price = firstVariant ? parseFloat(firstVariant.price) : 0;
+    const costPrice = firstVariant && firstVariant.costPrice ? parseFloat(firstVariant.costPrice) : null;
+    const originalPrice = costPrice && costPrice > price ? costPrice : undefined;
+    const image = apiProduct.images && apiProduct.images.length > 0 ? apiProduct.images[0].url : 'https://via.placeholder.com/300x400?text=No+Image';
+    const colors = apiProduct.variants ? apiProduct.variants.map((v: any) => v.color).filter(Boolean) : [];
+    const sizes = apiProduct.variants ? apiProduct.variants.map((v: any) => v.size).filter(Boolean) : [];
+    return {
+      id: apiProduct.id,
+      name: apiProduct.name,
+      price,
+      originalPrice,
+      rating: 4.5,
+      reviews: 100,
+      image,
+      variants: apiProduct.variants || [],
+      colors,
+      sizes,
+    };
+  };
   useEffect(() => {
     fetchCategories();
+    fetchProducts();
   }, []);
   const features: Feature[] = [
     { icon: Truck, label: 'Free Shipping', desc: 'On orders above ₹999' },
     { icon: Shield, label: 'Secure Payment', desc: '100% secure transactions' },
     { icon: Clock, label: 'Easy Returns', desc: '30-day return policy' },
     { icon: Award, label: 'Quality Assured', desc: 'Premium quality products' },
-  ];
-  const featuredProducts: Product[] = [
-    { id: 1, name: 'Designer Silk Saree', price: 2499, originalPrice: 3499, rating: 4.8, reviews: 120, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-    { id: 2, name: 'Banarasi Silk Saree', price: 3599, originalPrice: 4599, rating: 4.9, reviews: 85, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-    { id: 3, name: 'Cotton Saree', price: 999, originalPrice: 1499, rating: 4.6, reviews: 200, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-    { id: 4, name: 'Party Wear Saree', price: 1899, originalPrice: 2599, rating: 4.7, reviews: 150, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-  ];
-  const newArrivals: Product[] = [
-    { id: 5, name: 'New Silk Saree', price: 2999, originalPrice: 3999, rating: 4.9, reviews: 45, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-    { id: 6, name: 'Designer Cotton Saree', price: 1499, originalPrice: 1999, rating: 4.7, reviews: 78, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-    { id: 7, name: 'Party Wear Saree', price: 2199, originalPrice: 2899, rating: 4.8, reviews: 92, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
-    { id: 8, name: 'Wedding Collection', price: 4599, originalPrice: 5999, rating: 4.9, reviews: 112, image: 'https://images.unsplash.com/photo-1610030469627-3b5e8e6c8d1f?w=300&h=400&fit=crop' },
   ];
   const dealData = {
     title: 'Premium Silk Saree Collection',
@@ -430,19 +416,23 @@ const StoreHome: React.FC = () => {
         error={categoriesError}
         onRetry={fetchCategories}
       />
-      <ProductGrid
-        products={featuredProducts}
-        title="Featured Products"
-        viewAllLink="/store/products"
-        productLinkPrefix="/store/product"
-      />
+      {!productsLoading && featuredProducts.length > 0 && (
+        <ProductGrid
+          products={featuredProducts}
+          title="Featured Products"
+          viewAllLink="/store/products"
+          productLinkPrefix="/store/product"
+        />
+      )}
       <DealBanner {...dealData} />
-      <ProductGrid
-        products={newArrivals}
-        title="New Arrivals"
-        viewAllLink="/store/products"
-        productLinkPrefix="/store/product"
-      />
+      {!productsLoading && newArrivals.length > 0 && (
+        <ProductGrid
+          products={newArrivals}
+          title="New Arrivals"
+          viewAllLink="/store/products"
+          productLinkPrefix="/store/product"
+        />
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { icon: Zap, label: 'Best Sellers', color: 'from-yellow-400 to-orange-500' },
@@ -450,11 +440,7 @@ const StoreHome: React.FC = () => {
           { icon: Gem, label: 'Premium Collection', color: 'from-purple-400 to-indigo-500' },
           { icon: TrendingUp, label: 'Trending Now', color: 'from-blue-400 to-cyan-500' },
         ].map((item, index) => (
-          <Link
-            key={index}
-            to="/store/products"
-            className={`bg-gradient-to-r ${item.color} p-4 rounded-xl text-white text-center hover:shadow-lg transition-all hover:scale-105`}
-          >
+          <Link key={index} to="/store/products" className={`bg-gradient-to-r ${item.color} p-4 rounded-xl text-white text-center hover:shadow-lg transition-all hover:scale-105`}>
             <item.icon className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-semibold">{item.label}</span>
           </Link>
