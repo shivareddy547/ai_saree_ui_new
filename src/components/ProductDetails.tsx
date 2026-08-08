@@ -1,6 +1,5 @@
 import React from "react";
 import { Package, Plus, Trash2, ChevronDown, X } from "lucide-react";
-
 interface ProductVariant {
   id: string;
   sku: string;
@@ -10,18 +9,15 @@ interface ProductVariant {
   costPrice: string;
   stockQuantity: string;
 }
-
 interface Subcategory {
   id: string;
   name: string;
 }
-
 interface Category {
   id: string;
   name: string;
   subcategories: Subcategory[];
 }
-
 interface ProductDetailsProps {
   productName: string;
   setProductName: (value: string) => void;
@@ -70,8 +66,12 @@ interface ProductDetailsProps {
   setShowInNewArrivals: (value: boolean) => void;
   showInPremiumProducts: boolean;
   setShowInPremiumProducts: (value: boolean) => void;
+  // New product-level cost price and stock
+  costPrice: string;
+  setCostPrice: (value: string) => void;
+  stockQuantity: string;
+  setStockQuantity: (value: string) => void;
 }
-
 const createEmptyVariant = (): ProductVariant => ({
   id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   sku: "",
@@ -81,7 +81,6 @@ const createEmptyVariant = (): ProductVariant => ({
   costPrice: "",
   stockQuantity: "",
 });
-
 const ProductDetails: React.FC<ProductDetailsProps> = ({
   productName,
   setProductName,
@@ -129,9 +128,12 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   setShowInNewArrivals,
   showInPremiumProducts,
   setShowInPremiumProducts,
+  costPrice,
+  setCostPrice,
+  stockQuantity,
+  setStockQuantity,
 }) => {
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
-
   const renderVariantCard = (variant: ProductVariant, index: number) => (
     <div key={variant.id} className="bg-gray-50 rounded-lg p-4 sm:p-5 border border-gray-200 space-y-3">
       <div className="flex items-center justify-between">
@@ -213,7 +215,6 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
       </div>
     </div>
   );
-
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
@@ -248,6 +249,29 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           {errors.price && (
             <p className="text-xs text-red-500 mt-1">{errors.price}</p>
           )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (₹)</label>
+          <input
+            type="number"
+            value={costPrice}
+            onChange={(e) => setCostPrice(e.target.value)}
+            placeholder="0.00"
+            className="input-field"
+            min="0"
+            step="0.01"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
+          <input
+            type="number"
+            value={stockQuantity}
+            onChange={(e) => setStockQuantity(e.target.value)}
+            placeholder="0"
+            className="input-field"
+            min="0"
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
@@ -380,7 +404,6 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           )}
         </div>
       </div>
-
       {/* New Flags Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div className="flex items-center space-x-3">
@@ -432,7 +455,6 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           </label>
         </div>
       </div>
-
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-700">Variants</h3>
@@ -459,5 +481,4 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     </div>
   );
 };
-
 export default ProductDetails;

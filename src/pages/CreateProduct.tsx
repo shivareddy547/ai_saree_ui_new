@@ -305,6 +305,10 @@ const CreateProduct: React.FC = () => {
     useState("");
   const [price, setPrice] =
     useState("");
+  const [costPrice, setCostPrice] =
+    useState("");
+  const [stockQuantity, setStockQuantity] =
+    useState("");
   const [sku, setSku] =
     useState("");
   const [description, setDescription] =
@@ -622,6 +626,14 @@ const CreateProduct: React.FC = () => {
           );
           setPrice(
             product.basePrice?.toString() ||
+              ""
+          );
+          setCostPrice(
+            product.costPrice?.toString() ||
+              ""
+          );
+          setStockQuantity(
+            product.stockQuantity?.toString() ||
               ""
           );
           setSku(
@@ -1460,6 +1472,8 @@ const CreateProduct: React.FC = () => {
       const productData = {
         name: productName,
         price,
+        costPrice,
+        stockQuantity,
         sku,
         description,
         categoryId: selectedCategoryId ? parseInt(selectedCategoryId, 10) : null,
@@ -1626,6 +1640,8 @@ const CreateProduct: React.FC = () => {
     setCurrentStep(1);
     setProductName("");
     setPrice("");
+    setCostPrice("");
+    setStockQuantity("");
     setSku("");
     setDescription("");
     setErrors({});
@@ -3160,6 +3176,10 @@ const CreateProduct: React.FC = () => {
               }
               price={price}
               setPrice={setPrice}
+              costPrice={costPrice}
+              setCostPrice={setCostPrice}
+              stockQuantity={stockQuantity}
+              setStockQuantity={setStockQuantity}
               sku={sku}
               setSku={setSku}
               description={
