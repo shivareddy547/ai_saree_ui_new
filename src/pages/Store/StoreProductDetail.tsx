@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Star,
@@ -13,6 +13,8 @@ import {
   ThumbsUp,
   Play,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
@@ -56,7 +58,7 @@ interface Product {
   stockQuantity?: number;
   defaultSku: string;
   videoUrl?: string;
-  cloudinaryVideoPublicId?: string; // added to support video from Cloudinary
+  cloudinaryVideoPublicId?: string;
   variants: ProductVariant[];
   images: ProductImage[];
   category?: any;
@@ -67,6 +69,11 @@ interface Product {
   showInPremiumProducts: boolean;
   createdAt: string;
   updatedAt: string;
+}
+interface MediaItem {
+  type: 'image' | 'video';
+  url: string;
+  thumbnail?: string; // for video, maybe use first image as poster
 }
 // Helper to construct Cloudinary video URL if not provided
 const getVideoUrlFromCloudinary = (publicId?: string): string | undefined => {
@@ -83,12 +90,17 @@ const StoreProductDetail: React.FC = () => {
   const [activeImage, setActiveImage] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   // Variant selection
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
+  const lightboxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (id) {
       fetchProduct(id);
@@ -105,6 +117,21 @@ const StoreProductDetail: React.FC = () => {
         data.videoUrl = getVideoUrlFromCloudinary(data.cloudinaryVideoPublicId);
       }
       setProduct(data);
+      // Build media items for lightbox
+      const items: MediaItem[] = [];
+      if (data.images && data.images.length > 0) {
+        data.images.forEach((img: ProductImage) => {
+          items.push({ type: 'image', url: img.url });
+        });
+      }
+      if (data.videoUrl) {
+        items.push({
+          type: 'video',
+          url: data.videoUrl,
+          thumbnail: data.images && data.images.length > 0 ? data.images[0].url : undefined,
+        });
+      }
+      setMediaItems(items);
       const allVariants: ProductVariant[] = data.variants || [];
       const meaningfulVariants = allVariants.filter(
         (v: ProductVariant) => v.sku && v.sku.trim() !== ''
@@ -237,6 +264,34 @@ const StoreProductDetail: React.FC = () => {
   const toggleVideo = () => {
     setShowVideo(!showVideo);
   };
+  // Lightbox functions
+  const openLightbox = (index: number) => {
+    if (mediaItems.length === 0) return;
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+    document.body.style.overflow = 'hidden';
+  };
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+    document.body.style.overflow = 'unset';
+  };
+  const goToPrev = () => {
+    setLightboxIndex((prev) => (prev === 0 ? mediaItems.length - 1 : prev - 1));
+  };
+  const goToNext = () => {
+    setLightboxIndex((prev) => (prev === mediaItems.length - 1 ? 0 : prev + 1));
+  };
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!lightboxOpen) return;
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') goToPrev();
+      if (e.key === 'ArrowRight') goToNext();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxOpen]);
   if (loading) {
     return (
       <div className="space-y-6">
@@ -332,11 +387,25 @@ const StoreProductDetail: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Product Images / Video */}
         <div>
-          <div className="aspect-[4/5] bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl overflow-hidden mb-4 border border-purple-100 relative cursor-pointer group">
+          <div
+            className="aspect-[4/5] bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl overflow-hidden mb-4 border border-purple-100 relative cursor-pointer group"
+            onClick={() => {
+              if (showVideo && product.videoUrl) {
+                // If video is shown, open lightbox at video index
+                const videoIndex = mediaItems.findIndex(item => item.type === 'video');
+                if (videoIndex !== -1) openLightbox(videoIndex);
+              } else {
+                openLightbox(activeImage);
+              }
+            }}
+          >
             {!showVideo && product.videoUrl && (
               <div
                 className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                onClick={toggleVideo}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleVideo();
+                }}
               >
                 <Play className="w-16 h-16 text-white drop-shadow-lg" />
               </div>
@@ -351,7 +420,10 @@ const StoreProductDetail: React.FC = () => {
                   poster={images[0]}
                 />
                 <button
-                  onClick={toggleVideo}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleVideo();
+                  }}
                   className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full z-20 hover:bg-black/80"
                 >
                   <X className="w-5 h-5" />
@@ -373,6 +445,7 @@ const StoreProductDetail: React.FC = () => {
                 onClick={() => {
                   if (product.videoUrl) setShowVideo(false);
                   setActiveImage(index);
+                  openLightbox(index);
                 }}
                 className={`aspect-square bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg overflow-hidden border-2 ${
                   activeImage === index && !showVideo
@@ -389,7 +462,11 @@ const StoreProductDetail: React.FC = () => {
             ))}
             {product.videoUrl && (
               <button
-                onClick={toggleVideo}
+                onClick={() => {
+                  setShowVideo(true);
+                  const videoIndex = mediaItems.findIndex(item => item.type === 'video');
+                  if (videoIndex !== -1) openLightbox(videoIndex);
+                }}
                 className={`aspect-square bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg overflow-hidden border-2 flex items-center justify-center ${
                   showVideo
                     ? 'border-purple-600 ring-2 ring-purple-200'
@@ -579,6 +656,79 @@ const StoreProductDetail: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* Lightbox */}
+      {lightboxOpen && mediaItems.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={closeLightbox}
+          ref={lightboxRef}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              closeLightbox();
+            }}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 p-2"
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              goToPrev();
+            }}
+            className="absolute left-4 text-white hover:text-gray-300 z-10 p-2"
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              goToNext();
+            }}
+            className="absolute right-4 text-white hover:text-gray-300 z-10 p-2"
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
+          <div
+            className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {mediaItems[lightboxIndex].type === 'image' ? (
+              <img
+                src={mediaItems[lightboxIndex].url}
+                alt={`Product ${lightboxIndex + 1}`}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              />
+            ) : (
+              <div className="relative w-full max-h-[80vh] aspect-video">
+                <video
+                  src={mediaItems[lightboxIndex].url}
+                  controls
+                  autoPlay
+                  className="w-full h-full object-contain rounded-lg shadow-2xl"
+                  poster={mediaItems[lightboxIndex].thumbnail}
+                />
+              </div>
+            )}
+          </div>
+          {/* Indicator */}
+          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-2">
+            {mediaItems.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxIndex(idx);
+                }}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  idx === lightboxIndex ? 'bg-white w-4' : 'bg-white/40'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       {/* Reviews Section (static) */}
       <div className="mt-8 pt-8 border-t border-gray-200">
         <h2 className="text-xl font-bold text-gray-900 mb-6">Customer Reviews</h2>
