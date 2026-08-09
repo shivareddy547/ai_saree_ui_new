@@ -17,6 +17,7 @@ import {
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const CLOUDINARY_CLOUD_NAME = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart';
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -55,6 +56,7 @@ interface Product {
   stockQuantity?: number;
   defaultSku: string;
   videoUrl?: string;
+  cloudinaryVideoPublicId?: string; // added to support video from Cloudinary
   variants: ProductVariant[];
   images: ProductImage[];
   category?: any;
@@ -66,6 +68,11 @@ interface Product {
   createdAt: string;
   updatedAt: string;
 }
+// Helper to construct Cloudinary video URL if not provided
+const getVideoUrlFromCloudinary = (publicId?: string): string | undefined => {
+  if (!publicId) return undefined;
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
+};
 const StoreProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { addToCart } = useCart();
@@ -80,7 +87,6 @@ const StoreProductDetail: React.FC = () => {
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
-  // Derived: unique colors and sizes from variants
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
   useEffect(() => {
@@ -94,23 +100,22 @@ const StoreProductDetail: React.FC = () => {
       setError(null);
       const response = await apiClient.get(`/store/products/${productId}`);
       const data = response.data.data;
+      // Ensure videoUrl is set if cloudinaryVideoPublicId is present
+      if (!data.videoUrl && data.cloudinaryVideoPublicId) {
+        data.videoUrl = getVideoUrlFromCloudinary(data.cloudinaryVideoPublicId);
+      }
       setProduct(data);
       const allVariants: ProductVariant[] = data.variants || [];
-      // Meaningful = has non-empty SKU (used for color/size selection UI)
       const meaningfulVariants = allVariants.filter(
         (v: ProductVariant) => v.sku && v.sku.trim() !== ''
       );
-      // Prefer real API variants for selection; only fall back to synthetic when none exist
       let variantsForSelection: ProductVariant[] = meaningfulVariants;
       if (meaningfulVariants.length === 0) {
-        // No selectable variants – still prefer a real variant record from API if present
-        // so we send a valid variantId to the backend. Otherwise create a synthetic one
-        // that uses product-level basePrice (backend may still accept product default).
         if (allVariants.length > 0) {
           variantsForSelection = allVariants;
         } else {
           const syntheticVariant: ProductVariant = {
-            id: data.id, // use product id as safest fallback id
+            id: data.id,
             sku: data.defaultSku || 'N/A',
             size: '',
             color: '',
@@ -124,12 +129,10 @@ const StoreProductDetail: React.FC = () => {
           variantsForSelection = [syntheticVariant];
         }
       }
-      // Prefer first in-stock variant, else first
       const firstAvailable =
         variantsForSelection.find((v) => v.stockQuantity > 0) ||
         variantsForSelection[0];
       setSelectedVariant(firstAvailable);
-      // Extract unique colors and sizes only from meaningful variants
       const colorSet = new Set<string>();
       const sizeSet = new Set<string>();
       meaningfulVariants.forEach((v: ProductVariant) => {
@@ -147,7 +150,7 @@ const StoreProductDetail: React.FC = () => {
       setLoading(false);
     }
   };
-  // Update selected variant when color or size changes (only when meaningful variants exist)
+  // Update selected variant when color or size changes
   useEffect(() => {
     if (!product) return;
     const meaningfulVariants = (product.variants || []).filter(
@@ -173,25 +176,19 @@ const StoreProductDetail: React.FC = () => {
       (v: ProductVariant) => v.sku && v.sku.trim() !== ''
     );
     const hasVariants = meaningfulVariants.length > 0;
-    // Determine variant + price
     let variant: ProductVariant | null = selectedVariant;
     let price = variant ? Number(variant.price) : Number(product.basePrice) || 0;
     if (hasVariants) {
-      // With real selectable variants – require a selected one
       if (!variant) {
         variant = meaningfulVariants[0];
         price = Number(variant.price) || 0;
       }
     } else {
-      // No selectable variants → always use base price (requirement)
       price = Number(product.basePrice) || 0;
-      // Prefer any real variant record from API so backend gets a valid variantId
       if (product.variants && product.variants.length > 0) {
         variant = product.variants[0];
-        // still force price to basePrice as required
         price = Number(product.basePrice) || Number(variant.price) || 0;
       } else if (!variant) {
-        // last resort synthetic – use product id (most backends treat product as default variant)
         variant = {
           id: product.id,
           sku: product.defaultSku || 'default',
@@ -302,20 +299,17 @@ const StoreProductDetail: React.FC = () => {
     stockQuantity = selectedVariant ? selectedVariant.stockQuantity : 0;
     isInStock = stockQuantity > 0;
   } else {
-    // No variants → use product stock or treat as available
     stockQuantity =
       product.stockQuantity !== undefined && product.stockQuantity !== null
         ? product.stockQuantity
         : 999;
     isInStock = stockQuantity > 0;
   }
-  // Enable button when price is valid and (in stock or no-variants case)
   const canAddToCart =
     variantPrice > 0 &&
     isInStock &&
     (hasVariants ? selectedVariant !== null : true) &&
     !isAdding;
-  // SKU display
   const displaySku = hasVariants
     ? selectedVariant
       ? selectedVariant.sku
@@ -461,7 +455,7 @@ const StoreProductDetail: React.FC = () => {
           </p>
           {/* SKU */}
           <p className="text-sm text-gray-400">SKU: {displaySku}</p>
-          {/* Variant Selection – only when meaningful variants exist */}
+          {/* Variant Selection */}
           {hasVariants && (
             <>
               {colors.length > 0 && (
