@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ShoppingBag, 
@@ -14,10 +14,22 @@ import {
   Package,
   HelpCircle,
   Store,
-  ChevronRight
+  ChevronRight,
+  XCircle
 } from 'lucide-react';
 import CartPopup from './CartPopup';
 import { useCart } from '../context/CartContext';
+import axios from 'axios';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+interface Suggestion {
+  id: string;
+  name: string;
+  image: string | null;
+}
 const StoreLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -25,6 +37,14 @@ const StoreLayout: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { totalItems } = useCart();
   const [wishlistCount, setWishlistCount] = useState(5);
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionContainerRef = useRef<HTMLDivElement>(null);
   const userStr = localStorage.getItem('user');
   let userName = 'User';
   let userEmail = 'user@example.com';
@@ -42,6 +62,75 @@ const StoreLayout: React.FC = () => {
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (suggestionContainerRef.current && !suggestionContainerRef.current.contains(e.target as Node) &&
+          searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  // Debounced autocomplete fetch
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!query || query.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    setIsLoadingSuggestions(true);
+    try {
+      const response = await apiClient.get('/store/autocomplete', {
+        params: { q: query.trim() }
+      });
+      if (response.data.success) {
+        setSuggestions(response.data.data || []);
+        setShowSuggestions(true);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error('Autocomplete error:', error);
+      setSuggestions([]);
+      setShowSuggestions(false);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  }, []);
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 300);
+  };
+  const handleSuggestionSelect = (suggestion: Suggestion) => {
+    setSearchQuery(suggestion.name);
+    setShowSuggestions(false);
+    navigate(`/store/product/${suggestion.id}`);
+  };
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setShowSuggestions(false);
+      // Navigate to products page with search query
+      navigate(`/store/products?search=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  };
   const navItems = [
     { path: '/store/home', label: 'Home', icon: Home },
     { path: '/store/products', label: 'Products', icon: Package },
@@ -87,13 +176,59 @@ const StoreLayout: React.FC = () => {
               ))}
             </nav>
             <div className="flex items-center gap-2">
-              <div className="hidden lg:block relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  className="w-48 pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
-                />
+              {/* Desktop Search */}
+              <div className="hidden lg:block relative" ref={suggestionContainerRef}>
+                <form onSubmit={handleSearchSubmit} className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchQuery}
+                    onChange={handleSearchInputChange}
+                    onFocus={() => {
+                      if (suggestions.length > 0) setShowSuggestions(true);
+                    }}
+                    className="w-64 pl-9 pr-10 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={clearSearch}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </form>
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50">
+                    <ul className="py-2">
+                      {suggestions.map((suggestion) => (
+                        <li key={suggestion.id}>
+                          <button
+                            onClick={() => handleSuggestionSelect(suggestion)}
+                            className="w-full px-4 py-2 text-left hover:bg-purple-50 flex items-center gap-3"
+                          >
+                            {suggestion.image ? (
+                              <img src={suggestion.image} alt={suggestion.name} className="w-8 h-8 object-cover rounded" />
+                            ) : (
+                              <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
+                                <Package className="w-4 h-4 text-gray-500" />
+                              </div>
+                            )}
+                            <span className="text-sm text-gray-700">{suggestion.name}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {isLoadingSuggestions && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 p-3 text-center text-sm text-gray-500">
+                    Loading...
+                  </div>
+                )}
               </div>
               <Link
                 to="/store/wishlist"
@@ -181,15 +316,59 @@ const StoreLayout: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="md:hidden pb-3">
-            <div className="relative">
+          {/* Mobile Search */}
+          <div className="md:hidden pb-3 relative" ref={suggestionContainerRef}>
+            <form onSubmit={handleSearchSubmit} className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search products..."
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                value={searchQuery}
+                onChange={handleSearchInputChange}
+                onFocus={() => {
+                  if (suggestions.length > 0) setShowSuggestions(true);
+                }}
+                className="w-full pl-9 pr-10 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
               />
-            </div>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </form>
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50">
+                <ul className="py-2">
+                  {suggestions.map((suggestion) => (
+                    <li key={suggestion.id}>
+                      <button
+                        onClick={() => handleSuggestionSelect(suggestion)}
+                        className="w-full px-4 py-2 text-left hover:bg-purple-50 flex items-center gap-3"
+                      >
+                        {suggestion.image ? (
+                          <img src={suggestion.image} alt={suggestion.name} className="w-8 h-8 object-cover rounded" />
+                        ) : (
+                          <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
+                            <Package className="w-4 h-4 text-gray-500" />
+                          </div>
+                        )}
+                        <span className="text-sm text-gray-700">{suggestion.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {isLoadingSuggestions && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 p-3 text-center text-sm text-gray-500">
+                Loading...
+              </div>
+            )}
           </div>
         </div>
         {isMobileMenuOpen && (

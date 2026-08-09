@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Search, Grid, List, Filter, Star, Heart, ChevronRight } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
@@ -45,7 +45,6 @@ const ProductCard: React.FC<{ product: Product; link: string }> = ({ product, li
       alert('This product is not configured correctly. Please contact support.');
       return;
     }
-    // Use product.price (computed from basePrice or variant) instead of firstVariant.price directly
     const price = product.price;
     if (typeof price !== 'number' || price <= 0) {
       alert('This product has an invalid price.');
@@ -99,17 +98,32 @@ const ProductCard: React.FC<{ product: Product; link: string }> = ({ product, li
   );
 };
 const StoreProducts: React.FC = () => {
+  const location = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  // Read search query from URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const searchParam = params.get('search');
+    if (searchParam) {
+      setSearchTerm(searchParam);
+    } else {
+      setSearchTerm('');
+    }
+  }, [location.search]);
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [searchTerm]);
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get('/store/products');
+      const params: any = {};
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+      const response = await apiClient.get('/store/products', { params });
       const data = response.data.data;
       const mapped = data.map((p: any) => mapProduct(p));
       setProducts(mapped);
@@ -155,7 +169,20 @@ const StoreProducts: React.FC = () => {
       sizes,
     };
   };
-  const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    // Update URL with search param
+    const params = new URLSearchParams(location.search);
+    if (value) {
+      params.set('search', value);
+    } else {
+      params.delete('search');
+    }
+    const newUrl = `${location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+    // fetch will be triggered by useEffect dependency on searchTerm
+  };
   if (loading) {
     return (
       <div className="space-y-6">
@@ -184,7 +211,7 @@ const StoreProducts: React.FC = () => {
               type="text"
               placeholder="Search products..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearchChange}
               className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/80 backdrop-blur-sm w-48 sm:w-64"
             />
           </div>
@@ -204,13 +231,13 @@ const StoreProducts: React.FC = () => {
           </div>
         </div>
       </div>
-      {filteredProducts.length === 0 ? (
+      {products.length === 0 ? (
         <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
           <p className="text-gray-500">No products found</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
+          {products.map((product) => (
             <ProductCard key={product.id} product={product} link={`/store/product/${product.id}`} />
           ))}
         </div>
