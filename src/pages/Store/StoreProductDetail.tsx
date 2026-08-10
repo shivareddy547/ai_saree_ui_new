@@ -73,11 +73,15 @@ interface Product {
 interface MediaItem {
   type: 'image' | 'video';
   url: string;
-  thumbnail?: string; // for video, maybe use first image as poster
+  thumbnail?: string;
 }
-// Helper to construct Cloudinary video URL if not provided
+// Helper to construct Cloudinary video URL
 const getVideoUrlFromCloudinary = (publicId?: string): string | undefined => {
   if (!publicId) return undefined;
+  // If publicId already contains the folder, just use it directly
+  if (publicId.includes('/')) {
+    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
+  }
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
 };
 const StoreProductDetail: React.FC = () => {
@@ -90,6 +94,7 @@ const StoreProductDetail: React.FC = () => {
   const [activeImage, setActiveImage] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -101,6 +106,7 @@ const StoreProductDetail: React.FC = () => {
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
   const lightboxRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (id) {
       fetchProduct(id);
@@ -110,12 +116,18 @@ const StoreProductDetail: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      setVideoError(false);
       const response = await apiClient.get(`/store/products/${productId}`);
       const data = response.data.data;
-      // Ensure videoUrl is set if cloudinaryVideoPublicId is present
-      if (!data.videoUrl && data.cloudinaryVideoPublicId) {
-        data.videoUrl = getVideoUrlFromCloudinary(data.cloudinaryVideoPublicId);
+      // Prioritize Cloudinary video URL over blob URL
+      let videoUrl = data.videoUrl;
+      if (data.cloudinaryVideoPublicId) {
+        const cloudinaryUrl = getVideoUrlFromCloudinary(data.cloudinaryVideoPublicId);
+        if (cloudinaryUrl) {
+          videoUrl = cloudinaryUrl;
+        }
       }
+      data.videoUrl = videoUrl;
       setProduct(data);
       // Build media items for lightbox
       const items: MediaItem[] = [];
@@ -263,6 +275,11 @@ const StoreProductDetail: React.FC = () => {
   };
   const toggleVideo = () => {
     setShowVideo(!showVideo);
+    setVideoError(false);
+    if (!showVideo) {
+      // Reset video error when showing
+      setVideoError(false);
+    }
   };
   // Lightbox functions
   const openLightbox = (index: number) => {
@@ -280,6 +297,11 @@ const StoreProductDetail: React.FC = () => {
   };
   const goToNext = () => {
     setLightboxIndex((prev) => (prev === mediaItems.length - 1 ? 0 : prev + 1));
+  };
+  // Handle video error
+  const handleVideoError = () => {
+    setVideoError(true);
+    console.error('Video failed to load:', product?.videoUrl);
   };
   // Keyboard navigation
   useEffect(() => {
@@ -391,7 +413,6 @@ const StoreProductDetail: React.FC = () => {
             className="aspect-[4/5] bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl overflow-hidden mb-4 border border-purple-100 relative cursor-pointer group"
             onClick={() => {
               if (showVideo && product.videoUrl) {
-                // If video is shown, open lightbox at video index
                 const videoIndex = mediaItems.findIndex(item => item.type === 'video');
                 if (videoIndex !== -1) openLightbox(videoIndex);
               } else {
@@ -399,7 +420,7 @@ const StoreProductDetail: React.FC = () => {
               }
             }}
           >
-            {!showVideo && product.videoUrl && (
+            {!showVideo && product.videoUrl && !videoError && (
               <div
                 className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
                 onClick={(e) => {
@@ -411,14 +432,35 @@ const StoreProductDetail: React.FC = () => {
               </div>
             )}
             {showVideo && product.videoUrl ? (
-              <div className="relative w-full h-full">
-                <video
-                  src={product.videoUrl}
-                  controls
-                  autoPlay
-                  className="w-full h-full object-cover"
-                  poster={images[0]}
-                />
+              <div className="relative w-full h-full bg-black">
+                {videoError ? (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                    <div className="text-center text-white p-4">
+                      <p className="text-lg font-semibold">Video unavailable</p>
+                      <p className="text-sm text-gray-400 mt-2">The video failed to load</p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVideoError(false);
+                          toggleVideo();
+                        }}
+                        className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={product.videoUrl}
+                    controls
+                    autoPlay
+                    className="w-full h-full object-cover"
+                    poster={images[0]}
+                    onError={handleVideoError}
+                  />
+                )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -701,13 +743,30 @@ const StoreProductDetail: React.FC = () => {
                 className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
               />
             ) : (
-              <div className="relative w-full max-h-[80vh] aspect-video">
+              <div className="relative w-full max-h-[80vh] aspect-video bg-black rounded-lg overflow-hidden">
                 <video
                   src={mediaItems[lightboxIndex].url}
                   controls
                   autoPlay
-                  className="w-full h-full object-contain rounded-lg shadow-2xl"
+                  className="w-full h-full object-contain"
                   poster={mediaItems[lightboxIndex].thumbnail}
+                  onError={(e) => {
+                    console.error('Lightbox video failed to load:', mediaItems[lightboxIndex].url);
+                    e.currentTarget.controls = false;
+                    // Show error message
+                    const parent = e.currentTarget.parentElement;
+                    if (parent) {
+                      const errorDiv = document.createElement('div');
+                      errorDiv.className = 'absolute inset-0 flex items-center justify-center text-white bg-black/80';
+                      errorDiv.innerHTML = `
+                        <div class="text-center p-4">
+                          <p class="text-lg font-semibold">Video unavailable</p>
+                          <p class="text-sm text-gray-400 mt-2">The video failed to load</p>
+                        </div>
+                      `;
+                      parent.appendChild(errorDiv);
+                    }
+                  }}
                 />
               </div>
             )}
