@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import CartPopup from './CartPopup';
 import { useCart } from '../context/CartContext';
+import { useWishlist } from '../context/WishlistContext';
 import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -36,7 +37,7 @@ const StoreLayout: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { totalItems } = useCart();
-  const [wishlistCount, setWishlistCount] = useState(5);
+  const { wishlistCount } = useWishlist();
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -119,7 +120,6 @@ const StoreLayout: React.FC = () => {
     e.preventDefault();
     if (searchQuery.trim()) {
       setShowSuggestions(false);
-      // Navigate to products page with search query
       navigate(`/store/products?search=${encodeURIComponent(searchQuery.trim())}`);
     }
   };

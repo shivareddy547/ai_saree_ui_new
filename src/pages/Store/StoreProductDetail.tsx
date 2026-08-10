@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
+import { useWishlist } from '../../context/WishlistContext';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const CLOUDINARY_CLOUD_NAME = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart';
 const apiClient = axios.create({
@@ -86,6 +87,7 @@ const getVideoUrlFromCloudinary = (publicId?: string): string | undefined => {
 const StoreProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { addToCart } = useCart();
+  const { toggleWishlist, isWishlisted: checkWishlist } = useWishlist();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +96,8 @@ const StoreProductDetail: React.FC = () => {
   const [showVideo, setShowVideo] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -191,6 +195,13 @@ const StoreProductDetail: React.FC = () => {
       setSizes(Array.from(sizeSet));
       if (firstAvailable?.color) setSelectedColor(firstAvailable.color);
       if (firstAvailable?.size) setSelectedSize(firstAvailable.size);
+      // Check wishlist status
+      try {
+        const wished = await checkWishlist(data.id);
+        setIsWishlisted(wished);
+      } catch (err) {
+        console.error('Failed to check wishlist:', err);
+      }
     } catch (err: any) {
       console.error('Failed to fetch product:', err);
       setError(err.response?.data?.message || 'Failed to load product');
@@ -282,6 +293,19 @@ const StoreProductDetail: React.FC = () => {
       setIsAdding(false);
     }
   };
+  const handleWishlistToggle = async () => {
+    if (!product || wishlistLoading) return;
+    setWishlistLoading(true);
+    try {
+      const result = await toggleWishlist(product.id);
+      setIsWishlisted(result.isWishlisted);
+    } catch (err) {
+      console.error('Wishlist toggle error:', err);
+      alert('Failed to update wishlist. Please try again.');
+    } finally {
+      setWishlistLoading(false);
+    }
+  };
   const toggleVideo = () => {
     if (showVideo) {
       pauseAllVideos();
@@ -292,7 +316,6 @@ const StoreProductDetail: React.FC = () => {
   // Lightbox functions
   const openLightbox = (index: number) => {
     if (mediaItems.length === 0) return;
-    // Pause any playing video before opening
     pauseAllVideos();
     setLightboxIndex(index);
     setLightboxOpen(true);
@@ -305,7 +328,6 @@ const StoreProductDetail: React.FC = () => {
   };
   const goToPrev = () => {
     const newIndex = lightboxIndex === 0 ? mediaItems.length - 1 : lightboxIndex - 1;
-    // If the new item is image, pause video
     if (mediaItems[newIndex]?.type === 'image') {
       pauseAllVideos();
     }
@@ -513,7 +535,6 @@ const StoreProductDetail: React.FC = () => {
               <button
                 key={index}
                 onClick={() => {
-                  // Stop video if playing and switch to image
                   if (showVideo) {
                     pauseAllVideos();
                     setShowVideo(false);
@@ -567,8 +588,21 @@ const StoreProductDetail: React.FC = () => {
                   {product.name}
                 </h1>
               </div>
-              <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <Heart className="w-5 h-5 text-gray-400 hover:text-red-500" />
+              <button
+                onClick={handleWishlistToggle}
+                disabled={wishlistLoading}
+                className={`p-2 rounded-full transition-colors ${
+                  wishlistLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
+                }`}
+                aria-label="Toggle wishlist"
+              >
+                <Heart
+                  className={`w-6 h-6 ${
+                    isWishlisted
+                      ? 'fill-pink-500 text-pink-500'
+                      : 'text-gray-400 hover:text-pink-500'
+                  } transition-colors`}
+                />
               </button>
             </div>
             <div className="flex items-center gap-3 mt-2">
@@ -810,7 +844,6 @@ const StoreProductDetail: React.FC = () => {
                 key={idx}
                 onClick={(e) => {
                   e.stopPropagation();
-                  // If switching to an image, pause video
                   if (mediaItems[idx].type === 'image') {
                     pauseAllVideos();
                   }

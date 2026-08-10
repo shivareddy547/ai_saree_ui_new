@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
+import { WishlistProvider } from './context/WishlistContext';
 import Layout from './components/Layout';
 import StoreLayout from './components/StoreLayout';
 import LoginEmail from './pages/Auth/LoginEmail';
@@ -27,6 +28,7 @@ import StoreCart from './pages/Store/StoreCart';
 import StoreCheckout from './pages/Store/StoreCheckout';
 import StoreOrders from './pages/Store/StoreOrders';
 import StoreOrderDetail from './pages/Store/StoreOrderDetail';
+import StoreWishlist from './pages/Store/StoreWishlist';
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
     children,
     allowedRoles,
@@ -73,54 +75,57 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
 const App: React.FC = () => {
     return (
         <CartProvider>
-            <Router>
-                <Routes>
-                    <Route path="/login" element={<LoginEmail />} />
-                    <Route path="/signup" element={<SignupEmail />} />
-                    <Route path="/login-otp" element={<LoginOTP />} />
-                    <Route path="/signup-otp" element={<SignupOTP />} />
-                    <Route path="/forgot-password" element={<ForgotPasswordEmail />} />
-                    <Route path="/forgot-password-otp" element={<ForgotPasswordOTP />} />
-                    <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route
-                        path="/"
-                        element={
-                            <ProtectedRoute allowedRoles={['admin']}>
-                                <Layout />
-                            </ProtectedRoute>
-                        }
-                    >
-                        <Route index element={<Navigate to="/dashboard" />} />
-                        <Route path="dashboard" element={<Dashboard />} />
-                        <Route path="create-product" element={<CreateProduct />} />
-                        <Route path="ai-generation" element={<AIVideoGeneration />} />
-                        <Route path="video-preview" element={<VideoPreview />} />
-                        <Route path="insta-preview" element={<InstagramPreview />} />
-                        <Route path="post-success" element={<PostSuccess />} />
-                        <Route path="all-videos" element={<AllVideos />} />
-                        <Route path="categories" element={<Categories />} />
-                        <Route path="analytics" element={<Analytics />} />
-                        <Route path="help-us" element={<HelpUs />} />
-                    </Route>
-                    <Route
-                        path="/store"
-                        element={
-                            <ProtectedRoute allowedRoles={['admin', 'user']}>
-                                <StoreLayout />
-                            </ProtectedRoute>
-                        }
-                    >
-                        <Route index element={<Navigate to="/store/home" />} />
-                        <Route path="home" element={<StoreHome />} />
-                        <Route path="products" element={<StoreProducts />} />
-                        <Route path="product/:id" element={<StoreProductDetail />} />
-                        <Route path="cart" element={<StoreCart />} />
-                        <Route path="checkout" element={<StoreCheckout />} />
-                        <Route path="orders" element={<StoreOrders />} />
-                        <Route path="order/:id" element={<StoreOrderDetail />} />
-                    </Route>
-                </Routes>
-            </Router>
+            <WishlistProvider>
+                <Router>
+                    <Routes>
+                        <Route path="/login" element={<LoginEmail />} />
+                        <Route path="/signup" element={<SignupEmail />} />
+                        <Route path="/login-otp" element={<LoginOTP />} />
+                        <Route path="/signup-otp" element={<SignupOTP />} />
+                        <Route path="/forgot-password" element={<ForgotPasswordEmail />} />
+                        <Route path="/forgot-password-otp" element={<ForgotPasswordOTP />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                        <Route
+                            path="/"
+                            element={
+                                <ProtectedRoute allowedRoles={['admin']}>
+                                    <Layout />
+                                </ProtectedRoute>
+                            }
+                        >
+                            <Route index element={<Navigate to="/dashboard" />} />
+                            <Route path="dashboard" element={<Dashboard />} />
+                            <Route path="create-product" element={<CreateProduct />} />
+                            <Route path="ai-generation" element={<AIVideoGeneration />} />
+                            <Route path="video-preview" element={<VideoPreview />} />
+                            <Route path="insta-preview" element={<InstagramPreview />} />
+                            <Route path="post-success" element={<PostSuccess />} />
+                            <Route path="all-videos" element={<AllVideos />} />
+                            <Route path="categories" element={<Categories />} />
+                            <Route path="analytics" element={<Analytics />} />
+                            <Route path="help-us" element={<HelpUs />} />
+                        </Route>
+                        <Route
+                            path="/store"
+                            element={
+                                <ProtectedRoute allowedRoles={['admin', 'user']}>
+                                    <StoreLayout />
+                                </ProtectedRoute>
+                            }
+                        >
+                            <Route index element={<Navigate to="/store/home" />} />
+                            <Route path="home" element={<StoreHome />} />
+                            <Route path="products" element={<StoreProducts />} />
+                            <Route path="product/:id" element={<StoreProductDetail />} />
+                            <Route path="cart" element={<StoreCart />} />
+                            <Route path="checkout" element={<StoreCheckout />} />
+                            <Route path="orders" element={<StoreOrders />} />
+                            <Route path="order/:id" element={<StoreOrderDetail />} />
+                            <Route path="wishlist" element={<StoreWishlist />} />
+                        </Route>
+                    </Routes>
+                </Router>
+            </WishlistProvider>
         </CartProvider>
     );
 };
