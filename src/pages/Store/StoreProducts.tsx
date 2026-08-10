@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Search, Grid, List, Filter, Star, Heart, ChevronRight } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
+import { useWishlist } from '../../context/WishlistContext';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -31,8 +32,19 @@ interface Product {
   sizes?: string[];
   variants: any[];
 }
-const ProductCard: React.FC<{ product: Product; link: string }> = ({ product, link }) => {
+interface ProductCardProps {
+  product: Product;
+  link: string;
+  isWishlisted: boolean;
+  onToggleWishlist: (productId: string) => void;
+}
+const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, onToggleWishlist }) => {
   const { addToCart } = useCart();
+  const [wishlisted, setWishlisted] = useState(isWishlisted);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setWishlisted(isWishlisted);
+  }, [isWishlisted]);
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
@@ -58,12 +70,32 @@ const ProductCard: React.FC<{ product: Product; link: string }> = ({ product, li
       variantId: firstVariant.id,
     });
   };
+  const handleWishlistClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (loading) return;
+    setLoading(true);
+    try {
+      await onToggleWishlist(product.id);
+      setWishlisted(!wishlisted);
+    } catch (error) {
+      console.error('Wishlist toggle failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
       <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
         <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-        <button className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors">
-          <Heart className="w-4 h-4 text-gray-400 hover:text-red-500" />
+        <button
+          onClick={handleWishlistClick}
+          className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors z-10"
+          disabled={loading}
+        >
+          <Heart
+            className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`}
+          />
         </button>
         {discount > 0 && (
           <span className="absolute top-3 left-3 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg">
@@ -103,6 +135,8 @@ const StoreProducts: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
+  const { toggleWishlist } = useWishlist();
   // Read search query from URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -115,6 +149,7 @@ const StoreProducts: React.FC = () => {
   }, [location.search]);
   useEffect(() => {
     fetchProducts();
+    fetchWishlist();
   }, [searchTerm]);
   const fetchProducts = async () => {
     try {
@@ -131,6 +166,18 @@ const StoreProducts: React.FC = () => {
       console.error('Failed to fetch products:', error);
     } finally {
       setLoading(false);
+    }
+  };
+  const fetchWishlist = async () => {
+    try {
+      const response = await apiClient.get('/store/wishlist');
+      if (response.data.success) {
+        const ids = response.data.data.map((p: any) => p.id);
+        setWishlistedIds(new Set(ids));
+      }
+    } catch (err) {
+      console.error('Error fetching wishlist:', err);
+      setWishlistedIds(new Set());
     }
   };
   const mapProduct = (apiProduct: any): Product => {
@@ -169,10 +216,21 @@ const StoreProducts: React.FC = () => {
       sizes,
     };
   };
+  const handleToggleWishlist = async (productId: string) => {
+    const result = await toggleWishlist(productId);
+    setWishlistedIds(prev => {
+      const newSet = new Set(prev);
+      if (result.isWishlisted) {
+        newSet.add(productId);
+      } else {
+        newSet.delete(productId);
+      }
+      return newSet;
+    });
+  };
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
-    // Update URL with search param
     const params = new URLSearchParams(location.search);
     if (value) {
       params.set('search', value);
@@ -181,7 +239,6 @@ const StoreProducts: React.FC = () => {
     }
     const newUrl = `${location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-    // fetch will be triggered by useEffect dependency on searchTerm
   };
   if (loading) {
     return (
@@ -238,7 +295,13 @@ const StoreProducts: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {products.map((product) => (
-            <ProductCard key={product.id} product={product} link={`/store/product/${product.id}`} />
+            <ProductCard
+              key={product.id}
+              product={product}
+              link={`/store/product/${product.id}`}
+              isWishlisted={wishlistedIds.has(product.id)}
+              onToggleWishlist={handleToggleWishlist}
+            />
           ))}
         </div>
       )}

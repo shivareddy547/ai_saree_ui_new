@@ -16,6 +16,7 @@ import {
 import axios from 'axios';
 import HeroBanner from '../../components/HeroBanner';
 import { useCart } from '../../context/CartContext';
+import { useWishlist } from '../../context/WishlistContext';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -179,9 +180,16 @@ interface Product {
 interface ProductCardProps {
   product: Product;
   link: string;
+  isWishlisted: boolean;
+  onToggleWishlist: (productId: string) => void;
 }
-const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, onToggleWishlist }) => {
   const { addToCart } = useCart();
+  const [wishlisted, setWishlisted] = useState(isWishlisted);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setWishlisted(isWishlisted);
+  }, [isWishlisted]);
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
@@ -194,7 +202,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
       alert('This product is not configured correctly. Please contact support.');
       return;
     }
-    // Use product.price (computed from basePrice or variant) instead of firstVariant.price directly
     const price = product.price;
     if (typeof price !== 'number' || price <= 0) {
       alert('This product has an invalid price.');
@@ -208,12 +215,32 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link }) => {
       variantId: firstVariant.id,
     });
   };
+  const handleWishlistClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (loading) return;
+    setLoading(true);
+    try {
+      await onToggleWishlist(product.id);
+      setWishlisted(!wishlisted);
+    } catch (error) {
+      console.error('Wishlist toggle failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
       <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
         <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-        <button className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors">
-          <Heart className="w-4 h-4 text-gray-400 hover:text-red-500" />
+        <button
+          onClick={handleWishlistClick}
+          className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors z-10"
+          disabled={loading}
+        >
+          <Heart
+            className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`}
+          />
         </button>
         {discount > 0 && (
           <span className="absolute top-3 left-3 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg">
@@ -252,8 +279,17 @@ interface ProductGridProps {
   title: string;
   viewAllLink: string;
   productLinkPrefix: string;
+  wishlistedIds: Set<string>;
+  onToggleWishlist: (productId: string) => Promise<void>;
 }
-const ProductGrid: React.FC<ProductGridProps> = ({ products, title, viewAllLink, productLinkPrefix }) => {
+const ProductGrid: React.FC<ProductGridProps> = ({
+  products,
+  title,
+  viewAllLink,
+  productLinkPrefix,
+  wishlistedIds,
+  onToggleWishlist,
+}) => {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -264,7 +300,13 @@ const ProductGrid: React.FC<ProductGridProps> = ({ products, title, viewAllLink,
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {products.map((product) => (
-          <ProductCard key={product.id} product={product} link={`${productLinkPrefix}/${product.id}`} />
+          <ProductCard
+            key={product.id}
+            product={product}
+            link={`${productLinkPrefix}/${product.id}`}
+            isWishlisted={wishlistedIds.has(product.id)}
+            onToggleWishlist={onToggleWishlist}
+          />
         ))}
       </div>
     </div>
@@ -320,6 +362,8 @@ const StoreHome: React.FC = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [newArrivals, setNewArrivals] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
+  const { toggleWishlist } = useWishlist();
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true);
@@ -362,32 +406,39 @@ const StoreHome: React.FC = () => {
       setProductsLoading(false);
     }
   };
+  const fetchWishlist = async () => {
+    try {
+      const response = await apiClient.get('/store/wishlist');
+      if (response.data.success) {
+        const ids = response.data.data.map((p: any) => p.id);
+        setWishlistedIds(new Set(ids));
+      }
+    } catch (err) {
+      console.error('Error fetching wishlist:', err);
+      setWishlistedIds(new Set());
+    }
+  };
   const mapProduct = (apiProduct: any): Product => {
     let price = 0;
     let originalPrice = undefined;
     let colors: string[] = [];
     let sizes: string[] = [];
     if (apiProduct.variants && apiProduct.variants.length > 0) {
-      // Use the first variant for price and costPrice
       const firstVariant = apiProduct.variants[0];
       const variantPrice = parseFloat(firstVariant.price);
       if (!isNaN(variantPrice) && variantPrice > 0) {
         price = variantPrice;
       } else {
-        // fallback to product's basePrice
         price = apiProduct.basePrice ? parseFloat(apiProduct.basePrice) : 0;
       }
       const costPrice = firstVariant.costPrice ? parseFloat(firstVariant.costPrice) : null;
       if (costPrice && costPrice > price) {
         originalPrice = costPrice;
       }
-      // Collect colors and sizes from variants
       colors = apiProduct.variants.map((v: any) => v.color).filter(Boolean);
       sizes = apiProduct.variants.map((v: any) => v.size).filter(Boolean);
     } else {
-      // No variants: use basePrice
       price = apiProduct.basePrice ? parseFloat(apiProduct.basePrice) : 0;
-      // No costPrice available
     }
     const image = apiProduct.images && apiProduct.images.length > 0 ? apiProduct.images[0].url : 'https://via.placeholder.com/300x400?text=No+Image';
     return {
@@ -403,9 +454,24 @@ const StoreHome: React.FC = () => {
       sizes,
     };
   };
+  const handleToggleWishlist = async (productId: string) => {
+    const result = await toggleWishlist(productId);
+    // Update local set if needed, but we can also refetch the wishlist or just update the set.
+    // We'll update the set directly based on result.
+    setWishlistedIds(prev => {
+      const newSet = new Set(prev);
+      if (result.isWishlisted) {
+        newSet.add(productId);
+      } else {
+        newSet.delete(productId);
+      }
+      return newSet;
+    });
+  };
   useEffect(() => {
     fetchCategories();
     fetchProducts();
+    fetchWishlist();
   }, []);
   const features: Feature[] = [
     { icon: Truck, label: 'Free Shipping', desc: 'On orders above ₹999' },
@@ -448,6 +514,8 @@ const StoreHome: React.FC = () => {
           title="Featured Products"
           viewAllLink="/store/products"
           productLinkPrefix="/store/product"
+          wishlistedIds={wishlistedIds}
+          onToggleWishlist={handleToggleWishlist}
         />
       )}
       <DealBanner {...dealData} />
@@ -457,6 +525,8 @@ const StoreHome: React.FC = () => {
           title="New Arrivals"
           viewAllLink="/store/products"
           productLinkPrefix="/store/product"
+          wishlistedIds={wishlistedIds}
+          onToggleWishlist={handleToggleWishlist}
         />
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
