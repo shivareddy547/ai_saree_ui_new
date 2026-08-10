@@ -14,7 +14,7 @@
   - axios calls
   - native fetch
 - Sample File Containing API Calls:
-  - src/utils/imageKitUpload.ts
+  - src/services/authService.ts
 
 ## Other Libraries
 ### Routing
