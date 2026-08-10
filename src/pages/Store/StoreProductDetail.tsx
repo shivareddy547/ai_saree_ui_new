@@ -78,7 +78,6 @@ interface MediaItem {
 // Helper to construct Cloudinary video URL
 const getVideoUrlFromCloudinary = (publicId?: string): string | undefined => {
   if (!publicId) return undefined;
-  // If publicId already contains the folder, just use it directly
   if (publicId.includes('/')) {
     return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
   }
@@ -107,6 +106,16 @@ const StoreProductDetail: React.FC = () => {
   const [sizes, setSizes] = useState<string[]>([]);
   const lightboxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lightboxVideoRef = useRef<HTMLVideoElement>(null);
+  // Helper to pause all videos
+  const pauseAllVideos = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+    if (lightboxVideoRef.current) {
+      lightboxVideoRef.current.pause();
+    }
+  }, []);
   useEffect(() => {
     if (id) {
       fetchProduct(id);
@@ -274,30 +283,49 @@ const StoreProductDetail: React.FC = () => {
     }
   };
   const toggleVideo = () => {
+    if (showVideo) {
+      pauseAllVideos();
+    }
     setShowVideo(!showVideo);
     setVideoError(false);
-    if (!showVideo) {
-      // Reset video error when showing
-      setVideoError(false);
-    }
   };
   // Lightbox functions
   const openLightbox = (index: number) => {
     if (mediaItems.length === 0) return;
+    // Pause any playing video before opening
+    pauseAllVideos();
     setLightboxIndex(index);
     setLightboxOpen(true);
     document.body.style.overflow = 'hidden';
   };
   const closeLightbox = () => {
+    pauseAllVideos();
     setLightboxOpen(false);
     document.body.style.overflow = 'unset';
   };
   const goToPrev = () => {
-    setLightboxIndex((prev) => (prev === 0 ? mediaItems.length - 1 : prev - 1));
+    const newIndex = lightboxIndex === 0 ? mediaItems.length - 1 : lightboxIndex - 1;
+    // If the new item is image, pause video
+    if (mediaItems[newIndex]?.type === 'image') {
+      pauseAllVideos();
+    }
+    setLightboxIndex(newIndex);
   };
   const goToNext = () => {
-    setLightboxIndex((prev) => (prev === mediaItems.length - 1 ? 0 : prev + 1));
+    const newIndex = lightboxIndex === mediaItems.length - 1 ? 0 : lightboxIndex + 1;
+    if (mediaItems[newIndex]?.type === 'image') {
+      pauseAllVideos();
+    }
+    setLightboxIndex(newIndex);
   };
+  // Pause video when lightbox is closed or when index changes to image
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const currentItem = mediaItems[lightboxIndex];
+    if (currentItem?.type === 'image') {
+      pauseAllVideos();
+    }
+  }, [lightboxIndex, lightboxOpen, mediaItems, pauseAllVideos]);
   // Handle video error
   const handleVideoError = () => {
     setVideoError(true);
@@ -485,7 +513,11 @@ const StoreProductDetail: React.FC = () => {
               <button
                 key={index}
                 onClick={() => {
-                  if (product.videoUrl) setShowVideo(false);
+                  // Stop video if playing and switch to image
+                  if (showVideo) {
+                    pauseAllVideos();
+                    setShowVideo(false);
+                  }
                   setActiveImage(index);
                   openLightbox(index);
                 }}
@@ -745,6 +777,7 @@ const StoreProductDetail: React.FC = () => {
             ) : (
               <div className="relative w-full max-h-[80vh] aspect-video bg-black rounded-lg overflow-hidden">
                 <video
+                  ref={lightboxVideoRef}
                   src={mediaItems[lightboxIndex].url}
                   controls
                   autoPlay
@@ -753,7 +786,6 @@ const StoreProductDetail: React.FC = () => {
                   onError={(e) => {
                     console.error('Lightbox video failed to load:', mediaItems[lightboxIndex].url);
                     e.currentTarget.controls = false;
-                    // Show error message
                     const parent = e.currentTarget.parentElement;
                     if (parent) {
                       const errorDiv = document.createElement('div');
@@ -778,6 +810,10 @@ const StoreProductDetail: React.FC = () => {
                 key={idx}
                 onClick={(e) => {
                   e.stopPropagation();
+                  // If switching to an image, pause video
+                  if (mediaItems[idx].type === 'image') {
+                    pauseAllVideos();
+                  }
                   setLightboxIndex(idx);
                 }}
                 className={`w-2 h-2 rounded-full transition-all ${
