@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save, ArrowLeft } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save, ArrowLeft, HelpCircle } from 'lucide-react';
 import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 interface PostToInstagramProps {
@@ -14,13 +14,10 @@ interface PostToInstagramProps {
   isEditMode?: boolean;
   videoUrl?: string | null;
   cloudinaryPublicId?: string | null;
-  // New props for update-only functionality
-  onUpdateProductOnly?: () => void;   // callback to save product details only
-  isUpdatingOnly?: boolean;           // loading state for update only
-  updateOnlyError?: string | null;    // error for update only
-  // Back button prop
-  onBack?: () => void;                // callback to go back to previous step
-  // Product ID to check if product is saved
+  onUpdateProductOnly?: () => void;
+  isUpdatingOnly?: boolean;
+  updateOnlyError?: string | null;
+  onBack?: () => void;
   productId?: string | null;
 }
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
@@ -61,6 +58,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [showCaptionEditor, setShowCaptionEditor] = useState(false);
   const [caption, setCaption] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [mediaType, setMediaType] = useState<'REELS' | 'VIDEO'>('REELS');
   const videoRef = useRef<HTMLVideoElement>(null);
   const apiClient = axios.create({
     baseURL: API_BASE,
@@ -194,12 +192,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     }
   };
   const handlePublishToInstagram = async () => {
-    // Only use Cloudinary URL for posting
     if (!cloudinaryPublicId) {
       setPublishError('Please generate a video and upload to Cloudinary first');
       return;
     }
-    // Construct Cloudinary video URL
     const cloudinaryVideoUrl = `https://res.cloudinary.com/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart'}/video/upload/${cloudinaryPublicId}.mp4`;
     if (!instagramStatus.connected) {
       setPublishError('Please connect Instagram account first');
@@ -211,13 +207,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     try {
       const response = await apiClient.post('/instagram/post', {
         video_url: cloudinaryVideoUrl,
-        media_type: 'REELS',
+        media_type: mediaType,
         caption: caption || generateDefaultCaption()
       });
       if (response.data.success) {
         setPublishSuccess('Video posted to Instagram successfully! 🎉');
-        // Do not call handlePostToInstagram (which would save product again)
-        // Just show success message; product is already saved.
       }
     } catch (err: any) {
       console.error('Failed to post to Instagram:', err);
@@ -536,6 +530,73 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </button>
         </div>
       </div>
+      {/* Media Type Selection */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="font-medium text-slate-700 flex items-center gap-2">
+            <svg className="w-5 h-5 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" />
+              <line x1="8" y1="2" x2="8" y2="22" />
+              <line x1="16" y1="2" x2="16" y2="22" />
+              <line x1="2" y1="8" x2="22" y2="8" />
+              <line x1="2" y1="16" x2="22" y2="16" />
+            </svg>
+            Post Type
+          </h3>
+          <button
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            title="Help: Avoiding 'AI Creator' label"
+          >
+            <HelpCircle size={18} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-gray-600">
+            Select the type of post. If you see <strong>"AI Creator"</strong> label on your published post, try switching to <strong>"Video (Feed)"</strong> instead of "Reels".
+          </p>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="mediaType"
+                value="REELS"
+                checked={mediaType === 'REELS'}
+                onChange={() => setMediaType('REELS')}
+                className="text-purple-600 focus:ring-purple-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Reels</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="mediaType"
+                value="VIDEO"
+                checked={mediaType === 'VIDEO'}
+                onChange={() => setMediaType('VIDEO')}
+                className="text-purple-600 focus:ring-purple-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Video (Feed)</span>
+            </label>
+          </div>
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+            <p className="flex items-start gap-2">
+              <HelpCircle size={16} className="flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>Why does "AI Creator" appear?</strong> Instagram may automatically label content that appears to be generated by AI. 
+                This can happen when using text-to-speech voices, especially if they sound robotic. 
+                To reduce the chance of this label:
+                <ul className="list-disc list-inside mt-1 space-y-1">
+                  <li>Try using <strong>"Video"</strong> post type instead of "Reels".</li>
+                  <li>Use a more natural-sounding voice (e.g., Google Cloud TTS with Studio voices or ElevenLabs).</li>
+                  <li>Add background music or ambient sound to make the video feel more organic.</li>
+                  <li>Avoid mentioning "AI" or "generated" in captions or hashtags.</li>
+                </ul>
+                <p className="mt-1 text-xs text-blue-600">Note: Instagram's detection algorithms are beyond our control.</p>
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
       <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3 border border-gray-200">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
@@ -568,7 +629,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </div>
       )}
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-        {/* Back button - goes to previous step */}
         {onBack && (
           <button
             onClick={onBack}
@@ -579,7 +639,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             Back
           </button>
         )}
-        {/* Primary button: Post to Instagram (only posts, assumes product saved) */}
         <button
           onClick={handlePublishToInstagram}
           disabled={isPosting || !instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly || !productId}
@@ -604,7 +663,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             </>
           )}
         </button>
-        {/* Save / Update Only button - always visible */}
         <button
           onClick={() => {
             if (onUpdateProductOnly) {
