@@ -191,8 +191,16 @@ const Dashboard: React.FC = () => {
     setConnectError(null);
     setStatusError(null);
     try {
-      // Use environment variable for redirect URI, fallback to window origin
-      const redirectUri = process.env.REACT_APP_INSTAGRAM_REDIRECT_URI || `${window.location.origin}/instagram-callback`;
+      // IMPORTANT: Use the environment variable for redirect URI.
+      // For React, environment variables must start with REACT_APP_.
+      // If you set INSTAGRAM_REDIRECT_URI in your .env, rename it to REACT_APP_INSTAGRAM_REDIRECT_URI.
+      // Fallback to window.location.origin + '/instagram-callback' if not set.
+      const redirectUri = 
+        process.env.REACT_APP_INSTAGRAM_REDIRECT_URI || 
+        process.env.INSTAGRAM_REDIRECT_URI || // fallback for non-React env var (for compatibility)
+        `${window.location.origin}/instagram-callback`;
+      // Log to verify which URI is being used
+      console.log('Using Instagram redirect URI:', redirectUri);
       const urlResponse = await apiClient.get('/instagram/oauth-url', {
         params: { redirectUri }
       });
@@ -235,7 +243,10 @@ const Dashboard: React.FC = () => {
   // Handle OAuth callback completion
   const handleAuthComplete = async (code: string) => {
     const redirectUri = sessionStorage.getItem('instagram_redirect_uri');
-    if (!redirectUri) return;
+    if (!redirectUri) {
+      setConnectError('Missing redirect URI. Please try again.');
+      return;
+    }
     try {
       setIsConnecting(true);
       const response = await apiClient.post('/instagram/connect', {
