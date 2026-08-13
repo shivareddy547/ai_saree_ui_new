@@ -16,7 +16,7 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 export interface CartItem {
-  id: number; // cart item id
+  id: number;
   productId: string;
   variantId: string;
   name: string;
@@ -41,6 +41,22 @@ interface CartContextType {
   togglePopup: () => void;
 }
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const resolveCartItemPrice = (item: any): number => {
+  // 1) Prefer resolvedPrice if backend attached it
+  if (item?.resolvedPrice != null) {
+    const r = parseFloat(item.resolvedPrice);
+    if (!isNaN(r) && r > 0) return r;
+  }
+  // 2) Variant price when positive
+  const variantPrice = item?.variant?.price != null ? parseFloat(item.variant.price) : NaN;
+  if (!isNaN(variantPrice) && variantPrice > 0) return variantPrice;
+  // 3) Product basePrice fallback (products without variants)
+  const basePrice = item?.product?.basePrice != null ? parseFloat(item.product.basePrice) : NaN;
+  if (!isNaN(basePrice) && basePrice > 0) return basePrice;
+  // 4) Last resort
+  if (!isNaN(variantPrice)) return variantPrice;
+  return 0;
+};
 export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -48,16 +64,19 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await apiClient.get('/cart');
       const data = response.data.data;
-      const cartItems = data.items.map((item: any) => ({
+      const cartItems = (data?.items || []).map((item: any) => ({
         id: item.id,
         productId: item.productId,
         variantId: item.variantId,
-        name: item.product.name,
-        price: parseFloat(item.variant.price),
-        image: item.product.images && item.product.images.length > 0 ? item.product.images[0].url : '',
+        name: item.product?.name || '',
+        price: resolveCartItemPrice(item),
+        image:
+          item.product?.images && item.product.images.length > 0
+            ? item.product.images[0].url
+            : '',
         quantity: item.quantity,
-        color: item.variant.color || undefined,
-        size: item.variant.size || undefined,
+        color: item.variant?.color || undefined,
+        size: item.variant?.size || undefined,
       }));
       setItems(cartItems);
     } catch (error) {
@@ -67,39 +86,52 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     fetchCart();
   }, [fetchCart]);
-  const addToCart = useCallback(async (product: { id: string; name: string; price: number; image: string; variantId: string }, quantity = 1) => {
-    try {
-      await apiClient.post('/cart/items', {
-        productId: product.id,
-        variantId: product.variantId,
-        quantity,
-      });
-      await fetchCart();
-      setIsPopupOpen(true);
-    } catch (error) {
-      console.error('Failed to add to cart:', error);
-    }
-  }, [fetchCart]);
-  const removeFromCart = useCallback(async (id: number) => {
-    try {
-      await apiClient.delete(`/cart/items/${id}`);
-      await fetchCart();
-    } catch (error) {
-      console.error('Failed to remove item:', error);
-    }
-  }, [fetchCart]);
-  const updateQuantity = useCallback(async (id: number, quantity: number) => {
-    if (quantity <= 0) {
-      await removeFromCart(id);
-      return;
-    }
-    try {
-      await apiClient.put(`/cart/items/${id}`, { quantity });
-      await fetchCart();
-    } catch (error) {
-      console.error('Failed to update quantity:', error);
-    }
-  }, [fetchCart, removeFromCart]);
+  const addToCart = useCallback(
+    async (
+      product: { id: string; name: string; price: number; image: string; variantId: string },
+      quantity = 1
+    ) => {
+      try {
+        await apiClient.post('/cart/items', {
+          productId: product.id,
+          variantId: product.variantId || undefined,
+          quantity,
+        });
+        await fetchCart();
+        setIsPopupOpen(true);
+      } catch (error) {
+        console.error('Failed to add to cart:', error);
+        throw error;
+      }
+    },
+    [fetchCart]
+  );
+  const removeFromCart = useCallback(
+    async (id: number) => {
+      try {
+        await apiClient.delete(`/cart/items/${id}`);
+        await fetchCart();
+      } catch (error) {
+        console.error('Failed to remove item:', error);
+      }
+    },
+    [fetchCart]
+  );
+  const updateQuantity = useCallback(
+    async (id: number, quantity: number) => {
+      if (quantity <= 0) {
+        await removeFromCart(id);
+        return;
+      }
+      try {
+        await apiClient.put(`/cart/items/${id}`, { quantity });
+        await fetchCart();
+      } catch (error) {
+        console.error('Failed to update quantity:', error);
+      }
+    },
+    [fetchCart, removeFromCart]
+  );
   const clearCart = useCallback(async () => {
     try {
       for (const item of items) {
@@ -114,22 +146,24 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const totalPrice = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const openPopup = useCallback(() => setIsPopupOpen(true), []);
   const closePopup = useCallback(() => setIsPopupOpen(false), []);
-  const togglePopup = useCallback(() => setIsPopupOpen(prev => !prev), []);
+  const togglePopup = useCallback(() => setIsPopupOpen((prev) => !prev), []);
   return (
-    <CartContext.Provider value={{
-      items,
-      addToCart,
-      removeFromCart,
-      updateQuantity,
-      clearCart,
-      fetchCart,
-      totalItems,
-      totalPrice,
-      isPopupOpen,
-      openPopup,
-      closePopup,
-      togglePopup,
-    }}>
+    <CartContext.Provider
+      value={{
+        items,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        clearCart,
+        fetchCart,
+        totalItems,
+        totalPrice,
+        isPopupOpen,
+        openPopup,
+        closePopup,
+        togglePopup,
+      }}
+    >
       {children}
     </CartContext.Provider>
   );

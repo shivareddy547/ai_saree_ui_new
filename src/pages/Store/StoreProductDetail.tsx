@@ -35,7 +35,6 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
-// Types
 interface ProductVariant {
   id: string;
   sku: string;
@@ -76,13 +75,17 @@ interface MediaItem {
   url: string;
   thumbnail?: string;
 }
-// Helper to construct Cloudinary video URL
 const getVideoUrlFromCloudinary = (publicId?: string): string | undefined => {
   if (!publicId) return undefined;
-  if (publicId.includes('/')) {
-    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
-  }
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
+};
+const toPositivePrice = (...candidates: Array<number | string | null | undefined>): number => {
+  for (const c of candidates) {
+    if (c === undefined || c === null || c === '') continue;
+    const n = typeof c === 'number' ? c : parseFloat(String(c));
+    if (!isNaN(n) && n > 0) return n;
+  }
+  return 0;
 };
 const StoreProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -98,11 +101,9 @@ const StoreProductDetail: React.FC = () => {
   const [videoError, setVideoError] = useState(false);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
-  // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  // Variant selection
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -111,19 +112,12 @@ const StoreProductDetail: React.FC = () => {
   const lightboxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lightboxVideoRef = useRef<HTMLVideoElement>(null);
-  // Helper to pause all videos
   const pauseAllVideos = useCallback(() => {
-    if (videoRef.current) {
-      videoRef.current.pause();
-    }
-    if (lightboxVideoRef.current) {
-      lightboxVideoRef.current.pause();
-    }
+    if (videoRef.current) videoRef.current.pause();
+    if (lightboxVideoRef.current) lightboxVideoRef.current.pause();
   }, []);
   useEffect(() => {
-    if (id) {
-      fetchProduct(id);
-    }
+    if (id) fetchProduct(id);
   }, [id]);
   const fetchProduct = async (productId: string) => {
     try {
@@ -132,17 +126,13 @@ const StoreProductDetail: React.FC = () => {
       setVideoError(false);
       const response = await apiClient.get(`/store/products/${productId}`);
       const data = response.data.data;
-      // Prioritize Cloudinary video URL over blob URL
       let videoUrl = data.videoUrl;
       if (data.cloudinaryVideoPublicId) {
         const cloudinaryUrl = getVideoUrlFromCloudinary(data.cloudinaryVideoPublicId);
-        if (cloudinaryUrl) {
-          videoUrl = cloudinaryUrl;
-        }
+        if (cloudinaryUrl) videoUrl = cloudinaryUrl;
       }
       data.videoUrl = videoUrl;
       setProduct(data);
-      // Build media items for lightbox
       const items: MediaItem[] = [];
       if (data.images && data.images.length > 0) {
         data.images.forEach((img: ProductImage) => {
@@ -159,31 +149,15 @@ const StoreProductDetail: React.FC = () => {
       setMediaItems(items);
       const allVariants: ProductVariant[] = data.variants || [];
       const meaningfulVariants = allVariants.filter(
-        (v: ProductVariant) => v.sku && v.sku.trim() !== ''
+        (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
       );
-      let variantsForSelection: ProductVariant[] = meaningfulVariants;
-      if (meaningfulVariants.length === 0) {
-        if (allVariants.length > 0) {
-          variantsForSelection = allVariants;
-        } else {
-          const syntheticVariant: ProductVariant = {
-            id: data.id,
-            sku: data.defaultSku || 'N/A',
-            size: '',
-            color: '',
-            price: data.basePrice || 0,
-            costPrice: data.costPrice !== undefined ? data.costPrice : undefined,
-            stockQuantity:
-              data.stockQuantity !== undefined && data.stockQuantity !== null
-                ? data.stockQuantity
-                : 999,
-          };
-          variantsForSelection = [syntheticVariant];
-        }
-      }
+      // Real configured variants (size/color) vs default single variant
+      const variantsForSelection =
+        meaningfulVariants.length > 0 ? meaningfulVariants : allVariants;
       const firstAvailable =
         variantsForSelection.find((v) => v.stockQuantity > 0) ||
-        variantsForSelection[0];
+        variantsForSelection[0] ||
+        null;
       setSelectedVariant(firstAvailable);
       const colorSet = new Set<string>();
       const sizeSet = new Set<string>();
@@ -195,7 +169,6 @@ const StoreProductDetail: React.FC = () => {
       setSizes(Array.from(sizeSet));
       if (firstAvailable?.color) setSelectedColor(firstAvailable.color);
       if (firstAvailable?.size) setSelectedSize(firstAvailable.size);
-      // Check wishlist status
       try {
         const wished = await checkWishlist(data.id);
         setIsWishlisted(wished);
@@ -209,21 +182,23 @@ const StoreProductDetail: React.FC = () => {
       setLoading(false);
     }
   };
-  // Update selected variant when color or size changes
   useEffect(() => {
     if (!product) return;
-    const meaningfulVariants = (product.variants || []).filter(
-      (v: ProductVariant) => v.sku && v.sku.trim() !== ''
+    const allVariants = product.variants || [];
+    const meaningfulVariants = allVariants.filter(
+      (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
     );
-    if (meaningfulVariants.length === 0) return;
-    let matched = meaningfulVariants.find(
+    const pool = meaningfulVariants.length > 0 ? meaningfulVariants : allVariants;
+    if (pool.length === 0) {
+      setSelectedVariant(null);
+      return;
+    }
+    let matched = pool.find(
       (v: ProductVariant) =>
         (selectedColor ? v.color === selectedColor : true) &&
         (selectedSize ? v.size === selectedSize : true)
     );
-    if (!matched && meaningfulVariants.length > 0) {
-      matched = meaningfulVariants[0];
-    }
+    if (!matched) matched = pool[0];
     setSelectedVariant(matched || null);
   }, [selectedColor, selectedSize, product]);
   const handleQuantityChange = (delta: number) => {
@@ -231,58 +206,42 @@ const StoreProductDetail: React.FC = () => {
   };
   const handleAddToCart = async () => {
     if (!product || isAdding) return;
-    const meaningfulVariants = (product.variants || []).filter(
-      (v: ProductVariant) => v.sku && v.sku.trim() !== ''
+    const allVariants = product.variants || [];
+    const meaningfulVariants = allVariants.filter(
+      (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
     );
-    const hasVariants = meaningfulVariants.length > 0;
+    const hasConfiguredVariants = meaningfulVariants.length > 0;
+    // Use case 1: no configured variants → use basePrice, pass any real variant id (or omit)
+    // Use case 2: has variants → use selected variant price
     let variant: ProductVariant | null = selectedVariant;
-    let price = variant ? Number(variant.price) : Number(product.basePrice) || 0;
-    if (hasVariants) {
-      if (!variant) {
-        variant = meaningfulVariants[0];
-        price = Number(variant.price) || 0;
-      }
+    if (!variant && allVariants.length > 0) {
+      variant = hasConfiguredVariants ? meaningfulVariants[0] : allVariants[0];
+    }
+    let price = 0;
+    if (hasConfiguredVariants) {
+      price = toPositivePrice(variant?.price, product.basePrice);
     } else {
-      price = Number(product.basePrice) || 0;
-      if (product.variants && product.variants.length > 0) {
-        variant = product.variants[0];
-        price = Number(product.basePrice) || Number(variant.price) || 0;
-      } else if (!variant) {
-        variant = {
-          id: product.id,
-          sku: product.defaultSku || 'default',
-          price: price,
-          stockQuantity:
-            product.stockQuantity !== undefined ? product.stockQuantity : 999,
-          size: '',
-          color: '',
-        };
-      }
+      // Products without variants: always prefer basePrice
+      price = toPositivePrice(product.basePrice, variant?.price);
     }
-    if (!variant) {
-      alert('This product is not configured correctly. Please contact support.');
+    if (price <= 0) {
+      alert('This product has an invalid price.');
       return;
-    }
-    if (typeof price !== 'number' || isNaN(price) || price <= 0) {
-      if (product.basePrice && product.basePrice > 0) {
-        price = product.basePrice;
-      } else {
-        alert('This product has an invalid price.');
-        return;
-      }
     }
     setIsAdding(true);
     try {
+      // variantId may be undefined for true no-variant products;
+      // backend will create/sync a default variant with basePrice.
       await addToCart(
         {
           id: product.id,
           name: product.name,
-          price: price,
+          price,
           image:
             product.images && product.images.length > 0
               ? product.images[0].url
               : '',
-          variantId: variant.id,
+          variantId: variant?.id || '',
         },
         quantity
       );
@@ -307,13 +266,10 @@ const StoreProductDetail: React.FC = () => {
     }
   };
   const toggleVideo = () => {
-    if (showVideo) {
-      pauseAllVideos();
-    }
+    if (showVideo) pauseAllVideos();
     setShowVideo(!showVideo);
     setVideoError(false);
   };
-  // Lightbox functions
   const openLightbox = (index: number) => {
     if (mediaItems.length === 0) return;
     pauseAllVideos();
@@ -328,32 +284,23 @@ const StoreProductDetail: React.FC = () => {
   };
   const goToPrev = () => {
     const newIndex = lightboxIndex === 0 ? mediaItems.length - 1 : lightboxIndex - 1;
-    if (mediaItems[newIndex]?.type === 'image') {
-      pauseAllVideos();
-    }
+    if (mediaItems[newIndex]?.type === 'image') pauseAllVideos();
     setLightboxIndex(newIndex);
   };
   const goToNext = () => {
     const newIndex = lightboxIndex === mediaItems.length - 1 ? 0 : lightboxIndex + 1;
-    if (mediaItems[newIndex]?.type === 'image') {
-      pauseAllVideos();
-    }
+    if (mediaItems[newIndex]?.type === 'image') pauseAllVideos();
     setLightboxIndex(newIndex);
   };
-  // Pause video when lightbox is closed or when index changes to image
   useEffect(() => {
     if (!lightboxOpen) return;
     const currentItem = mediaItems[lightboxIndex];
-    if (currentItem?.type === 'image') {
-      pauseAllVideos();
-    }
+    if (currentItem?.type === 'image') pauseAllVideos();
   }, [lightboxIndex, lightboxOpen, mediaItems, pauseAllVideos]);
-  // Handle video error
   const handleVideoError = () => {
     setVideoError(true);
     console.error('Video failed to load:', product?.videoUrl);
   };
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!lightboxOpen) return;
@@ -386,32 +333,24 @@ const StoreProductDetail: React.FC = () => {
     return (
       <div className="text-center py-12">
         <p className="text-red-600 font-medium">{error || 'Product not found'}</p>
-        <Link
-          to="/store/products"
-          className="text-purple-600 hover:underline mt-2 inline-block"
-        >
+        <Link to="/store/products" className="text-purple-600 hover:underline mt-2 inline-block">
           Back to Products
         </Link>
       </div>
     );
   }
-  // Price display
-  const meaningfulVariants = (product.variants || []).filter(
-    (v: ProductVariant) => v.sku && v.sku.trim() !== ''
+  const allVariants = product.variants || [];
+  const meaningfulVariants = allVariants.filter(
+    (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
   );
   const hasVariants = meaningfulVariants.length > 0;
+  // Display price: variants → selected variant price; no variants → basePrice
   const variantPrice = hasVariants
-    ? selectedVariant
-      ? Number(selectedVariant.price)
-      : Number(product.basePrice) || 0
-    : Number(product.basePrice) || 0;
-  const costPrice = hasVariants
-    ? selectedVariant?.costPrice
-    : product.costPrice;
+    ? toPositivePrice(selectedVariant?.price, product.basePrice)
+    : toPositivePrice(product.basePrice, selectedVariant?.price);
+  const costPrice = hasVariants ? selectedVariant?.costPrice : product.costPrice;
   const originalPrice =
-    costPrice && Number(costPrice) > variantPrice
-      ? Number(costPrice)
-      : undefined;
+    costPrice && Number(costPrice) > variantPrice ? Number(costPrice) : undefined;
   const discount = originalPrice
     ? Math.round(((originalPrice - variantPrice) / originalPrice) * 100)
     : 0;
@@ -419,7 +358,6 @@ const StoreProductDetail: React.FC = () => {
     product.images && product.images.length > 0
       ? product.images.map((img) => img.url)
       : ['https://via.placeholder.com/600x800?text=No+Image'];
-  // Stock logic
   let stockQuantity = 0;
   let isInStock = false;
   if (hasVariants) {
@@ -429,22 +367,17 @@ const StoreProductDetail: React.FC = () => {
     stockQuantity =
       product.stockQuantity !== undefined && product.stockQuantity !== null
         ? product.stockQuantity
-        : 999;
+        : allVariants[0]?.stockQuantity ?? 999;
     isInStock = stockQuantity > 0;
   }
-  const canAddToCart =
-    variantPrice > 0 &&
-    isInStock &&
-    (hasVariants ? selectedVariant !== null : true) &&
-    !isAdding;
+  const canAddToCart = variantPrice > 0 && isInStock && !isAdding;
   const displaySku = hasVariants
     ? selectedVariant
       ? selectedVariant.sku
       : product.defaultSku || 'N/A'
-    : product.defaultSku || 'N/A';
+    : product.defaultSku || allVariants[0]?.sku || 'N/A';
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm">
         <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
           Store
@@ -457,13 +390,12 @@ const StoreProductDetail: React.FC = () => {
         <span className="text-gray-900 font-medium truncate">{product.name}</span>
       </nav>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Product Images / Video */}
         <div>
           <div
             className="aspect-[4/5] bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl overflow-hidden mb-4 border border-purple-100 relative cursor-pointer group"
             onClick={() => {
               if (showVideo && product.videoUrl) {
-                const videoIndex = mediaItems.findIndex(item => item.type === 'video');
+                const videoIndex = mediaItems.findIndex((item) => item.type === 'video');
                 if (videoIndex !== -1) openLightbox(videoIndex);
               } else {
                 openLightbox(activeImage);
@@ -529,7 +461,6 @@ const StoreProductDetail: React.FC = () => {
               />
             )}
           </div>
-          {/* Thumbnails */}
           <div className="grid grid-cols-4 gap-3">
             {images.map((img, index) => (
               <button
@@ -548,24 +479,18 @@ const StoreProductDetail: React.FC = () => {
                     : 'border-transparent'
                 } hover:border-purple-400 transition-all`}
               >
-                <img
-                  src={img}
-                  alt={`${product.name} ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
+                <img src={img} alt={`${product.name} ${index + 1}`} className="w-full h-full object-cover" />
               </button>
             ))}
             {product.videoUrl && (
               <button
                 onClick={() => {
                   setShowVideo(true);
-                  const videoIndex = mediaItems.findIndex(item => item.type === 'video');
+                  const videoIndex = mediaItems.findIndex((item) => item.type === 'video');
                   if (videoIndex !== -1) openLightbox(videoIndex);
                 }}
                 className={`aspect-square bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg overflow-hidden border-2 flex items-center justify-center ${
-                  showVideo
-                    ? 'border-purple-600 ring-2 ring-purple-200'
-                    : 'border-transparent'
+                  showVideo ? 'border-purple-600 ring-2 ring-purple-200' : 'border-transparent'
                 } hover:border-purple-400 transition-all`}
               >
                 <Play className="w-6 h-6 text-purple-600" />
@@ -574,19 +499,14 @@ const StoreProductDetail: React.FC = () => {
             )}
           </div>
         </div>
-        {/* Product Info */}
         <div className="space-y-6">
           <div>
             <div className="flex items-start justify-between">
               <div>
                 {product.category && (
-                  <p className="text-sm text-purple-600 font-medium">
-                    {product.category.name}
-                  </p>
+                  <p className="text-sm text-purple-600 font-medium">{product.category.name}</p>
                 )}
-                <h1 className="text-2xl font-bold text-gray-900 mt-1">
-                  {product.name}
-                </h1>
+                <h1 className="text-2xl font-bold text-gray-900 mt-1">{product.name}</h1>
               </div>
               <button
                 onClick={handleWishlistToggle}
@@ -598,9 +518,7 @@ const StoreProductDetail: React.FC = () => {
               >
                 <Heart
                   className={`w-6 h-6 ${
-                    isWishlisted
-                      ? 'fill-pink-500 text-pink-500'
-                      : 'text-gray-400 hover:text-pink-500'
+                    isWishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-pink-500'
                   } transition-colors`}
                 />
               </button>
@@ -618,15 +536,10 @@ const StoreProductDetail: React.FC = () => {
               </button>
             </div>
           </div>
-          {/* Price */}
           <div className="flex items-center gap-3">
-            <span className="text-3xl font-bold text-purple-600">
-              ₹{variantPrice}
-            </span>
+            <span className="text-3xl font-bold text-purple-600">₹{variantPrice}</span>
             {originalPrice && (
-              <span className="text-lg text-gray-400 line-through">
-                ₹{originalPrice}
-              </span>
+              <span className="text-lg text-gray-400 line-through">₹{originalPrice}</span>
             )}
             {discount > 0 && (
               <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-sm font-semibold px-3 py-1 rounded-full">
@@ -634,20 +547,15 @@ const StoreProductDetail: React.FC = () => {
               </span>
             )}
           </div>
-          {/* Description */}
           <p className="text-gray-600 leading-relaxed">
             {product.description || 'No description available.'}
           </p>
-          {/* SKU */}
           <p className="text-sm text-gray-400">SKU: {displaySku}</p>
-          {/* Variant Selection */}
           {hasVariants && (
             <>
               {colors.length > 0 && (
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-2">
-                    Color: {selectedColor}
-                  </h3>
+                  <h3 className="font-medium text-gray-900 mb-2">Color: {selectedColor}</h3>
                   <div className="flex flex-wrap gap-3">
                     {colors.map((color) => (
                       <button
@@ -687,7 +595,6 @@ const StoreProductDetail: React.FC = () => {
               )}
             </>
           )}
-          {/* Quantity and Stock */}
           <div>
             <h3 className="font-medium text-gray-900 mb-2">Quantity</h3>
             <div className="flex items-center gap-3">
@@ -710,18 +617,11 @@ const StoreProductDetail: React.FC = () => {
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
-              <span
-                className={`text-sm font-medium ${
-                  isInStock ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {isInStock
-                  ? `✓ In Stock (${stockQuantity} available)`
-                  : 'Out of Stock'}
+              <span className={`text-sm font-medium ${isInStock ? 'text-green-600' : 'text-red-600'}`}>
+                {isInStock ? `✓ In Stock (${stockQuantity} available)` : 'Out of Stock'}
               </span>
             </div>
           </div>
-          {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleAddToCart}
@@ -733,18 +633,13 @@ const StoreProductDetail: React.FC = () => {
               }`}
             >
               <ShoppingBag className="w-5 h-5" />
-              {isAdding
-                ? 'Adding...'
-                : isInStock
-                ? 'Add to Cart'
-                : 'Out of Stock'}
+              {isAdding ? 'Adding...' : isInStock ? 'Add to Cart' : 'Out of Stock'}
             </button>
             <button className="flex-1 bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold border-2 border-purple-600 hover:bg-purple-50 transition-colors flex items-center justify-center gap-2">
               <Share2 className="w-5 h-5" />
               Buy Now
             </button>
           </div>
-          {/* Features */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-gray-200">
             {[
               { icon: Truck, label: 'Free Shipping', desc: 'On orders above ₹999' },
@@ -754,9 +649,7 @@ const StoreProductDetail: React.FC = () => {
               <div key={index} className="flex items-center gap-3">
                 <feature.icon className="w-5 h-5 text-purple-600" />
                 <div>
-                  <p className="font-medium text-gray-900 text-sm">
-                    {feature.label}
-                  </p>
+                  <p className="font-medium text-gray-900 text-sm">{feature.label}</p>
                   <p className="text-xs text-gray-500">{feature.desc}</p>
                 </div>
               </div>
@@ -764,7 +657,6 @@ const StoreProductDetail: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Lightbox */}
       {lightboxOpen && mediaItems.length > 0 && (
         <div
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
@@ -820,33 +712,18 @@ const StoreProductDetail: React.FC = () => {
                   onError={(e) => {
                     console.error('Lightbox video failed to load:', mediaItems[lightboxIndex].url);
                     e.currentTarget.controls = false;
-                    const parent = e.currentTarget.parentElement;
-                    if (parent) {
-                      const errorDiv = document.createElement('div');
-                      errorDiv.className = 'absolute inset-0 flex items-center justify-center text-white bg-black/80';
-                      errorDiv.innerHTML = `
-                        <div class="text-center p-4">
-                          <p class="text-lg font-semibold">Video unavailable</p>
-                          <p class="text-sm text-gray-400 mt-2">The video failed to load</p>
-                        </div>
-                      `;
-                      parent.appendChild(errorDiv);
-                    }
                   }}
                 />
               </div>
             )}
           </div>
-          {/* Indicator */}
           <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-2">
             {mediaItems.map((_, idx) => (
               <button
                 key={idx}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (mediaItems[idx].type === 'image') {
-                    pauseAllVideos();
-                  }
+                  if (mediaItems[idx].type === 'image') pauseAllVideos();
                   setLightboxIndex(idx);
                 }}
                 className={`w-2 h-2 rounded-full transition-all ${
@@ -857,7 +734,6 @@ const StoreProductDetail: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Reviews Section (static) */}
       <div className="mt-8 pt-8 border-t border-gray-200">
         <h2 className="text-xl font-bold text-gray-900 mb-6">Customer Reviews</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -879,9 +755,7 @@ const StoreProductDetail: React.FC = () => {
                           <Star
                             key={i}
                             className={`w-3 h-3 ${
-                              i < 4
-                                ? 'text-yellow-400 fill-yellow-400'
-                                : 'text-gray-300'
+                              i < 4 ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
                             }`}
                           />
                         ))}
@@ -889,12 +763,9 @@ const StoreProductDetail: React.FC = () => {
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 mt-2">
-                    Amazing product! The quality is outstanding and the design is
-                    beautiful.
+                    Amazing product! The quality is outstanding and the design is beautiful.
                   </p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Verified Purchase • 2 days ago
-                  </p>
+                  <p className="text-xs text-gray-400 mt-2">Verified Purchase • 2 days ago</p>
                 </div>
                 <button className="text-gray-400 hover:text-purple-600">
                   <ThumbsUp className="w-4 h-4" />
