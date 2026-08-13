@@ -5,30 +5,36 @@
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Web site created using create-react-app" />
+    <meta
+        name="description"
+        content="Web site created using create-react-app"
+    />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>React App</title>
 </head>
+
 <body>
 <noscript>You need to enable JavaScript to run this app.</noscript>
+
 <div id="root"></div>
 
-<!-- Define global configuration before loading Dev Assistant -->
 <script>
-    // Global configuration for Dev Assistant
     window.python_host = "http://localhost:5000";
-    // You can also make it configurable for different environments:
-    // window.python_host = window.location.hostname === 'localhost'
-    //     ? "http://localhost:5000"
-    //     : "https://your-production-api.com";
-</script>
 
-<!-- Include all Dev Assistant modules in correct order -->
-<script src="%PUBLIC_URL%/dev-assistant-core.js"></script>
-<script src="%PUBLIC_URL%/dev-assistant-dom-utils.js"></script>
-<script src="%PUBLIC_URL%/dev-assistant-ui.js"></script>
-<script src="%PUBLIC_URL%/dev-assistant-backend.js"></script>
+    if (window.location.hostname === "152.67.5.153") {
+        [
+            "%PUBLIC_URL%/dev-assistant-core.js",
+            "%PUBLIC_URL%/dev-assistant-dom-utils.js",
+            "%PUBLIC_URL%/dev-assistant-ui.js",
+            "%PUBLIC_URL%/dev-assistant-backend.js"
+        ].forEach(function(src) {
+            const script = document.createElement("script");
+            script.src = src;
+            document.body.appendChild(script);
+        });
+    }
+</script>
 
 </body>
 </html>
