@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Search, Grid, List, Filter, Star, Heart, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
@@ -102,9 +102,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
             className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors z-10"
             disabled={loading}
           >
-            <Heart
-              className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`}
-            />
+            <Heart className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`} />
           </button>
           {discount > 0 && (
             <span className="absolute top-3 left-3 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg">
@@ -149,9 +147,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
           className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors z-10"
           disabled={loading}
         >
-          <Heart
-            className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`}
-          />
+          <Heart className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`} />
         </button>
         {discount > 0 && (
           <span className="absolute top-3 left-3 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg">
@@ -193,41 +189,175 @@ const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Name: A to Z' },
   { value: 'name_desc', label: 'Name: Z to A' },
 ];
+/**
+ * Smooth dual-range slider.
+ * - Fully draggable left ↔ right
+ * - Visual updates while dragging
+ * - Parent onChange (filter products) is called ONLY when user releases the thumb
+ */
+const DualRangeSlider: React.FC<{
+  min: number;
+  max: number;
+  valueMin: number;
+  valueMax: number;
+  onChange: (minVal: number, maxVal: number) => void;
+  step?: number;
+}> = ({ min, max, valueMin, valueMax, onChange, step = 50 }) => {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
+  // Local values used for smooth visual feedback while dragging
+  const [localMin, setLocalMin] = useState(valueMin);
+  const [localMax, setLocalMax] = useState(valueMax);
+  // Keep local values in sync when parent changes them (and we are not dragging)
+  useEffect(() => {
+    if (!dragging) {
+      setLocalMin(valueMin);
+      setLocalMax(valueMax);
+    }
+  }, [valueMin, valueMax, dragging]);
+  const safeMin = Math.max(min, Math.min(localMin, localMax - step));
+  const safeMax = Math.min(max, Math.max(localMax, localMin + step));
+  const getPercent = (value: number) => {
+    if (max <= min) return 0;
+    return ((value - min) / (max - min)) * 100;
+  };
+  const percentMin = getPercent(safeMin);
+  const percentMax = getPercent(safeMax);
+  const valueFromClientX = (clientX: number) => {
+    if (!trackRef.current) return min;
+    const rect = trackRef.current.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const raw = min + percent * (max - min);
+    const stepped = Math.round(raw / step) * step;
+    return Math.max(min, Math.min(max, stepped));
+  };
+  const handlePointerDown = (thumb: 'min' | 'max') => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(thumb);
+  };
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    const newValue = valueFromClientX(e.clientX);
+    if (dragging === 'min') {
+      const clamped = Math.min(newValue, safeMax - step);
+      setLocalMin(clamped);
+    } else {
+      const clamped = Math.max(newValue, safeMin + step);
+      setLocalMax(clamped);
+    }
+  };
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    // Commit the final values to parent → this triggers the product filter
+    onChange(safeMin, safeMax);
+    setDragging(null);
+  };
+  // Click anywhere on the track (not on a thumb)
+  const handleTrackPointerDown = (e: React.PointerEvent) => {
+    if (dragging) return;
+    // Ignore if the click originated from a thumb
+    if ((e.target as HTMLElement).dataset.thumb) return;
+    const newValue = valueFromClientX(e.clientX);
+    const distToMin = Math.abs(newValue - safeMin);
+    const distToMax = Math.abs(newValue - safeMax);
+    if (distToMin <= distToMax) {
+      const clamped = Math.min(newValue, safeMax - step);
+      setLocalMin(clamped);
+      onChange(clamped, safeMax);
+    } else {
+      const clamped = Math.max(newValue, safeMin + step);
+      setLocalMax(clamped);
+      onChange(safeMin, clamped);
+    }
+  };
+  return (
+    <div className="w-full select-none py-4">
+      <div
+        ref={trackRef}
+        className="relative h-2 bg-gray-200 rounded-full cursor-pointer touch-none"
+        onPointerDown={handleTrackPointerDown}
+      >
+        {/* Active range fill */}
+        <div
+          className="absolute h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full pointer-events-none"
+          style={{
+            left: `${percentMin}%`,
+            width: `${Math.max(0, percentMax - percentMin)}%`,
+          }}
+        />
+        {/* Min Thumb */}
+        <div
+          data-thumb="min"
+          className={`absolute top-1/2 w-5 h-5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white border-[3px] border-purple-600 shadow-md cursor-grab active:cursor-grabbing touch-none transition-transform ${
+            dragging === 'min' ? 'scale-125 z-30' : 'hover:scale-110 z-20'
+          }`}
+          style={{ left: `${percentMin}%` }}
+          onPointerDown={handlePointerDown('min')}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        />
+        {/* Max Thumb */}
+        <div
+          data-thumb="max"
+          className={`absolute top-1/2 w-5 h-5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white border-[3px] border-pink-500 shadow-md cursor-grab active:cursor-grabbing touch-none transition-transform ${
+            dragging === 'max' ? 'scale-125 z-30' : 'hover:scale-110 z-20'
+          }`}
+          style={{ left: `${percentMax}%` }}
+          onPointerDown={handlePointerDown('max')}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        />
+      </div>
+      {/* Live labels */}
+      <div className="flex justify-between mt-4 text-xs font-medium">
+        <span className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md">
+          ₹{safeMin.toLocaleString('en-IN')}
+        </span>
+        <span className="bg-pink-50 text-pink-700 px-2.5 py-1 rounded-md">
+          ₹{safeMax.toLocaleString('en-IN')}
+        </span>
+      </div>
+    </div>
+  );
+};
 const StoreProducts: React.FC = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
   const { toggleWishlist } = useWishlist();
-  // Filter states
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('');
-  const [minPrice, setMinPrice] = useState<string>('');
-  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [minPrice, setMinPrice] = useState<number>(0);
+  const [maxPrice, setMaxPrice] = useState<number>(0);
+  const [globalMaxPrice, setGlobalMaxPrice] = useState<number>(50000);
+  const [priceInitialized, setPriceInitialized] = useState(false);
   const [sortBy, setSortBy] = useState<string>('newest');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
-  // Read search + filters from URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const searchParam = params.get('search') || '';
     const cat = params.get('categoryId') || '';
     const subcat = params.get('subcategoryId') || '';
-    const minP = params.get('minPrice') || '';
-    const maxP = params.get('maxPrice') || '';
+    const minP = params.get('minPrice');
+    const maxP = params.get('maxPrice');
     const sort = params.get('sortBy') || 'newest';
     setSearchTerm(searchParam);
     setSelectedCategoryId(cat);
     setSelectedSubcategoryId(subcat);
-    setMinPrice(minP);
-    setMaxPrice(maxP);
+    if (minP !== null && minP !== '') setMinPrice(Number(minP));
+    if (maxP !== null && maxP !== '') setMaxPrice(Number(maxP));
     setSortBy(sort);
   }, [location.search]);
-  // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
       setCategoriesLoading(true);
@@ -251,18 +381,52 @@ const StoreProducts: React.FC = () => {
     };
     fetchCategories();
   }, []);
-  const updateUrlParams = useCallback((updates: Record<string, string>) => {
-    const params = new URLSearchParams(location.search);
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value) {
-        params.set(key, value);
-      } else {
-        params.delete(key);
+  useEffect(() => {
+    const fetchPriceBounds = async () => {
+      try {
+        const response = await apiClient.get('/store/products', { params: { sortBy: 'price_desc' } });
+        const data = response.data.data || [];
+        let highest = 0;
+        data.forEach((p: any) => {
+          let price = 0;
+          if (p.variants && p.variants.length > 0) {
+            const prices = p.variants
+              .map((v: any) => parseFloat(v.price))
+              .filter((pr: number) => !isNaN(pr) && pr > 0);
+            if (prices.length > 0) price = Math.max(...prices);
+          }
+          if (!price && p.basePrice) price = parseFloat(p.basePrice) || 0;
+          if (price > highest) highest = price;
+        });
+        const roundedMax = Math.max(Math.ceil(highest / 500) * 500, 1000);
+        setGlobalMaxPrice(roundedMax);
+        setMinPrice((prev) => (prev === 0 ? 0 : prev));
+        setMaxPrice((prev) => (prev === 0 || prev > roundedMax ? roundedMax : prev));
+        setPriceInitialized(true);
+      } catch (err) {
+        console.error('Failed to fetch price bounds:', err);
+        setGlobalMaxPrice(50000);
+        setMaxPrice(50000);
+        setPriceInitialized(true);
       }
-    });
-    const newUrl = `${location.pathname}?${params.toString()}`;
-    window.history.replaceState({}, '', newUrl);
-  }, [location.pathname, location.search]);
+    };
+    fetchPriceBounds();
+  }, []);
+  const updateUrlParams = useCallback(
+    (updates: Record<string, string>) => {
+      const params = new URLSearchParams(location.search);
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value) {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
+      });
+      const newUrl = `${location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    },
+    [location.pathname, location.search]
+  );
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
@@ -270,8 +434,8 @@ const StoreProducts: React.FC = () => {
       if (searchTerm) params.search = searchTerm;
       if (selectedCategoryId) params.categoryId = selectedCategoryId;
       if (selectedSubcategoryId) params.subcategoryId = selectedSubcategoryId;
-      if (minPrice) params.minPrice = minPrice;
-      if (maxPrice) params.maxPrice = maxPrice;
+      if (minPrice > 0) params.minPrice = minPrice;
+      if (maxPrice > 0 && maxPrice < globalMaxPrice) params.maxPrice = maxPrice;
       if (sortBy) params.sortBy = sortBy;
       const response = await apiClient.get('/store/products', { params });
       const data = response.data.data || [];
@@ -283,11 +447,13 @@ const StoreProducts: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, selectedCategoryId, selectedSubcategoryId, minPrice, maxPrice, sortBy]);
+  }, [searchTerm, selectedCategoryId, selectedSubcategoryId, minPrice, maxPrice, sortBy, globalMaxPrice]);
   useEffect(() => {
-    fetchProducts();
+    if (priceInitialized) {
+      fetchProducts();
+    }
     fetchWishlist();
-  }, [fetchProducts]);
+  }, [fetchProducts, priceInitialized]);
   const fetchWishlist = async () => {
     try {
       const response = await apiClient.get('/store/wishlist');
@@ -322,7 +488,10 @@ const StoreProducts: React.FC = () => {
     } else {
       price = apiProduct.basePrice ? parseFloat(apiProduct.basePrice) : 0;
     }
-    const image = apiProduct.images && apiProduct.images.length > 0 ? apiProduct.images[0].url : 'https://via.placeholder.com/300x400?text=No+Image';
+    const image =
+      apiProduct.images && apiProduct.images.length > 0
+        ? apiProduct.images[0].url
+        : 'https://via.placeholder.com/300x400?text=No+Image';
     return {
       id: apiProduct.id,
       name: apiProduct.name,
@@ -340,7 +509,7 @@ const StoreProducts: React.FC = () => {
   };
   const handleToggleWishlist = async (productId: string) => {
     const result = await toggleWishlist(productId);
-    setWishlistedIds(prev => {
+    setWishlistedIds((prev) => {
       const newSet = new Set(prev);
       if (result.isWishlisted) {
         newSet.add(productId);
@@ -364,13 +533,14 @@ const StoreProducts: React.FC = () => {
     setSelectedSubcategoryId(subId);
     updateUrlParams({ subcategoryId: subId });
   };
-  const handleMinPriceChange = (value: string) => {
-    setMinPrice(value);
-    updateUrlParams({ minPrice: value });
-  };
-  const handleMaxPriceChange = (value: string) => {
-    setMaxPrice(value);
-    updateUrlParams({ maxPrice: value });
+  // Called only when user finishes dragging the price range
+  const handlePriceRangeChange = (newMin: number, newMax: number) => {
+    setMinPrice(newMin);
+    setMaxPrice(newMax);
+    updateUrlParams({
+      minPrice: newMin > 0 ? String(newMin) : '',
+      maxPrice: newMax < globalMaxPrice ? String(newMax) : '',
+    });
   };
   const handleSortChange = (value: string) => {
     setSortBy(value);
@@ -379,15 +549,20 @@ const StoreProducts: React.FC = () => {
   const clearAllFilters = () => {
     setSelectedCategoryId('');
     setSelectedSubcategoryId('');
-    setMinPrice('');
-    setMaxPrice('');
+    setMinPrice(0);
+    setMaxPrice(globalMaxPrice);
     setSortBy('newest');
     setSearchTerm('');
-    const params = new URLSearchParams();
     window.history.replaceState({}, '', `${location.pathname}`);
   };
-  const hasActiveFilters = selectedCategoryId || selectedSubcategoryId || minPrice || maxPrice || (sortBy && sortBy !== 'newest') || searchTerm;
-  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+  const hasActiveFilters =
+    selectedCategoryId ||
+    selectedSubcategoryId ||
+    minPrice > 0 ||
+    (maxPrice > 0 && maxPrice < globalMaxPrice) ||
+    (sortBy && sortBy !== 'newest') ||
+    searchTerm;
+  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
   const FilterPanel = ({ isMobile = false }: { isMobile?: boolean }) => (
     <div className={`bg-white rounded-xl border border-purple-100 shadow-sm ${isMobile ? 'p-4' : 'p-5'}`}>
       <div className="flex items-center justify-between mb-4">
@@ -396,10 +571,7 @@ const StoreProducts: React.FC = () => {
           Filters
         </h3>
         {hasActiveFilters && (
-          <button
-            onClick={clearAllFilters}
-            className="text-xs text-purple-600 hover:text-purple-800 font-medium"
-          >
+          <button onClick={clearAllFilters} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
             Clear all
           </button>
         )}
@@ -414,21 +586,17 @@ const StoreProducts: React.FC = () => {
             <button
               onClick={() => handleCategoryChange('')}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                !selectedCategoryId
-                  ? 'bg-purple-100 text-purple-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50'
+                !selectedCategoryId ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               All Categories
             </button>
-            {categories.map(cat => (
+            {categories.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => handleCategoryChange(cat.id)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                  selectedCategoryId === cat.id
-                    ? 'bg-purple-100 text-purple-700 font-medium'
-                    : 'text-gray-600 hover:bg-gray-50'
+                  selectedCategoryId === cat.id ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
                 {cat.name}
@@ -445,21 +613,17 @@ const StoreProducts: React.FC = () => {
             <button
               onClick={() => handleSubcategoryChange('')}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                !selectedSubcategoryId
-                  ? 'bg-purple-100 text-purple-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50'
+                !selectedSubcategoryId ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               All Subcategories
             </button>
-            {selectedCategory.subcategories.map(sub => (
+            {selectedCategory.subcategories.map((sub) => (
               <button
                 key={sub.id}
                 onClick={() => handleSubcategoryChange(sub.id)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                  selectedSubcategoryId === sub.id
-                    ? 'bg-purple-100 text-purple-700 font-medium'
-                    : 'text-gray-600 hover:bg-gray-50'
+                  selectedSubcategoryId === sub.id ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
                 {sub.name}
@@ -468,27 +632,24 @@ const StoreProducts: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Price Range */}
+      {/* Price Range - Draggable, filters only on release */}
       <div className="mb-5">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Price Range (₹)</h4>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            placeholder="Min"
-            value={minPrice}
-            onChange={(e) => handleMinPriceChange(e.target.value)}
-            min="0"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        <h4 className="text-sm font-medium text-gray-700 mb-1">Price Range (₹)</h4>
+        {priceInitialized ? (
+          <DualRangeSlider
+            min={0}
+            max={globalMaxPrice}
+            valueMin={minPrice}
+            valueMax={maxPrice || globalMaxPrice}
+            onChange={handlePriceRangeChange}
+            step={Math.max(50, Math.floor(globalMaxPrice / 100))}
           />
-          <span className="text-gray-400">-</span>
-          <input
-            type="number"
-            placeholder="Max"
-            value={maxPrice}
-            onChange={(e) => handleMaxPriceChange(e.target.value)}
-            min="0"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          />
+        ) : (
+          <div className="h-14 bg-gray-100 rounded animate-pulse mt-2" />
+        )}
+        <div className="flex justify-between text-[11px] text-gray-400 mt-1 px-0.5">
+          <span>₹0</span>
+          <span>₹{globalMaxPrice.toLocaleString('en-IN')}</span>
         </div>
       </div>
       {/* Sort */}
@@ -500,8 +661,10 @@ const StoreProducts: React.FC = () => {
             onChange={(e) => handleSortChange(e.target.value)}
             className="w-full appearance-none px-3 py-2.5 pr-8 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
           >
-            {SORT_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
             ))}
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -514,7 +677,7 @@ const StoreProducts: React.FC = () => {
       <div className="space-y-6">
         <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map(i => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-white/80 rounded-xl shadow-sm border border-purple-100 h-80 animate-pulse" />
           ))}
         </div>
@@ -524,7 +687,9 @@ const StoreProducts: React.FC = () => {
   return (
     <div className="space-y-6">
       <nav className="flex items-center gap-2 text-sm">
-        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">Store</Link>
+        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
+          Store
+        </Link>
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Products</span>
       </nav>
@@ -557,33 +722,35 @@ const StoreProducts: React.FC = () => {
               <List className="w-4 h-4" />
             </button>
           </div>
-          {/* Mobile filter button */}
           <button
             onClick={() => setIsFilterOpen(true)}
             className="lg:hidden flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
             <Filter className="w-4 h-4" />
             Filters
-            {hasActiveFilters && (
-              <span className="w-2 h-2 rounded-full bg-purple-600" />
-            )}
+            {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-purple-600" />}
           </button>
         </div>
       </div>
-      {/* Active filter chips */}
       {hasActiveFilters && (
         <div className="flex flex-wrap items-center gap-2">
           {searchTerm && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
               Search: {searchTerm}
-              <button onClick={() => { setSearchTerm(''); updateUrlParams({ search: '' }); }} className="hover:text-purple-900">
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  updateUrlParams({ search: '' });
+                }}
+                className="hover:text-purple-900"
+              >
                 <X className="w-3 h-3" />
               </button>
             </span>
           )}
           {selectedCategoryId && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-              {categories.find(c => c.id === selectedCategoryId)?.name || 'Category'}
+              {categories.find((c) => c.id === selectedCategoryId)?.name || 'Category'}
               <button onClick={() => handleCategoryChange('')} className="hover:text-purple-900">
                 <X className="w-3 h-3" />
               </button>
@@ -591,23 +758,23 @@ const StoreProducts: React.FC = () => {
           )}
           {selectedSubcategoryId && selectedCategory && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-              {selectedCategory.subcategories.find(s => s.id === selectedSubcategoryId)?.name || 'Subcategory'}
+              {selectedCategory.subcategories.find((s) => s.id === selectedSubcategoryId)?.name || 'Subcategory'}
               <button onClick={() => handleSubcategoryChange('')} className="hover:text-purple-900">
                 <X className="w-3 h-3" />
               </button>
             </span>
           )}
-          {(minPrice || maxPrice) && (
+          {(minPrice > 0 || (maxPrice > 0 && maxPrice < globalMaxPrice)) && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-              ₹{minPrice || '0'} - ₹{maxPrice || '∞'}
-              <button onClick={() => { handleMinPriceChange(''); handleMaxPriceChange(''); }} className="hover:text-purple-900">
+              ₹{minPrice.toLocaleString('en-IN')} – ₹{(maxPrice || globalMaxPrice).toLocaleString('en-IN')}
+              <button onClick={() => handlePriceRangeChange(0, globalMaxPrice)} className="hover:text-purple-900">
                 <X className="w-3 h-3" />
               </button>
             </span>
           )}
           {sortBy && sortBy !== 'newest' && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-              {SORT_OPTIONS.find(o => o.value === sortBy)?.label}
+              {SORT_OPTIONS.find((o) => o.value === sortBy)?.label}
               <button onClick={() => handleSortChange('newest')} className="hover:text-purple-900">
                 <X className="w-3 h-3" />
               </button>
@@ -616,13 +783,11 @@ const StoreProducts: React.FC = () => {
         </div>
       )}
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Desktop sidebar filters */}
         <aside className="hidden lg:block w-64 flex-shrink-0">
           <div className="sticky top-6">
             <FilterPanel />
           </div>
         </aside>
-        {/* Products grid/list */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-gray-500">
@@ -633,10 +798,7 @@ const StoreProducts: React.FC = () => {
             <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
               <p className="text-gray-500 mb-3">No products found</p>
               {hasActiveFilters && (
-                <button
-                  onClick={clearAllFilters}
-                  className="text-sm text-purple-600 hover:text-purple-800 font-medium"
-                >
+                <button onClick={clearAllFilters} className="text-sm text-purple-600 hover:text-purple-800 font-medium">
                   Clear all filters
                 </button>
               )}
@@ -670,20 +832,13 @@ const StoreProducts: React.FC = () => {
           )}
         </div>
       </div>
-      {/* Mobile filter drawer */}
       {isFilterOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setIsFilterOpen(false)}
-          />
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsFilterOpen(false)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto shadow-2xl">
             <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
               <h3 className="font-semibold text-gray-900">Filters & Sort</h3>
-              <button
-                onClick={() => setIsFilterOpen(false)}
-                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-              >
+              <button onClick={() => setIsFilterOpen(false)} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
