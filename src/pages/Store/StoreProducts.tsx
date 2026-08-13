@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Search, Grid, List, Filter, Star, Heart, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Search, Grid, List, Filter, Star, Heart, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
@@ -31,14 +31,22 @@ interface Product {
   colors?: string[];
   sizes?: string[];
   variants: any[];
+  categoryId?: number | null;
+  subcategoryId?: number | null;
+}
+interface Category {
+  id: string;
+  name: string;
+  subcategories: { id: string; name: string }[];
 }
 interface ProductCardProps {
   product: Product;
   link: string;
   isWishlisted: boolean;
   onToggleWishlist: (productId: string) => void;
+  viewMode: 'grid' | 'list';
 }
-const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, onToggleWishlist }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, onToggleWishlist, viewMode }) => {
   const { addToCart } = useCart();
   const [wishlisted, setWishlisted] = useState(isWishlisted);
   const [loading, setLoading] = useState(false);
@@ -84,6 +92,54 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
       setLoading(false);
     }
   };
+  if (viewMode === 'list') {
+    return (
+      <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 flex flex-col sm:flex-row">
+        <div className="relative w-full sm:w-48 md:w-56 flex-shrink-0 aspect-[3/4] sm:aspect-auto sm:h-auto overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
+          <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <button
+            onClick={handleWishlistClick}
+            className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors z-10"
+            disabled={loading}
+          >
+            <Heart
+              className={`w-4 h-4 ${wishlisted ? 'fill-pink-500 text-pink-500' : 'text-gray-400 hover:text-red-500'} transition-colors`}
+            />
+          </button>
+          {discount > 0 && (
+            <span className="absolute top-3 left-3 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg">
+              {discount}% OFF
+            </span>
+          )}
+        </div>
+        <div className="p-4 flex-1 flex flex-col justify-between">
+          <div>
+            <h3 className="font-medium text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+              <span className="text-sm font-medium text-gray-700">{product.rating}</span>
+              <span className="text-xs text-gray-500">({product.reviews})</span>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg font-bold text-purple-600">₹{product.price}</span>
+              {product.originalPrice && <span className="text-sm text-gray-400 line-through">₹{product.originalPrice}</span>}
+            </div>
+          </div>
+          <div className="mt-auto">
+            {hasVariants ? (
+              <Link to={link} className="inline-block text-center bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors" onClick={(e) => e.stopPropagation()}>
+                Select Options
+              </Link>
+            ) : (
+              <button onClick={handleAddToCart} className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all">
+                Add to Cart
+              </button>
+            )}
+          </div>
+        </div>
+      </Link>
+    );
+  }
   return (
     <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
       <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
@@ -129,45 +185,109 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
     </Link>
   );
 };
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'price_asc', label: 'Price: Low to High' },
+  { value: 'price_desc', label: 'Price: High to Low' },
+  { value: 'name_asc', label: 'Name: A to Z' },
+  { value: 'name_desc', label: 'Name: Z to A' },
+];
 const StoreProducts: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
   const { toggleWishlist } = useWishlist();
-  // Read search query from URL
+  // Filter states
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('newest');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  // Read search + filters from URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const searchParam = params.get('search');
-    if (searchParam) {
-      setSearchTerm(searchParam);
-    } else {
-      setSearchTerm('');
-    }
+    const searchParam = params.get('search') || '';
+    const cat = params.get('categoryId') || '';
+    const subcat = params.get('subcategoryId') || '';
+    const minP = params.get('minPrice') || '';
+    const maxP = params.get('maxPrice') || '';
+    const sort = params.get('sortBy') || 'newest';
+    setSearchTerm(searchParam);
+    setSelectedCategoryId(cat);
+    setSelectedSubcategoryId(subcat);
+    setMinPrice(minP);
+    setMaxPrice(maxP);
+    setSortBy(sort);
   }, [location.search]);
+  // Fetch categories
   useEffect(() => {
-    fetchProducts();
-    fetchWishlist();
-  }, [searchTerm]);
-  const fetchProducts = async () => {
+    const fetchCategories = async () => {
+      setCategoriesLoading(true);
+      try {
+        const response = await apiClient.get('/categories');
+        const cats = (response.data || []).map((cat: any) => ({
+          id: String(cat.id),
+          name: cat.name,
+          subcategories: (cat.subCategories || cat.subcategories || []).map((sub: any) => ({
+            id: String(sub.id),
+            name: sub.name,
+          })),
+        }));
+        setCategories(cats);
+      } catch (err) {
+        console.error('Failed to fetch categories:', err);
+        setCategories([]);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
+  const updateUrlParams = useCallback((updates: Record<string, string>) => {
+    const params = new URLSearchParams(location.search);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      } else {
+        params.delete(key);
+      }
+    });
+    const newUrl = `${location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+  }, [location.pathname, location.search]);
+  const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       const params: any = {};
-      if (searchTerm) {
-        params.search = searchTerm;
-      }
+      if (searchTerm) params.search = searchTerm;
+      if (selectedCategoryId) params.categoryId = selectedCategoryId;
+      if (selectedSubcategoryId) params.subcategoryId = selectedSubcategoryId;
+      if (minPrice) params.minPrice = minPrice;
+      if (maxPrice) params.maxPrice = maxPrice;
+      if (sortBy) params.sortBy = sortBy;
       const response = await apiClient.get('/store/products', { params });
-      const data = response.data.data;
+      const data = response.data.data || [];
       const mapped = data.map((p: any) => mapProduct(p));
       setProducts(mapped);
     } catch (error) {
       console.error('Failed to fetch products:', error);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, selectedCategoryId, selectedSubcategoryId, minPrice, maxPrice, sortBy]);
+  useEffect(() => {
+    fetchProducts();
+    fetchWishlist();
+  }, [fetchProducts]);
   const fetchWishlist = async () => {
     try {
       const response = await apiClient.get('/store/wishlist');
@@ -214,6 +334,8 @@ const StoreProducts: React.FC = () => {
       variants: apiProduct.variants || [],
       colors,
       sizes,
+      categoryId: apiProduct.categoryId,
+      subcategoryId: apiProduct.subcategoryId,
     };
   };
   const handleToggleWishlist = async (productId: string) => {
@@ -231,16 +353,163 @@ const StoreProducts: React.FC = () => {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
-    const params = new URLSearchParams(location.search);
-    if (value) {
-      params.set('search', value);
-    } else {
-      params.delete('search');
-    }
-    const newUrl = `${location.pathname}?${params.toString()}`;
-    window.history.replaceState({}, '', newUrl);
+    updateUrlParams({ search: value });
   };
-  if (loading) {
+  const handleCategoryChange = (catId: string) => {
+    setSelectedCategoryId(catId);
+    setSelectedSubcategoryId('');
+    updateUrlParams({ categoryId: catId, subcategoryId: '' });
+  };
+  const handleSubcategoryChange = (subId: string) => {
+    setSelectedSubcategoryId(subId);
+    updateUrlParams({ subcategoryId: subId });
+  };
+  const handleMinPriceChange = (value: string) => {
+    setMinPrice(value);
+    updateUrlParams({ minPrice: value });
+  };
+  const handleMaxPriceChange = (value: string) => {
+    setMaxPrice(value);
+    updateUrlParams({ maxPrice: value });
+  };
+  const handleSortChange = (value: string) => {
+    setSortBy(value);
+    updateUrlParams({ sortBy: value });
+  };
+  const clearAllFilters = () => {
+    setSelectedCategoryId('');
+    setSelectedSubcategoryId('');
+    setMinPrice('');
+    setMaxPrice('');
+    setSortBy('newest');
+    setSearchTerm('');
+    const params = new URLSearchParams();
+    window.history.replaceState({}, '', `${location.pathname}`);
+  };
+  const hasActiveFilters = selectedCategoryId || selectedSubcategoryId || minPrice || maxPrice || (sortBy && sortBy !== 'newest') || searchTerm;
+  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+  const FilterPanel = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`bg-white rounded-xl border border-purple-100 shadow-sm ${isMobile ? 'p-4' : 'p-5'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-purple-600" />
+          Filters
+        </h3>
+        {hasActiveFilters && (
+          <button
+            onClick={clearAllFilters}
+            className="text-xs text-purple-600 hover:text-purple-800 font-medium"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+      {/* Categories */}
+      <div className="mb-5">
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Category</h4>
+        {categoriesLoading ? (
+          <div className="h-8 bg-gray-100 rounded animate-pulse" />
+        ) : (
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            <button
+              onClick={() => handleCategoryChange('')}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                !selectedCategoryId
+                  ? 'bg-purple-100 text-purple-700 font-medium'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              All Categories
+            </button>
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => handleCategoryChange(cat.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  selectedCategoryId === cat.id
+                    ? 'bg-purple-100 text-purple-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Subcategories */}
+      {selectedCategory && selectedCategory.subcategories.length > 0 && (
+        <div className="mb-5">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Subcategory</h4>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            <button
+              onClick={() => handleSubcategoryChange('')}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                !selectedSubcategoryId
+                  ? 'bg-purple-100 text-purple-700 font-medium'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              All Subcategories
+            </button>
+            {selectedCategory.subcategories.map(sub => (
+              <button
+                key={sub.id}
+                onClick={() => handleSubcategoryChange(sub.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  selectedSubcategoryId === sub.id
+                    ? 'bg-purple-100 text-purple-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {sub.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Price Range */}
+      <div className="mb-5">
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Price Range (₹)</h4>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            placeholder="Min"
+            value={minPrice}
+            onChange={(e) => handleMinPriceChange(e.target.value)}
+            min="0"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
+          <span className="text-gray-400">-</span>
+          <input
+            type="number"
+            placeholder="Max"
+            value={maxPrice}
+            onChange={(e) => handleMaxPriceChange(e.target.value)}
+            min="0"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
+        </div>
+      </div>
+      {/* Sort */}
+      <div className="mb-2">
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Sort By</h4>
+        <div className="relative">
+          <select
+            value={sortBy}
+            onChange={(e) => handleSortChange(e.target.value)}
+            className="w-full appearance-none px-3 py-2.5 pr-8 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+          >
+            {SORT_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
+      </div>
+    </div>
+  );
+  if (loading && products.length === 0) {
     return (
       <div className="space-y-6">
         <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
@@ -261,48 +530,173 @@ const StoreProducts: React.FC = () => {
       </nav>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">All Products</h1>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search products..."
               value={searchTerm}
               onChange={handleSearchChange}
-              className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/80 backdrop-blur-sm w-48 sm:w-64"
+              className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/80 backdrop-blur-sm w-full sm:w-64"
             />
           </div>
           <div className="flex border border-gray-200 rounded-lg overflow-hidden">
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 ${viewMode === 'grid' ? 'bg-purple-100 text-purple-700' : 'bg-white text-gray-600'} transition-colors`}
+              aria-label="Grid view"
             >
               <Grid className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={`p-2 ${viewMode === 'list' ? 'bg-purple-100 text-purple-700' : 'bg-white text-gray-600'} transition-colors border-l border-gray-200`}
+              aria-label="List view"
             >
               <List className="w-4 h-4" />
             </button>
           </div>
+          {/* Mobile filter button */}
+          <button
+            onClick={() => setIsFilterOpen(true)}
+            className="lg:hidden flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {hasActiveFilters && (
+              <span className="w-2 h-2 rounded-full bg-purple-600" />
+            )}
+          </button>
         </div>
       </div>
-      {products.length === 0 ? (
-        <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
-          <p className="text-gray-500">No products found</p>
+      {/* Active filter chips */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {searchTerm && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              Search: {searchTerm}
+              <button onClick={() => { setSearchTerm(''); updateUrlParams({ search: '' }); }} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {selectedCategoryId && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              {categories.find(c => c.id === selectedCategoryId)?.name || 'Category'}
+              <button onClick={() => handleCategoryChange('')} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {selectedSubcategoryId && selectedCategory && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              {selectedCategory.subcategories.find(s => s.id === selectedSubcategoryId)?.name || 'Subcategory'}
+              <button onClick={() => handleSubcategoryChange('')} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {(minPrice || maxPrice) && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              ₹{minPrice || '0'} - ₹{maxPrice || '∞'}
+              <button onClick={() => { handleMinPriceChange(''); handleMaxPriceChange(''); }} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {sortBy && sortBy !== 'newest' && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              {SORT_OPTIONS.find(o => o.value === sortBy)?.label}
+              <button onClick={() => handleSortChange('newest')} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {products.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              link={`/store/product/${product.id}`}
-              isWishlisted={wishlistedIds.has(product.id)}
-              onToggleWishlist={handleToggleWishlist}
-            />
-          ))}
+      )}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Desktop sidebar filters */}
+        <aside className="hidden lg:block w-64 flex-shrink-0">
+          <div className="sticky top-6">
+            <FilterPanel />
+          </div>
+        </aside>
+        {/* Products grid/list */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-gray-500">
+              {products.length} product{products.length !== 1 ? 's' : ''} found
+            </p>
+          </div>
+          {products.length === 0 ? (
+            <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
+              <p className="text-gray-500 mb-3">No products found</p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearAllFilters}
+                  className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  link={`/store/product/${product.id}`}
+                  isWishlisted={wishlistedIds.has(product.id)}
+                  onToggleWishlist={handleToggleWishlist}
+                  viewMode="grid"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  link={`/store/product/${product.id}`}
+                  isWishlisted={wishlistedIds.has(product.id)}
+                  onToggleWishlist={handleToggleWishlist}
+                  viewMode="list"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Mobile filter drawer */}
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setIsFilterOpen(false)}
+          />
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up">
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
+              <h3 className="font-semibold text-gray-900">Filters & Sort</h3>
+              <button
+                onClick={() => setIsFilterOpen(false)}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4">
+              <FilterPanel isMobile />
+              <button
+                onClick={() => setIsFilterOpen(false)}
+                className="mt-4 w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-xl font-medium hover:shadow-lg transition-all"
+              >
+                Show {products.length} Products
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
