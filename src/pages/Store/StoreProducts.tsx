@@ -741,7 +741,7 @@ const StoreProducts: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 lg:pb-0">
       <nav className="flex items-center gap-2 text-sm">
         <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
           Store
@@ -779,14 +779,7 @@ const StoreProducts: React.FC = () => {
               <List className="w-4 h-4" />
             </button>
           </div>
-          <button
-            onClick={() => setIsFilterOpen(true)}
-            className="lg:hidden flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <Filter className="w-4 h-4" />
-            Filters
-            {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-purple-600" />}
-          </button>
+          {/* Mobile filter button removed from here — now sticky at bottom */}
         </div>
       </div>
 
@@ -916,6 +909,21 @@ const StoreProducts: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Mobile Sticky Filter Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg px-4 py-3 flex items-center justify-between z-40">
+        <button
+          onClick={() => setIsFilterOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+        >
+          <Filter className="w-4 h-4" />
+          Filters
+          {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-yellow-400 ml-1" />}
+        </button>
+        <div className="text-sm text-gray-500">
+          {products.length} products
+        </div>
+      </div>
     </div>
   );
 };
