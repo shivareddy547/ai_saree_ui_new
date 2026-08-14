@@ -25,6 +25,10 @@ interface UserVoice {
   sampleAudioUrl: string | null;
   createdAt: string;
 }
+interface VariantOption {
+  id: string;
+  label: string;
+}
 interface VideoConfigurationProps {
   audioMode: "text" | "upload" | "record" | "clone";
   setAudioMode: (mode: "text" | "upload" | "record" | "clone") => void;
@@ -88,6 +92,10 @@ interface VideoConfigurationProps {
   uploadedVideoUrl: string | null;
   setUploadedVideoUrl: (url: string | null) => void;
   uploadVideoToCloudinary: (file: File, onProgress?: (progress: number) => void) => Promise<{ publicId: string }>;
+  // New variant video props
+  variants: VariantOption[];
+  selectedVariantId: string | null;
+  setSelectedVariantId: (id: string | null) => void;
 }
 const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   audioMode,
@@ -150,6 +158,9 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
   uploadedVideoUrl,
   setUploadedVideoUrl,
   uploadVideoToCloudinary,
+  variants,
+  selectedVariantId,
+  setSelectedVariantId,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -381,9 +392,7 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
       const result = await uploadVideoToCloudinary(uploadedVideoFile, (progress) => {
         setVideoUploadProgressLocal(progress);
       });
-      // The parent component will handle setting cloudinaryPublicId and status
-      // We'll rely on the parent's cloudinaryUploadStatus update.
-      // We'll also update the existingVideoUrl to the Cloudinary URL.
+      // Parent will handle status updates
     } catch (err: any) {
       alert("Failed to upload video: " + err.message);
     } finally {
@@ -814,6 +823,24 @@ const VideoConfiguration: React.FC<VideoConfigurationProps> = ({
           </button>
         </div>
       </div>
+      {/* Variant Selector (only if variants exist) */}
+      {variants.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Variant for Video
+          </label>
+          <select
+            value={selectedVariantId || ''}
+            onChange={(e) => setSelectedVariantId(e.target.value || null)}
+            className="input-field"
+          >
+            <option value="">Product (All Images)</option>
+            {variants.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {videoSource === "upload" && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">

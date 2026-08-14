@@ -396,15 +396,22 @@ const CreateProduct: React.FC = () => {
   const [isUpdatingOnly, setIsUpdatingOnly] = useState(false);
   const [updateOnlyError, setUpdateOnlyError] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
+  // Clone voice states
   const [voices, setVoices] = useState<UserVoice[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<number | null>(null);
   const [clonedAudioBlob, setClonedAudioBlob] = useState<Blob | null>(null);
   const [clonedAudioUrl, setClonedAudioUrl] = useState<string | null>(null);
   const [isGeneratingClonedAudio, setIsGeneratingClonedAudio] = useState(false);
   const [clonedAudioError, setClonedAudioError] = useState<string | null>(null);
+  // Video source states
   const [videoSource, setVideoSource] = useState<"generate" | "upload">("generate");
   const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
+  // Variant video selection and data
+  const [selectedVariantIdForVideo, setSelectedVariantIdForVideo] = useState<string | null>(null);
+  const [variantVideoData, setVariantVideoData] = useState<{ [variantId: string]: { videoUrl: string | null; cloudinaryPublicId: string | null } }>({});
+  // For posting: selected video ID (null = product, variantId = variant)
+  const [selectedPostVideoId, setSelectedPostVideoId] = useState<string | null>('product');
   const fetchCategories = useCallback(async () => {
     setCategoriesLoading(true);
     setCategoriesError(null);
@@ -472,11 +479,98 @@ const CreateProduct: React.FC = () => {
     });
     return response.data;
   }, []);
+  // Implement uploadVideoToCloudinary using the utility
   const uploadVideoToCloudinary = useCallback(async (file: File, onProgress?: (progress: number) => void) => {
     return new Promise<{ publicId: string }>((resolve, reject) => {
-      reject(new Error("Direct upload not implemented"));
+      uploadToCloudinary(file, onProgress)
+        .then(result => {
+          if (result && result.publicId) {
+            resolve({ publicId: result.publicId });
+          } else {
+            reject(new Error("Upload failed: no public ID returned"));
+          }
+        })
+        .catch(err => reject(err));
     });
   }, []);
+  // Start recording for voice
+  const startRecording = useCallback(async () => {
+    setRecordingError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const url = URL.createObjectURL(blob);
+        setRecordedAudioBlob(blob);
+        setRecordedAudioUrl(url);
+        setIsRecording(false);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      mediaRecorder.onerror = () => {
+        setRecordingError("Recording error occurred.");
+        setIsRecording(false);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err: any) {
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setRecordingError("Microphone permission denied. Please allow access to record.");
+      } else {
+        setRecordingError(err.message || "Could not start recording.");
+      }
+    }
+  }, []);
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+  const generateAudioFromText = useCallback(
+    async (
+      text: string,
+      language: string,
+      gender: "female" | "male",
+      targetDurationSec: number
+    ): Promise<Blob> => {
+      setAudioGenerating(true);
+      setAudioError(null);
+      try {
+        const freq = gender === "male" ? 180 : 440;
+        const langFreqMod =
+          language === "te" ? 1.1 : language === "hi" ? 1.2 : 1.0;
+        let blob = await generateFallbackAudio(
+          Math.min(targetDurationSec || 5, 30),
+          freq * langFreqMod
+        );
+        if (gender === "male") {
+          blob = await pitchShiftBlob(blob, 0.78);
+        }
+        if (targetDurationSec > 0) {
+          blob = await loopAudioToDuration(blob, targetDurationSec);
+        }
+        return blob;
+      } catch (err: any) {
+        setAudioError(err.message || "TTS failed, using fallback audio");
+        const freq = gender === "male" ? 180 : 440;
+        return generateFallbackAudio(
+          Math.min(targetDurationSec || 5, 30),
+          freq
+        );
+      } finally {
+        setAudioGenerating(false);
+      }
+    },
+    []
+  );
   const fetchProductData = async (id: string) => {
     setIsLoadingProduct(true);
     try {
@@ -530,7 +624,9 @@ const CreateProduct: React.FC = () => {
             stockQuantity: v.stockQuantity?.toString() || "",
           }));
           setVariants(variantList);
+          // Load variant images
           const variantImagesMap: { [key: string]: any } = {};
+          const variantVideoMap: { [key: string]: { videoUrl: string | null; cloudinaryPublicId: string | null } } = {};
           product.variants.forEach((v: any) => {
             const variantImgUrls = product.images
               ?.filter((img: any) => img.variantId === v.id)
@@ -542,11 +638,17 @@ const CreateProduct: React.FC = () => {
               uploading: variantImgUrls.map(() => false),
               errors: variantImgUrls.map(() => ""),
             };
+            variantVideoMap[v.id] = {
+              videoUrl: v.videoUrl || null,
+              cloudinaryPublicId: v.cloudinaryVideoPublicId || null,
+            };
           });
           setVariantImages(variantImagesMap);
+          setVariantVideoData(variantVideoMap);
         } else {
           setVariants([createEmptyVariant()]);
         }
+        // Product-level video
         if (product.cloudinaryVideoPublicId) {
           const cloudinaryUrl = getCloudinaryVideoUrl(product.cloudinaryVideoPublicId);
           if (cloudinaryUrl) {
@@ -956,6 +1058,21 @@ const CreateProduct: React.FC = () => {
         const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart';
         videoUrlToSave = `https://res.cloudinary.com/${cloudName}/video/upload/${cloudinaryPublicId}`;
       }
+      // Build variants array with video fields
+      const variantsPayload = variants.map((v) => {
+        const variantVideo = variantVideoData[v.id] || {};
+        return {
+          id: v.id,
+          sku: v.sku,
+          size: v.size,
+          color: v.color,
+          price: v.price,
+          costPrice: v.costPrice,
+          stockQuantity: v.stockQuantity,
+          videoUrl: variantVideo.videoUrl || undefined,
+          cloudinaryVideoPublicId: variantVideo.cloudinaryPublicId || undefined,
+        };
+      });
       const productData = {
         name: productName,
         price,
@@ -969,15 +1086,7 @@ const CreateProduct: React.FC = () => {
         showInBestSellers,
         showInNewArrivals,
         showInPremiumProducts,
-        variants: variants.map((v) => ({
-          id: v.id,
-          sku: v.sku,
-          size: v.size,
-          color: v.color,
-          price: v.price,
-          costPrice: v.costPrice,
-          stockQuantity: v.stockQuantity,
-        })),
+        variants: variantsPayload,
         images: uploadedImageItems.map((item, index) => ({
           url: item.url,
           variantId: item.variantId,
@@ -1054,7 +1163,6 @@ const CreateProduct: React.FC = () => {
   };
   const handlePostToInstagram = async () => {};
   const resetAllState = () => {
-    // Reset all states to initial values
     setProductImages({ files: [], previews: [], urls: [], uploading: [], errors: [] });
     setVariantImages({});
     setActiveImageTabVariant('product');
@@ -1079,13 +1187,11 @@ const CreateProduct: React.FC = () => {
     setShowInBestSellers(false);
     setShowInNewArrivals(false);
     setShowInPremiumProducts(false);
-    // Reset unsplash
     setUnsplashQuery("");
     setUnsplashResults([]);
     setIsSearchingUnsplash(false);
     setUnsplashError(null);
     setDownloadingUnsplashIds(new Set());
-    // Reset audio/video states
     setShowConfig(true);
     setAudioMode("text");
     setAudioScript("");
@@ -1142,7 +1248,9 @@ const CreateProduct: React.FC = () => {
       URL.revokeObjectURL(uploadedVideoUrl);
       setUploadedVideoUrl(null);
     }
-    // Reset any other relevant states
+    setSelectedVariantIdForVideo(null);
+    setVariantVideoData({});
+    setSelectedPostVideoId('product');
   };
   if (isLoadingProduct) {
     return (
@@ -1161,6 +1269,563 @@ const CreateProduct: React.FC = () => {
       </div>
     );
   }
+  // Compute images length based on selected variant
+  const getImagesLength = () => {
+    if (selectedVariantIdForVideo) {
+      const state = variantImages[selectedVariantIdForVideo];
+      return state ? state.urls.length + state.previews.length : 0;
+    } else {
+      return productImages.urls.length + productImages.previews.length;
+    }
+  };
+  // Compute existing video and cloudinary ID based on selected variant
+  const getExistingVideoUrl = () => {
+    if (selectedVariantIdForVideo) {
+      return variantVideoData[selectedVariantIdForVideo]?.videoUrl || null;
+    } else {
+      return existingVideoUrl;
+    }
+  };
+  const getCloudinaryPublicId = () => {
+    if (selectedVariantIdForVideo) {
+      return variantVideoData[selectedVariantIdForVideo]?.cloudinaryPublicId || null;
+    } else {
+      return cloudinaryPublicId;
+    }
+  };
+  // Build variant options for VideoConfiguration
+  const variantOptions = variants.map(v => ({
+    id: v.id,
+    label: v.sku || v.color || v.size || `Variant ${v.id.slice(0,4)}`,
+  }));
+  // Build variant video list for PostToInstagram
+  const variantVideoList = Object.entries(variantVideoData)
+    .filter(([_, data]) => data.cloudinaryPublicId || data.videoUrl)
+    .map(([id, data]) => ({
+      variantId: id,
+      label: variants.find(v => v.id === id)?.color || variants.find(v => v.id === id)?.size || id,
+      cloudinaryPublicId: data.cloudinaryPublicId,
+      videoUrl: data.videoUrl,
+    }));
+  // Generate video handler
+  const handleGenerateVideo = async () => {
+    setIsGenerating(true);
+    setGenerationProgress(0);
+    setGenerationMessage("Preparing assets...");
+    setGenerationError(null);
+    // Reset cloudinary status to uploading
+    setCloudinaryUploadStatus("uploading");
+    setCloudinaryUploadProgress(0);
+    setCloudinaryUploadMessage("Starting process...");
+    let generatedVideoObjectUrl: string | null = null;
+    try {
+      // If videoSource is "upload", handle upload separately
+      if (videoSource === "upload") {
+        if (!uploadedVideoFile) {
+          throw new Error("No video file uploaded");
+        }
+        setGenerationMessage("Uploading video to Cloudinary...");
+        setGenerationProgress(10);
+        setCloudinaryUploadMessage("Starting upload...");
+        const cloudinaryResult = await uploadToCloudinary(
+          uploadedVideoFile,
+          (progress) => {
+            setCloudinaryUploadProgress(progress);
+            setGenerationProgress(10 + progress * 0.8);
+            setCloudinaryUploadMessage(`Uploading... ${Math.round(progress)}%`);
+          }
+        );
+        if (cloudinaryResult && cloudinaryResult.publicId) {
+          // Determine if product or variant
+          if (selectedVariantIdForVideo) {
+            // Update variant video data
+            const cloudinaryUrl = getCloudinaryVideoUrl(cloudinaryResult.publicId);
+            setVariantVideoData(prev => ({
+              ...prev,
+              [selectedVariantIdForVideo!]: {
+                videoUrl: cloudinaryUrl || null,
+                cloudinaryPublicId: cloudinaryResult.publicId,
+              }
+            }));
+            setExistingVideoUrl(cloudinaryUrl); // for preview in config
+          } else {
+            setCloudinaryPublicId(cloudinaryResult.publicId);
+            const cloudinaryUrl = getCloudinaryVideoUrl(cloudinaryResult.publicId);
+            setExistingVideoUrl(cloudinaryUrl);
+            setVideoUrl(cloudinaryUrl);
+            setVideoKitUrl(cloudinaryUrl);
+          }
+          setCloudinaryUploadStatus("success");
+          setCloudinaryUploadMessage("Video uploaded successfully!");
+          setGenerationProgress(100);
+          setGenerationMessage("Video uploaded to Cloudinary successfully!");
+        } else {
+          throw new Error("Failed to upload video to Cloudinary");
+        }
+        setIsGenerating(false);
+        return;
+      }
+      // Original generation for "generate" source
+      let audioBlob: Blob | null = null;
+      const targetDuration = videoLength;
+      // Gather images based on selected variant
+      let imageUrls: string[] = [];
+      if (selectedVariantIdForVideo) {
+        const variantState = variantImages[selectedVariantIdForVideo];
+        if (variantState) {
+          imageUrls = [...variantState.urls, ...variantState.previews];
+        }
+      } else {
+        imageUrls = [...productImages.urls, ...productImages.previews];
+      }
+      // Audio generation
+      if (audioMode === "text") {
+        setGenerationMessage("Generating voiceover...");
+        setGenerationProgress(10);
+        audioBlob = await generateAudioFromText(
+          audioScript || "Welcome to our product video",
+          audioLanguage,
+          voiceGender,
+          targetDuration
+        );
+      } else if (audioMode === "upload") {
+        setGenerationMessage("Loading uploaded audio...");
+        setGenerationProgress(10);
+        if (customAudioFile) {
+          audioBlob = await customAudioFile.arrayBuffer().then(
+            (arrayBuffer) => new Blob([arrayBuffer], { type: customAudioFile.type || "audio/mpeg" })
+          );
+        } else if (customAudioUrl) {
+          audioBlob = await loadAudioFromUrl(customAudioUrl);
+        }
+      } else if (audioMode === "record") {
+        setGenerationMessage("Using recorded audio...");
+        setGenerationProgress(10);
+        if (recordedAudioBlob) {
+          audioBlob = recordedAudioBlob;
+        } else if (recordedAudioUrl) {
+          audioBlob = await loadAudioFromUrl(recordedAudioUrl);
+        }
+      } else if (audioMode === "clone") {
+        setGenerationMessage("Using cloned voice audio...");
+        setGenerationProgress(10);
+        if (clonedAudioBlob) {
+          audioBlob = clonedAudioBlob;
+        } else if (clonedAudioUrl) {
+          audioBlob = await loadAudioFromUrl(clonedAudioUrl);
+        }
+        if (!audioBlob) {
+          throw new Error("No cloned audio available. Please generate audio first.");
+        }
+      }
+      if (!audioBlob) {
+        throw new Error("No audio available for video generation");
+      }
+      setGenerationMessage("Processing audio...");
+      setGenerationProgress(15);
+      const audioCtx = new AudioContext();
+      const audioBuffer = await audioCtx.decodeAudioData(await audioBlob.arrayBuffer());
+      const audioDuration = audioBuffer.duration;
+      let finalAudioBlob = audioBlob;
+      if (audioDuration < targetDuration) {
+        setGenerationMessage(`Extending audio from ${audioDuration.toFixed(1)}s to ${targetDuration}s...`);
+        finalAudioBlob = await loopAudioToDuration(audioBlob, targetDuration);
+      }
+      await audioCtx.close();
+      setGenerationMessage("Loading product images...");
+      setGenerationProgress(20);
+      const imageElements: HTMLImageElement[] = [];
+      for (const previewUrl of imageUrls) {
+        if (!previewUrl) continue;
+        const img = new Image();
+        if (previewUrl.startsWith("http")) {
+          img.crossOrigin = "anonymous";
+        }
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error(`Failed to load image: ${previewUrl}`));
+          img.src = previewUrl;
+        });
+        imageElements.push(img);
+      }
+      if (imageElements.length === 0) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext("2d")!;
+        const gradient = ctx.createLinearGradient(0, 0, 1280, 720);
+        gradient.addColorStop(0, "#7C3AED");
+        gradient.addColorStop(1, "#6D28D9");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 1280, 720);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 48px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(productName || "Product", 640, 360);
+        const placeholderBlob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((b) => resolve(b!), "image/png")
+        );
+        const placeholderUrl = URL.createObjectURL(placeholderBlob);
+        const img = new Image();
+        await new Promise<void>((resolve) => {
+          img.onload = () => resolve();
+          img.src = placeholderUrl;
+        });
+        imageElements.push(img);
+        URL.revokeObjectURL(placeholderUrl);
+      }
+      setGenerationMessage("Creating video with embedded audio...");
+      setGenerationProgress(30);
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const width = 1280;
+      const height = 720;
+      canvas.width = width;
+      canvas.height = height;
+      const canvasStream = canvas.captureStream(30);
+      const finalAudioUrl = URL.createObjectURL(finalAudioBlob);
+      const audioElement = new Audio(finalAudioUrl);
+      await new Promise<void>((resolve) => {
+        audioElement.onloadedmetadata = () => resolve();
+        audioElement.load();
+      });
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaElementSource(audioElement);
+      const destination = audioContext.createMediaStreamDestination();
+      source.connect(destination);
+      const combinedStream = new MediaStream();
+      canvasStream.getVideoTracks().forEach((track) => {
+        combinedStream.addTrack(track);
+      });
+      destination.stream.getAudioTracks().forEach((track) => {
+        combinedStream.addTrack(track);
+      });
+      const mimeTypes = [
+        'video/mp4;codecs=avc1,mp4a',
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4;codecs=h264',
+        'video/webm;codecs=vp9,opus',
+      ];
+      let selectedMimeType = mimeTypes[0];
+      let mediaRecorder: MediaRecorder | null = null;
+      for (const mimeType of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType;
+          mediaRecorder = new MediaRecorder(combinedStream, {
+            mimeType: mimeType,
+            videoBitsPerSecond: 5000000,
+            audioBitsPerSecond: 128000,
+          });
+          break;
+        }
+      }
+      if (!mediaRecorder) {
+        mediaRecorder = new MediaRecorder(combinedStream, {
+          videoBitsPerSecond: 5000000,
+          audioBitsPerSecond: 128000,
+        });
+      }
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+      mediaRecorder.start(1000);
+      await audioContext.resume();
+      await audioElement.play().catch((e) => console.warn("Audio play warning:", e));
+      const fps = 30;
+      const actualDuration = audioElement.duration || targetDuration;
+      const totalFrames = Math.ceil(actualDuration * fps);
+      const frameInterval = 1000 / fps;
+      let currentFrame = 0;
+      let imageIndex = 0;
+      setGenerationProgress(40);
+      await new Promise<void>((resolve) => {
+        const renderFrame = () => {
+          if (currentFrame >= totalFrames) {
+            resolve();
+            return;
+          }
+          const progress = currentFrame / totalFrames;
+          ctx.clearRect(0, 0, width, height);
+          const gradient = ctx.createLinearGradient(0, 0, width, height);
+          gradient.addColorStop(0, "#1a1a2e");
+          gradient.addColorStop(0.5, "#16213e");
+          gradient.addColorStop(1, "#0f3460");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, width, height);
+          if (imageElements.length > 0) {
+            const img = imageElements[imageIndex % imageElements.length];
+            const imgWidth = img.width;
+            const imgHeight = img.height;
+            const paddingPercent = 0.02;
+            const maxWidth = width * (1 - paddingPercent);
+            const maxHeight = height * (1 - paddingPercent);
+            const scaleX = maxWidth / imgWidth;
+            const scaleY = maxHeight / imgHeight;
+            const scale = Math.min(scaleX, scaleY);
+            let drawWidth = imgWidth * scale;
+            let drawHeight = imgHeight * scale;
+            let drawX = (width - drawWidth) / 2;
+            let drawY = (height - drawHeight) / 2;
+            const zoom = 1 + Math.sin(progress * Math.PI * 4) * 0.015;
+            const scaledWidth = drawWidth * zoom;
+            const scaledHeight = drawHeight * zoom;
+            const offsetX = (drawWidth - scaledWidth) / 2;
+            const offsetY = (drawHeight - scaledHeight) / 2;
+            ctx.save();
+            ctx.shadowColor = "rgba(0, 0, 0, 0.2)";
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            const x = drawX + offsetX;
+            const y = drawY + offsetY;
+            const cornerRadius = 8;
+            ctx.beginPath();
+            ctx.moveTo(x + cornerRadius, y);
+            ctx.lineTo(x + scaledWidth - cornerRadius, y);
+            ctx.quadraticCurveTo(x + scaledWidth, y, x + scaledWidth, y + cornerRadius);
+            ctx.lineTo(x + scaledWidth, y + scaledHeight - cornerRadius);
+            ctx.quadraticCurveTo(x + scaledWidth, y + scaledHeight, x + scaledWidth - cornerRadius, y + scaledHeight);
+            ctx.lineTo(x + cornerRadius, y + scaledHeight);
+            ctx.quadraticCurveTo(x, y + scaledHeight, x, y + scaledHeight - cornerRadius);
+            ctx.lineTo(x, y + cornerRadius);
+            ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+            ctx.restore();
+            ctx.save();
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + Math.sin(progress * Math.PI * 4) * 0.03})`;
+            ctx.lineWidth = 1;
+            ctx.shadowColor = "rgba(255, 255, 255, 0.05)";
+            ctx.shadowBlur = 10;
+            ctx.strokeRect(drawX + offsetX, drawY + offsetY, scaledWidth, scaledHeight);
+            ctx.restore();
+          }
+          const overlayGradient = ctx.createLinearGradient(0, height - 100, 0, height);
+          overlayGradient.addColorStop(0, "rgba(0,0,0,0)");
+          overlayGradient.addColorStop(1, "rgba(0,0,0,0.7)");
+          ctx.fillStyle = overlayGradient;
+          ctx.fillRect(0, height - 100, width, 100);
+          ctx.textAlign = "center";
+          ctx.textBaseline = "bottom";
+          const nameScale = 1 + Math.sin(progress * Math.PI * 2) * 0.015;
+          ctx.save();
+          ctx.translate(width / 2, height - 45);
+          ctx.scale(nameScale, nameScale);
+          ctx.font = "bold 40px Arial";
+          ctx.fillStyle = "#ffffff";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+          ctx.shadowBlur = 12;
+          ctx.fillText(productName || "Product", 0, 0);
+          ctx.restore();
+          const priceScale = 1 + Math.sin(progress * Math.PI * 2 + 0.5) * 0.015;
+          ctx.save();
+          ctx.translate(width / 2, height - 12);
+          ctx.scale(priceScale, priceScale);
+          ctx.font = "bold 24px Arial";
+          ctx.fillStyle = "#fbbf24";
+          ctx.shadowColor = "rgba(251, 191, 36, 0.3)";
+          ctx.shadowBlur = 15;
+          ctx.fillText(`₹${price || "0"}`, 0, 0);
+          ctx.restore();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = `rgba(251, 191, 36, ${0.15 + Math.sin(progress * Math.PI * 4) * 0.1})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(width / 2 - 70, height - 35);
+          ctx.lineTo(width / 2 + 70, height - 35);
+          ctx.stroke();
+          const progressPercent = 40 + (currentFrame / totalFrames) * 55;
+          setGenerationProgress(Math.min(progressPercent, 95));
+          if (currentFrame > 0 && currentFrame % (fps * 4) === 0) {
+            imageIndex = (imageIndex + 1) % imageElements.length;
+          }
+          currentFrame++;
+          setTimeout(renderFrame, frameInterval);
+        };
+        renderFrame();
+      });
+      setGenerationProgress(97);
+      setGenerationMessage("Finalizing video...");
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      await audioContext.close();
+      const finalBlob = await new Promise<Blob>((resolve) => {
+        if (mediaRecorder) {
+          mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: selectedMimeType });
+            resolve(blob);
+          };
+          mediaRecorder.stop();
+          setTimeout(() => {
+            if (chunks.length > 0) {
+              resolve(new Blob(chunks, { type: selectedMimeType }));
+            }
+          }, 5000);
+        } else {
+          resolve(new Blob(chunks, { type: selectedMimeType }));
+        }
+      });
+      let uploadBlob = finalBlob;
+      if (!selectedMimeType.startsWith('video/mp4')) {
+        try {
+          const videoElement = document.createElement('video');
+          const videoUrl = URL.createObjectURL(finalBlob);
+          videoElement.src = videoUrl;
+          await new Promise<void>((resolve) => {
+            videoElement.onloadedmetadata = () => resolve();
+            videoElement.load();
+          });
+          const canvas = document.createElement('canvas');
+          canvas.width = 1280;
+          canvas.height = 720;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            throw new Error('Could not get canvas context');
+          }
+          const stream = canvas.captureStream(30);
+          const recorder = new MediaRecorder(stream, {
+            mimeType: 'video/mp4;codecs=avc1,mp4a',
+            videoBitsPerSecond: 5000000,
+            audioBitsPerSecond: 128000,
+          });
+          const newChunks: Blob[] = [];
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) newChunks.push(e.data);
+          };
+          recorder.start(1000);
+          videoElement.play();
+          const duration = videoElement.duration || targetDuration;
+          const fps = 30;
+          const totalFrames = Math.ceil(duration * fps);
+          let frame = 0;
+          await new Promise<void>((resolve) => {
+            const interval = setInterval(() => {
+              if (frame >= totalFrames) {
+                clearInterval(interval);
+                recorder.stop();
+                resolve();
+                return;
+              }
+              ctx.drawImage(videoElement, 0, 0, 1280, 720);
+              frame++;
+            }, 1000 / fps);
+          });
+          URL.revokeObjectURL(videoUrl);
+          const convertedBlob = await new Promise<Blob>((resolve) => {
+            recorder.onstop = () => {
+              resolve(new Blob(newChunks, { type: 'video/mp4' }));
+            };
+            setTimeout(() => {
+              if (newChunks.length > 0) {
+                resolve(new Blob(newChunks, { type: 'video/mp4' }));
+              }
+            }, 5000);
+          });
+          uploadBlob = convertedBlob as Blob;
+        } catch (conversionError) {
+          console.warn('MP4 conversion failed, using original format:', conversionError);
+          uploadBlob = finalBlob;
+        }
+      }
+      generatedVideoObjectUrl = URL.createObjectURL(uploadBlob);
+      setVideoUrl(generatedVideoObjectUrl);
+      setVideoKitUrl(generatedVideoObjectUrl);
+      setExistingVideoUrl(generatedVideoObjectUrl);
+      setGenerationProgress(98);
+      setGenerationMessage("Uploading to Cloudinary...");
+      setCloudinaryUploadProgress(0);
+      setCloudinaryUploadMessage("Starting upload...");
+      const cloudinaryResult = await uploadToCloudinary(
+        uploadBlob,
+        (progress) => {
+          setCloudinaryUploadProgress(progress);
+          setCloudinaryUploadMessage(`Uploading... ${Math.round(progress)}%`);
+        }
+      );
+      if (cloudinaryResult && cloudinaryResult.publicId) {
+        if (selectedVariantIdForVideo) {
+          // Store video for variant
+          const cloudinaryUrl = getCloudinaryVideoUrl(cloudinaryResult.publicId);
+          setVariantVideoData(prev => ({
+            ...prev,
+            [selectedVariantIdForVideo!]: {
+              videoUrl: cloudinaryUrl || null,
+              cloudinaryPublicId: cloudinaryResult.publicId,
+            }
+          }));
+          setExistingVideoUrl(cloudinaryUrl);
+        } else {
+          setCloudinaryPublicId(cloudinaryResult.publicId);
+          const cloudinaryUrl = getCloudinaryVideoUrl(cloudinaryResult.publicId);
+          setExistingVideoUrl(cloudinaryUrl);
+        }
+        setCloudinaryUploadStatus("success");
+        setCloudinaryUploadMessage("Video uploaded successfully!");
+        setGenerationMessage("Video uploaded to Cloudinary successfully!");
+      } else {
+        throw new Error("Failed to upload to Cloudinary");
+      }
+      setGenerationProgress(100);
+      URL.revokeObjectURL(finalAudioUrl);
+    } catch (err: any) {
+      console.error("Video generation error:", err);
+      setGenerationError(err.message || "Failed to generate video");
+      setCloudinaryUploadStatus("error");
+      setCloudinaryUploadMessage(err.message || "Upload failed");
+      setGenerationProgress(0);
+      setGenerationMessage("");
+      if (generatedVideoObjectUrl) {
+        URL.revokeObjectURL(generatedVideoObjectUrl);
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  const renderProgress = () => (
+    <div className="w-full">
+      <div className="flex items-center justify-between">
+        {steps.map((step, idx) => (
+          <React.Fragment key={step.id}>
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-all duration-300 ${
+                  currentStep > step.id
+                    ? "bg-purple-600 text-white shadow-md"
+                    : currentStep === step.id
+                    ? "bg-purple-600 text-white shadow-lg ring-4 ring-purple-200"
+                    : "bg-gray-200 text-gray-500"
+                }`}
+              >
+                {currentStep > step.id ? <Check size={16} /> : step.id}
+              </div>
+              <span
+                className={`text-[10px] sm:text-xs mt-1.5 hidden sm:block font-medium ${
+                  currentStep >= step.id ? "text-purple-700" : "text-gray-400"
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+            {idx < steps.length - 1 && (
+              <div
+                className={`flex-1 h-0.5 mx-2 sm:mx-4 rounded-full ${
+                  currentStep > step.id ? "bg-purple-500" : "bg-gray-200"
+                }`}
+              />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+      <p className="text-center text-sm font-medium text-purple-700 mt-2 sm:hidden">
+        Step {currentStep} of {steps.length}: {steps[currentStep - 1]?.label}
+      </p>
+    </div>
+  );
   return (
     <div className="max-w-4xl mx-auto space-y-8 px-3 sm:px-0">
       <div className="flex items-center gap-4 mb-6 sm:mb-8">
@@ -1172,44 +1837,7 @@ const CreateProduct: React.FC = () => {
         </h1>
       </div>
       <div className="card-glass p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
-        <div className="w-full">
-          <div className="flex items-center justify-between">
-            {steps.map((step, idx) => (
-              <React.Fragment key={step.id}>
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-all duration-300 ${
-                      currentStep > step.id
-                        ? "bg-purple-600 text-white shadow-md"
-                        : currentStep === step.id
-                        ? "bg-purple-600 text-white shadow-lg ring-4 ring-purple-200"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > step.id ? <Check size={16} /> : step.id}
-                  </div>
-                  <span
-                    className={`text-[10px] sm:text-xs mt-1.5 hidden sm:block font-medium ${
-                      currentStep >= step.id ? "text-purple-700" : "text-gray-400"
-                    }`}
-                  >
-                    {step.label}
-                  </span>
-                </div>
-                {idx < steps.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 mx-2 sm:mx-4 rounded-full ${
-                      currentStep > step.id ? "bg-purple-500" : "bg-gray-200"
-                    }`}
-                  />
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-          <p className="text-center text-sm font-medium text-purple-700 mt-2 sm:hidden">
-            Step {currentStep} of {steps.length}: {steps[currentStep - 1]?.label}
-          </p>
-        </div>
+        {renderProgress()}
         <div className="space-y-6">
           {currentStep === 1 && (
             <ProductDetails
@@ -1258,6 +1886,10 @@ const CreateProduct: React.FC = () => {
                     errors: [],
                   },
                 }));
+                setVariantVideoData((prev) => ({
+                  ...prev,
+                  [newVariant.id]: { videoUrl: null, cloudinaryPublicId: null },
+                }));
               }}
               handleRemoveVariant={(id) => {
                 setVariants(variants.filter((v) => v.id !== id));
@@ -1266,8 +1898,16 @@ const CreateProduct: React.FC = () => {
                   delete newMap[id];
                   return newMap;
                 });
+                setVariantVideoData((prev) => {
+                  const newMap = { ...prev };
+                  delete newMap[id];
+                  return newMap;
+                });
                 if (activeImageTabVariant === id) {
                   setActiveImageTabVariant('product');
+                }
+                if (selectedVariantIdForVideo === id) {
+                  setSelectedVariantIdForVideo(null);
                 }
               }}
               handleVariantChange={(
@@ -1373,18 +2013,18 @@ const CreateProduct: React.FC = () => {
               generationProgress={generationProgress}
               generationMessage={generationMessage}
               generationError={generationError}
-              imagesLength={productImages.urls.length + productImages.previews.length}
+              imagesLength={getImagesLength()}
               audioGenerating={audioGenerating}
               audioError={audioError}
               handlePreviewTTS={() => {}}
-              handleGenerateVideo={() => {}}
-              startRecording={() => {}}
-              stopRecording={() => {}}
-              existingVideoUrl={existingVideoUrl}
+              handleGenerateVideo={handleGenerateVideo}
+              startRecording={startRecording}
+              stopRecording={stopRecording}
+              existingVideoUrl={getExistingVideoUrl()}
               cloudinaryUploadStatus={cloudinaryUploadStatus}
               cloudinaryUploadProgress={cloudinaryUploadProgress}
               cloudinaryUploadMessage={cloudinaryUploadMessage}
-              cloudinaryPublicId={cloudinaryPublicId}
+              cloudinaryPublicId={getCloudinaryPublicId()}
               voices={voices}
               setVoices={setVoices}
               selectedVoiceId={selectedVoiceId}
@@ -1408,6 +2048,9 @@ const CreateProduct: React.FC = () => {
               uploadedVideoUrl={uploadedVideoUrl}
               setUploadedVideoUrl={setUploadedVideoUrl}
               uploadVideoToCloudinary={uploadVideoToCloudinary}
+              variants={variantOptions}
+              selectedVariantId={selectedVariantIdForVideo}
+              setSelectedVariantId={setSelectedVariantIdForVideo}
             />
           )}
           {currentStep === 4 && (
@@ -1436,6 +2079,9 @@ const CreateProduct: React.FC = () => {
               updateOnlyError={updateOnlyError}
               onBack={() => setCurrentStep(4)}
               productId={productId}
+              variantVideos={variantVideoList}
+              selectedVideoId={selectedPostVideoId}
+              onSelectVideo={setSelectedPostVideoId}
             />
           )}
         </div>

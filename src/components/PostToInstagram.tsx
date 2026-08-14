@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save, ArrowLeft, HelpCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save, ArrowLeft, HelpCircle, Video } from 'lucide-react';
 import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 interface PostToInstagramProps {
@@ -19,6 +19,9 @@ interface PostToInstagramProps {
   updateOnlyError?: string | null;
   onBack?: () => void;
   productId?: string | null;
+  variantVideos?: { variantId: string; label: string; cloudinaryPublicId: string | null; videoUrl: string | null }[];
+  selectedVideoId?: string | null;
+  onSelectVideo?: (id: string | null) => void;
 }
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isPosting,
@@ -37,6 +40,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   updateOnlyError = null,
   onBack,
   productId = null,
+  variantVideos = [],
+  selectedVideoId = 'product',
+  onSelectVideo,
 }) => {
   const [instagramStatus, setInstagramStatus] = useState<{
     connected: boolean;
@@ -192,11 +198,33 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     }
   };
   const handlePublishToInstagram = async () => {
-    if (!cloudinaryPublicId) {
-      setPublishError('Please generate a video and upload to Cloudinary first');
+    // Determine which video to post based on selectedVideoId
+    let selectedCloudinaryPublicId = null;
+    let selectedVideoUrl = null;
+    if (selectedVideoId === 'product') {
+      selectedCloudinaryPublicId = cloudinaryPublicId;
+      selectedVideoUrl = videoUrl;
+    } else {
+      const variant = variantVideos.find(v => v.variantId === selectedVideoId);
+      if (variant) {
+        selectedCloudinaryPublicId = variant.cloudinaryPublicId;
+        selectedVideoUrl = variant.videoUrl;
+      }
+    }
+    if (!selectedCloudinaryPublicId && !selectedVideoUrl) {
+      setPublishError('No video available for the selected option. Please generate a video first.');
       return;
     }
-    const cloudinaryVideoUrl = `https://res.cloudinary.com/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart'}/video/upload/${cloudinaryPublicId}.mp4`;
+    // Prefer cloudinary public id for posting
+    let postVideoUrl = selectedVideoUrl;
+    if (selectedCloudinaryPublicId) {
+      const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart';
+      postVideoUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${selectedCloudinaryPublicId}.mp4`;
+    }
+    if (!postVideoUrl) {
+      setPublishError('Video URL is missing. Please generate a video first.');
+      return;
+    }
     if (!instagramStatus.connected) {
       setPublishError('Please connect Instagram account first');
       return;
@@ -206,7 +234,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     setPublishSuccess(null);
     try {
       const response = await apiClient.post('/instagram/post', {
-        video_url: cloudinaryVideoUrl,
+        video_url: postVideoUrl,
         media_type: mediaType,
         caption: caption || generateDefaultCaption()
       });
@@ -246,20 +274,31 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     checkInstagramStatus();
   }, []);
   const renderVideoPreview = () => {
-    if (!videoUrl) {
+    // Determine preview video URL based on selection
+    let previewUrl = null;
+    if (selectedVideoId === 'product') {
+      previewUrl = videoUrl;
+    } else {
+      const variant = variantVideos.find(v => v.variantId === selectedVideoId);
+      if (variant) {
+        previewUrl = variant.videoUrl;
+      }
+    }
+    if (!previewUrl) {
       return (
         <div className="bg-gray-100 rounded-lg p-8 text-center border-2 border-dashed border-gray-300">
           <Play size={40} className="mx-auto text-gray-400 mb-3" />
-          <p className="text-gray-500">No video generated yet</p>
-          <p className="text-xs text-gray-400">Go back and generate a video first</p>
+          <p className="text-gray-500">No video selected or generated</p>
+          <p className="text-xs text-gray-400">Select a video option below</p>
         </div>
       );
     }
+    const isCloudinary = previewUrl.includes('cloudinary.com') || previewUrl.includes('res.cloudinary.com');
     return (
       <div className="relative bg-black rounded-lg overflow-hidden">
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={previewUrl}
           className="w-full max-h-80 object-contain"
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
@@ -274,10 +313,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             {isPlaying ? <Pause size={20} /> : <Play size={20} />}
           </button>
           <span className="text-white text-sm bg-black/50 px-2 py-1 rounded">
-            {cloudinaryPublicId ? 'Cloudinary ✅' : 'Local'}
+            {isCloudinary ? 'Cloudinary ✅' : 'Local'}
           </span>
         </div>
-        {cloudinaryPublicId && (
+        {isCloudinary && (
           <div className="absolute bottom-4 right-4 text-white text-xs bg-green-600/80 px-2 py-1 rounded">
             MP4 Ready
           </div>
@@ -336,6 +375,49 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           >
             <Edit2 size={18} />
           </button>
+        </div>
+      </div>
+    );
+  };
+  // Video selector UI
+  const renderVideoSelector = () => {
+    const allVideos = [
+      { id: 'product', label: 'Product Video', cloudinaryPublicId: cloudinaryPublicId, videoUrl: videoUrl },
+      ...variantVideos.map(v => ({ ...v, id: v.variantId, label: `${v.label} (Variant)` })),
+    ].filter(item => item.cloudinaryPublicId || item.videoUrl);
+    if (allVideos.length === 0) {
+      return (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center text-yellow-700">
+          <AlertCircle size={20} className="inline mr-2" />
+          No videos available. Please generate a video first.
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">Select Video to Post</label>
+        <div className="space-y-2">
+          {allVideos.map((item) => (
+            <label key={item.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+              <input
+                type="radio"
+                name="videoSelection"
+                value={item.id}
+                checked={selectedVideoId === item.id}
+                onChange={() => onSelectVideo && onSelectVideo(item.id)}
+                className="text-purple-600 focus:ring-purple-500"
+              />
+              <div className="flex-1">
+                <span className="font-medium">{item.label}</span>
+                {item.cloudinaryPublicId && (
+                  <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Cloudinary</span>
+                )}
+              </div>
+              {item.videoUrl && (
+                <Play size={16} className="text-gray-400" />
+              )}
+            </label>
+          ))}
         </div>
       </div>
     );
@@ -492,6 +574,19 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         )}
       </div>
+      {/* Video Selector */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b">
+          <h3 className="font-medium text-slate-700 flex items-center gap-2">
+            <Video size={18} className="text-purple-600" />
+            Select Video
+          </h3>
+        </div>
+        <div className="p-4">
+          {renderVideoSelector()}
+        </div>
+      </div>
+      {/* Video Preview */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -503,12 +598,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           {renderVideoPreview()}
         </div>
       </div>
-      {cloudinaryPublicId && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm text-green-700">
-          <CheckCircle size={16} className="flex-shrink-0" />
-          <span>Video uploaded to Cloudinary: <strong>{cloudinaryPublicId}</strong></span>
-        </div>
-      )}
+      {/* Caption */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -641,9 +731,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         )}
         <button
           onClick={handlePublishToInstagram}
-          disabled={isPosting || !instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly || !productId}
+          disabled={isPosting || !instagramStatus.connected || isConnecting || isPublishing || isUpdatingOnly || !productId}
           className={`flex-1 btn-primary flex items-center justify-center gap-2 py-3 ${
-            (!instagramStatus.connected || !cloudinaryPublicId || isConnecting || isPublishing || isUpdatingOnly || !productId) ? 'opacity-50 cursor-not-allowed' : ''
+            (!instagramStatus.connected || isConnecting || isPublishing || isUpdatingOnly || !productId) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
           {isPublishing || isPosting ? (
@@ -659,7 +749,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           ) : (
             <>
               <Send size={20} />
-              {!cloudinaryPublicId ? 'Upload to Cloudinary First' : 'Post to Instagram'}
+              Post to Instagram
             </>
           )}
         </button>
@@ -703,11 +793,6 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       {!instagramStatus.connected && !isConnecting && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Connect your Instagram account to enable posting
-        </p>
-      )}
-      {!cloudinaryPublicId && (
-        <p className="text-sm text-yellow-600 text-center">
-          ⚠️ Video must be uploaded to Cloudinary before posting to Instagram
         </p>
       )}
       {isConnecting && (
