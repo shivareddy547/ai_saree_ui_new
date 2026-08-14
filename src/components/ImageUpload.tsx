@@ -1,210 +1,476 @@
-import React, { useRef } from 'react';
-import { Upload, Search, X, Loader2, Download } from 'lucide-react';
-interface ImageUploadProps {
-  images: File[];
+import React, { useRef, useState, useCallback } from 'react';
+import {
+  Upload,
+  Search,
+  X,
+  Loader2,
+  Download,
+  GripVertical,
+} from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+interface ImageItem {
+  id: string;
+  url: string;
+  file?: File;
+  isCloud?: boolean;
+}
+interface VariantImageState {
+  files: File[];
   previews: string[];
-  imageKitUrls: string[];
-  imageUploadingStates: boolean[];
-  imageUploadErrors: string[];
-  activeImageTab: 'upload' | 'unsplash';
-  setActiveImageTab: (tab: 'upload' | 'unsplash') => void;
+  urls: string[];
+  uploading: boolean[];
+  errors: string[];
+}
+interface ProductVariant {
+  id: string;
+  sku: string;
+  size: string;
+  color: string;
+  price: string;
+  costPrice: string;
+  stockQuantity: string;
+}
+interface ImageUploadProps {
+  // Product-level images
+  productImages: {
+    files: File[];
+    previews: string[];
+    urls: string[];
+    uploading: boolean[];
+    errors: string[];
+  };
+  setProductImages: React.Dispatch<
+    React.SetStateAction<{
+      files: File[];
+      previews: string[];
+      urls: string[];
+      uploading: boolean[];
+      errors: string[];
+    }>
+  >;
+  // Variant images
+  variants: ProductVariant[];
+  variantImages: { [variantId: string]: VariantImageState };
+  setVariantImages: React.Dispatch<
+    React.SetStateAction<{ [variantId: string]: VariantImageState }>
+  >;
+  // Active tab
+  activeTab: 'product' | string;
+  setActiveTab: (tab: 'product' | string) => void;
+  // Unsplash props
   unsplashQuery: string;
   setUnsplashQuery: (query: string) => void;
   unsplashResults: any[];
   isSearchingUnsplash: boolean;
   unsplashError: string | null;
   downloadingUnsplashIds: Set<string>;
-  handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  removeImage: (index: number) => void;
-  handleUploadToImageKit: (index: number) => void;
   handleUnsplashSearch: () => void;
-  handleDownloadUnsplash: (photo: any) => void;
-  onImageClick?: (index: number) => void;
+  handleDownloadUnsplash: (photo: any, targetVariantId?: string) => void;
+  // Callbacks
+  onImageClick?: (url: string, variantId?: string) => void;
+  // Upload file input ref
+  fileInputRef?: React.RefObject<HTMLInputElement | null>;
 }
+// Sortable image item component
+const SortableImageItem: React.FC<{
+  item: ImageItem;
+  index: number;
+  onRemove: (index: number) => void;
+  onImageClick: (url: string) => void;
+  isUploading?: boolean;
+  uploadError?: string;
+  isCloud?: boolean;
+}> = ({
+  item,
+  index,
+  onRemove,
+  onImageClick,
+  isUploading,
+  uploadError,
+  isCloud,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="relative group rounded-lg overflow-hidden shadow-md border border-gray-200 bg-white"
+    >
+      <img
+        src={item.url}
+        alt={`Image ${index + 1}`}
+        className="w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+        onClick={() => onImageClick(item.url)}
+      />
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute top-2 left-2 p-1 bg-white/80 rounded-full cursor-grab hover:bg-white transition-colors touch-none"
+      >
+        <GripVertical size={16} className="text-gray-600" />
+      </div>
+      <div className="absolute top-2 right-2 flex gap-1">
+        <button
+          onClick={() => onRemove(index)}
+          className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+          title="Remove image"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {isUploading && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-white" />
+        </div>
+      )}
+      {uploadError && (
+        <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white text-xs p-1 text-center">
+          {uploadError}
+        </div>
+      )}
+      {isCloud && (
+        <div className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-white text-xs p-1 text-center">
+          Uploaded
+        </div>
+      )}
+    </div>
+  );
+};
 const ImageUpload: React.FC<ImageUploadProps> = ({
-  images,
-  previews,
-  imageKitUrls,
-  imageUploadingStates,
-  imageUploadErrors,
-  activeImageTab,
-  setActiveImageTab,
+  productImages,
+  setProductImages,
+  variants,
+  variantImages,
+  setVariantImages,
+  activeTab,
+  setActiveTab,
   unsplashQuery,
   setUnsplashQuery,
   unsplashResults,
   isSearchingUnsplash,
   unsplashError,
   downloadingUnsplashIds,
-  handleImageUpload,
-  removeImage,
-  handleUploadToImageKit,
   handleUnsplashSearch,
   handleDownloadUnsplash,
-  onImageClick
+  onImageClick,
+  fileInputRef: externalFileInputRef,
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  // Combine cloud and local previews for display (cloud first, then local)
-  const allImageUrls = [...imageKitUrls, ...previews];
-  // Also keep track of which are cloud vs local for status display
-  // We'll use the index to determine if it's cloud (index < imageKitUrls.length)
-  const cloudCount = imageKitUrls.length;
-  const handleImageClick = (index: number) => {
-    if (onImageClick) {
-      onImageClick(index);
+  const internalFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = externalFileInputRef || internalFileInputRef;
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+  // Get current images based on active tab
+  const getCurrentImages = useCallback((): ImageItem[] => {
+    if (activeTab === 'product') {
+      const allUrls = [...productImages.urls, ...productImages.previews];
+      const cloudCount = productImages.urls.length;
+      return allUrls.map((url, idx) => ({
+        id: url, // use URL as unique id
+        url,
+        isCloud: idx < cloudCount,
+      }));
+    } else {
+      const variantState = variantImages[activeTab];
+      if (!variantState) return [];
+      const allUrls = [...variantState.urls, ...variantState.previews];
+      const cloudCount = variantState.urls.length;
+      return allUrls.map((url, idx) => ({
+        id: url,
+        url,
+        isCloud: idx < cloudCount,
+      }));
     }
+  }, [activeTab, productImages, variantImages]);
+  const getCurrentState = useCallback(() => {
+    if (activeTab === 'product') {
+      return productImages;
+    } else {
+      return variantImages[activeTab] || { files: [], previews: [], urls: [], uploading: [], errors: [] };
+    }
+  }, [activeTab, productImages, variantImages]);
+  const setCurrentState = useCallback(
+    (newState: any) => {
+      if (activeTab === 'product') {
+        setProductImages(newState);
+      } else {
+        setVariantImages((prev) => ({
+          ...prev,
+          [activeTab]: newState,
+        }));
+      }
+    },
+    [activeTab, setProductImages, setVariantImages]
+  );
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        newFiles.push(file);
+        newPreviews.push(URL.createObjectURL(file));
+      }
+    }
+    if (newFiles.length === 0) return;
+    const currentState = getCurrentState();
+    const updatedState = {
+      ...currentState,
+      files: [...currentState.files, ...newFiles],
+      previews: [...currentState.previews, ...newPreviews],
+      uploading: [...currentState.uploading, ...new Array(newFiles.length).fill(false)],
+      errors: [...currentState.errors, ...new Array(newFiles.length).fill('')],
+    };
+    setCurrentState(updatedState);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
+  const removeImage = (index: number) => {
+    const currentState = getCurrentState();
+    const newFiles = [...currentState.files];
+    const newPreviews = [...currentState.previews];
+    const newUrls = [...currentState.urls];
+    const newUploading = [...currentState.uploading];
+    const newErrors = [...currentState.errors];
+    // Determine if the image is from cloud or local
+    const cloudCount = currentState.urls.length;
+    if (index < cloudCount) {
+      // Remove cloud URL
+      newUrls.splice(index, 1);
+      newUploading.splice(index, 1);
+      newErrors.splice(index, 1);
+    } else {
+      const localIndex = index - cloudCount;
+      const url = newPreviews[localIndex];
+      if (url?.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+      }
+      newFiles.splice(localIndex, 1);
+      newPreviews.splice(localIndex, 1);
+      newUploading.splice(localIndex, 1);
+      newErrors.splice(localIndex, 1);
+    }
+    setCurrentState({
+      ...currentState,
+      files: newFiles,
+      previews: newPreviews,
+      urls: newUrls,
+      uploading: newUploading,
+      errors: newErrors,
+    });
+  };
+  const handleReorder = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const currentItems = getCurrentImages();
+    const oldIndex = currentItems.findIndex((item) => item.id === active.id);
+    const newIndex = currentItems.findIndex((item) => item.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    // Reorder the combined array of URLs
+    const currentState = getCurrentState();
+    const allUrls = [...currentState.urls, ...currentState.previews];
+    const cloudCount = currentState.urls.length;
+    // We need to reorder the allUrls array and then split back into urls and previews
+    const movedItem = allUrls.splice(oldIndex, 1)[0];
+    allUrls.splice(newIndex, 0, movedItem);
+    // Split back
+    const newUrls = allUrls.slice(0, cloudCount);
+    const newPreviews = allUrls.slice(cloudCount);
+    setCurrentState({
+      ...currentState,
+      urls: newUrls,
+      previews: newPreviews,
+    });
+  };
+  const currentImages = getCurrentImages();
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-gray-800">Product Images</h2>
-      {/* Image tabs */}
-      <div className="flex border-b border-gray-200">
+      {/* Tabs */}
+      <div className="flex flex-wrap border-b border-gray-200 gap-1">
         <button
-          onClick={() => setActiveImageTab('upload')}
+          onClick={() => setActiveTab('product')}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeImageTab === 'upload'
+            activeTab === 'product'
               ? 'text-purple-600 border-b-2 border-purple-600'
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          Upload Files
+          Product Images
         </button>
-        <button
-          onClick={() => setActiveImageTab('unsplash')}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeImageTab === 'unsplash'
-              ? 'text-purple-600 border-b-2 border-purple-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Unsplash Search
-        </button>
-      </div>
-      {/* Upload tab */}
-      {activeImageTab === 'upload' && (
-        <div>
-          <div
-            className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-purple-400 transition-colors cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
+        {variants.map((v) => (
+          <button
+            key={v.id}
+            onClick={() => setActiveTab(v.id)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === v.id
+                ? 'text-purple-600 border-b-2 border-purple-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
           >
-            <Upload className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-2 text-sm text-gray-600">
-              Click to upload or drag and drop
-            </p>
-            <p className="text-xs text-gray-400">PNG, JPG, WEBP up to 10MB</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleImageUpload}
-              className="hidden"
-            />
-          </div>
+            {v.sku || v.color || `Variant ${v.id.slice(0,4)}`}
+          </button>
+        ))}
+      </div>
+      {/* Upload / Unsplash area */}
+      <div>
+        <div
+          className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-purple-400 transition-colors cursor-pointer"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="mx-auto h-12 w-12 text-gray-400" />
+          <p className="mt-2 text-sm text-gray-600">
+            Click to upload or drag and drop
+          </p>
+          <p className="text-xs text-gray-400">PNG, JPG, WEBP up to 10MB</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFileUpload}
+            className="hidden"
+          />
         </div>
-      )}
-      {/* Unsplash tab */}
-      {activeImageTab === 'unsplash' && (
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={unsplashQuery}
-              onChange={(e) => setUnsplashQuery(e.target.value)}
-              placeholder="Search for images..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              onKeyDown={(e) => e.key === 'Enter' && handleUnsplashSearch()}
-            />
-            <button
-              onClick={handleUnsplashSearch}
-              disabled={isSearchingUnsplash || !unsplashQuery.trim()}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
-            >
-              {isSearchingUnsplash ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-              Search
-            </button>
-          </div>
-          {unsplashError && (
-            <p className="text-red-500 text-sm">{unsplashError}</p>
-          )}
-          {unsplashResults.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
-              {unsplashResults.map((photo) => (
-                <div key={photo.id} className="relative group rounded-lg overflow-hidden shadow-md">
-                  <img
-                    src={photo.urls.small}
-                    alt={photo.alt_description || 'Unsplash image'}
-                    className="w-full h-40 object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <button
-                      onClick={() => handleDownloadUnsplash(photo)}
-                      disabled={downloadingUnsplashIds.has(photo.id)}
-                      className="p-2 bg-white rounded-full hover:bg-gray-100 disabled:opacity-50"
-                    >
-                      {downloadingUnsplashIds.has(photo.id) ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <Download className="h-5 w-5 text-gray-700" />
-                      )}
-                    </button>
-                  </div>
+      </div>
+      {/* Unsplash section */}
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={unsplashQuery}
+            onChange={(e) => setUnsplashQuery(e.target.value)}
+            placeholder="Search for images..."
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            onKeyDown={(e) => e.key === 'Enter' && handleUnsplashSearch()}
+          />
+          <button
+            onClick={handleUnsplashSearch}
+            disabled={isSearchingUnsplash || !unsplashQuery.trim()}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSearchingUnsplash ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            Search
+          </button>
+        </div>
+        {unsplashError && <p className="text-red-500 text-sm">{unsplashError}</p>}
+        {unsplashResults.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
+            {unsplashResults.map((photo) => (
+              <div
+                key={photo.id}
+                className="relative group rounded-lg overflow-hidden shadow-md"
+              >
+                <img
+                  src={photo.urls.small}
+                  alt={photo.alt_description || 'Unsplash image'}
+                  className="w-full h-40 object-cover"
+                />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <button
+                    onClick={() => handleDownloadUnsplash(photo, activeTab === 'product' ? undefined : activeTab)}
+                    disabled={downloadingUnsplashIds.has(photo.id)}
+                    className="p-2 bg-white rounded-full hover:bg-gray-100 disabled:opacity-50"
+                  >
+                    {downloadingUnsplashIds.has(photo.id) ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Download className="h-5 w-5 text-gray-700" />
+                    )}
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {/* Image grid */}
-      {allImageUrls.length > 0 && (
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Image grid with drag-and-drop */}
+      {currentImages.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-gray-700 mb-3">
-            Uploaded Images ({allImageUrls.length})
+            Images ({currentImages.length})
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {allImageUrls.map((url, index) => {
-              const isCloud = index < cloudCount;
-              return (
-                <div key={index} className="relative group rounded-lg overflow-hidden shadow-md border border-gray-200">
-                  <img
-                    src={url}
-                    alt={`Product image ${index + 1}`}
-                    className="w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => handleImageClick(index)}
-                  />
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    <button
-                      onClick={() => removeImage(index)}
-                      className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                      title="Remove image"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {/* Show loading/error status for local images only */}
-                  {!isCloud && imageUploadingStates[index - cloudCount] && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-white" />
-                    </div>
-                  )}
-                  {!isCloud && imageUploadErrors[index - cloudCount] && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white text-xs p-1 text-center">
-                      {imageUploadErrors[index - cloudCount]}
-                    </div>
-                  )}
-                  {/* Cloud indicator */}
-                  {isCloud && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-white text-xs p-1 text-center">
-                      Uploaded
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleReorder}
+          >
+            <SortableContext
+              items={currentImages.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {currentImages.map((item, index) => {
+                  const currentState = getCurrentState();
+                  const cloudCount = currentState.urls.length;
+                  const isCloud = index < cloudCount;
+                  const isUploading = isCloud
+                    ? false
+                    : currentState.uploading[index - cloudCount] || false;
+                  const error = isCloud
+                    ? ''
+                    : currentState.errors[index - cloudCount] || '';
+                  return (
+                    <SortableImageItem
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      onRemove={removeImage}
+                      onImageClick={(url) => {
+                        if (onImageClick) {
+                          onImageClick(url, activeTab === 'product' ? undefined : activeTab);
+                        }
+                      }}
+                      isUploading={isUploading}
+                      uploadError={error}
+                      isCloud={isCloud}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       )}
     </div>
