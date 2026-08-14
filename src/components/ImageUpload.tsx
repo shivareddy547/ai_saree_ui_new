@@ -43,7 +43,11 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   onImageClick
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const allImageUrls = [...previews, ...imageKitUrls.filter(Boolean)];
+  // Combine cloud and local previews for display (cloud first, then local)
+  const allImageUrls = [...imageKitUrls, ...previews];
+  // Also keep track of which are cloud vs local for status display
+  // We'll use the index to determine if it's cloud (index < imageKitUrls.length)
+  const cloudCount = imageKitUrls.length;
   const handleImageClick = (index: number) => {
     if (onImageClick) {
       onImageClick(index);
@@ -161,40 +165,45 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
             Uploaded Images ({allImageUrls.length})
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {allImageUrls.map((url, index) => (
-              <div key={index} className="relative group rounded-lg overflow-hidden shadow-md border border-gray-200">
-                <img
-                  src={url}
-                  alt={`Product image ${index + 1}`}
-                  className="w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => handleImageClick(index)}
-                />
-                <div className="absolute top-2 right-2 flex gap-1">
-                  <button
-                    onClick={() => removeImage(index)}
-                    className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                    title="Remove image"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+            {allImageUrls.map((url, index) => {
+              const isCloud = index < cloudCount;
+              return (
+                <div key={index} className="relative group rounded-lg overflow-hidden shadow-md border border-gray-200">
+                  <img
+                    src={url}
+                    alt={`Product image ${index + 1}`}
+                    className="w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => handleImageClick(index)}
+                  />
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button
+                      onClick={() => removeImage(index)}
+                      className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                      title="Remove image"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {/* Show loading/error status for local images only */}
+                  {!isCloud && imageUploadingStates[index - cloudCount] && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-white" />
+                    </div>
+                  )}
+                  {!isCloud && imageUploadErrors[index - cloudCount] && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white text-xs p-1 text-center">
+                      {imageUploadErrors[index - cloudCount]}
+                    </div>
+                  )}
+                  {/* Cloud indicator */}
+                  {isCloud && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-white text-xs p-1 text-center">
+                      Uploaded
+                    </div>
+                  )}
                 </div>
-                {imageUploadingStates[index] && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-white" />
-                  </div>
-                )}
-                {imageUploadErrors[index] && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white text-xs p-1 text-center">
-                    {imageUploadErrors[index]}
-                  </div>
-                )}
-                {imageKitUrls[index] && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-white text-xs p-1 text-center">
-                    Uploaded
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
