@@ -47,7 +47,6 @@ interface ProductVariant {
   stockQuantity: string;
 }
 interface ImageUploadProps {
-  // Product-level images
   productImages: {
     files: File[];
     previews: string[];
@@ -64,16 +63,13 @@ interface ImageUploadProps {
       errors: string[];
     }>
   >;
-  // Variant images
   variants: ProductVariant[];
   variantImages: { [variantId: string]: VariantImageState };
   setVariantImages: React.Dispatch<
     React.SetStateAction<{ [variantId: string]: VariantImageState }>
   >;
-  // Active tab
   activeTab: 'product' | string;
   setActiveTab: (tab: 'product' | string) => void;
-  // Unsplash props
   unsplashQuery: string;
   setUnsplashQuery: (query: string) => void;
   unsplashResults: any[];
@@ -82,12 +78,9 @@ interface ImageUploadProps {
   downloadingUnsplashIds: Set<string>;
   handleUnsplashSearch: () => void;
   handleDownloadUnsplash: (photo: any, targetVariantId?: string) => void;
-  // Callbacks
   onImageClick?: (url: string, variantId?: string) => void;
-  // Upload file input ref
   fileInputRef?: React.RefObject<HTMLInputElement | null>;
 }
-// Sortable image item component
 const SortableImageItem: React.FC<{
   item: ImageItem;
   index: number;
@@ -130,7 +123,6 @@ const SortableImageItem: React.FC<{
         className="w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-opacity"
         onClick={() => onImageClick(item.url)}
       />
-      {/* Drag handle */}
       <div
         {...attributes}
         {...listeners}
@@ -196,13 +188,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  // Get current images based on active tab
   const getCurrentImages = useCallback((): ImageItem[] => {
     if (activeTab === 'product') {
       const allUrls = [...productImages.urls, ...productImages.previews];
       const cloudCount = productImages.urls.length;
       return allUrls.map((url, idx) => ({
-        id: url, // use URL as unique id
+        id: url,
         url,
         isCloud: idx < cloudCount,
       }));
@@ -269,10 +260,8 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     const newUrls = [...currentState.urls];
     const newUploading = [...currentState.uploading];
     const newErrors = [...currentState.errors];
-    // Determine if the image is from cloud or local
     const cloudCount = currentState.urls.length;
     if (index < cloudCount) {
-      // Remove cloud URL
       newUrls.splice(index, 1);
       newUploading.splice(index, 1);
       newErrors.splice(index, 1);
@@ -303,14 +292,11 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     const oldIndex = currentItems.findIndex((item) => item.id === active.id);
     const newIndex = currentItems.findIndex((item) => item.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-    // Reorder the combined array of URLs
     const currentState = getCurrentState();
     const allUrls = [...currentState.urls, ...currentState.previews];
     const cloudCount = currentState.urls.length;
-    // We need to reorder the allUrls array and then split back into urls and previews
     const movedItem = allUrls.splice(oldIndex, 1)[0];
     allUrls.splice(newIndex, 0, movedItem);
-    // Split back
     const newUrls = allUrls.slice(0, cloudCount);
     const newPreviews = allUrls.slice(cloudCount);
     setCurrentState({
@@ -323,7 +309,6 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-gray-800">Product Images</h2>
-      {/* Tabs */}
       <div className="flex flex-wrap border-b border-gray-200 gap-1">
         <button
           onClick={() => setActiveTab('product')}
@@ -349,7 +334,6 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
           </button>
         ))}
       </div>
-      {/* Upload / Unsplash area */}
       <div>
         <div
           className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-purple-400 transition-colors cursor-pointer"
@@ -370,7 +354,6 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
           />
         </div>
       </div>
-      {/* Unsplash section */}
       <div className="space-y-4">
         <div className="flex gap-2">
           <input
@@ -425,7 +408,6 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
           </div>
         )}
       </div>
-      {/* Image grid with drag-and-drop */}
       {currentImages.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-gray-700 mb-3">

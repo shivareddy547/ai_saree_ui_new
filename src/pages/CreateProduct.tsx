@@ -17,11 +17,11 @@ import VideoPreviewComponent from "../components/VideoPreview";
 import PostToInstagram from "../components/PostToInstagram";
 import ImageLightbox from "../components/ImageLightbox";
 import VideoEditor from "../components/VideoEditor";
+import { v4 as uuidv4 } from 'uuid';
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
 const UNSPLASH_ACCESS_KEY =
   "bzBups-AqyogXRdO5QpQxSkcu9peuTSc8yZXGMGcGPs";
-// Create axios instance with auth header
 const apiClient = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
@@ -68,7 +68,7 @@ interface UserVoice {
   createdAt: string;
 }
 const createEmptyVariant = (): ProductVariant => ({
-  id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  id: uuidv4(),
   sku: "",
   size: "",
   color: "",
@@ -76,7 +76,6 @@ const createEmptyVariant = (): ProductVariant => ({
   costPrice: "",
   stockQuantity: "",
 });
-// Helper functions for audio/video generation (unchanged)
 const audioBufferToWav = (buffer: AudioBuffer): Blob => {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
@@ -281,7 +280,6 @@ const loopAudioToDuration = async (
 const CreateProduct: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Authentication check
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const sessionExpiry = localStorage.getItem('sessionExpiry');
@@ -301,9 +299,7 @@ const CreateProduct: React.FC = () => {
   }, [navigate]);
   const editId = searchParams.get("edit");
   const isEditMode = !!editId;
-  // Step state
   const [currentStep, setCurrentStep] = useState(1);
-  // Product details state
   const [productName, setProductName] = useState("");
   const [price, setPrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
@@ -311,7 +307,6 @@ const CreateProduct: React.FC = () => {
   const [sku, setSku] = useState("");
   const [description, setDescription] = useState("");
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  // Categories
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
@@ -323,16 +318,13 @@ const CreateProduct: React.FC = () => {
   const [showAddSubcategory, setShowAddSubcategory] = useState(false);
   const [newSubcategoryName, setNewSubcategoryName] = useState("");
   const [newSubcategoryError, setNewSubcategoryError] = useState<string | null>(null);
-  // Flags
   const [showInFeaturedProducts, setShowInFeaturedProducts] = useState(false);
   const [showInBestSellers, setShowInBestSellers] = useState(false);
   const [showInNewArrivals, setShowInNewArrivals] = useState(false);
   const [showInPremiumProducts, setShowInPremiumProducts] = useState(false);
-  // Variants
   const [variants, setVariants] = useState<ProductVariant[]>([
     createEmptyVariant(),
   ]);
-  // Product-level images
   const [productImages, setProductImages] = useState<{
     files: File[];
     previews: string[];
@@ -346,7 +338,6 @@ const CreateProduct: React.FC = () => {
     uploading: [],
     errors: [],
   });
-  // Variant images
   const [variantImages, setVariantImages] = useState<{
     [variantId: string]: {
       files: File[];
@@ -356,17 +347,13 @@ const CreateProduct: React.FC = () => {
       errors: string[];
     };
   }>({});
-  // Active tab for image upload: 'product' or variantId
   const [activeImageTabVariant, setActiveImageTabVariant] = useState<'product' | string>('product');
-  // Unsplash state
   const [unsplashQuery, setUnsplashQuery] = useState("");
   const [unsplashResults, setUnsplashResults] = useState<any[]>([]);
   const [isSearchingUnsplash, setIsSearchingUnsplash] = useState(false);
   const [unsplashError, setUnsplashError] = useState<string | null>(null);
   const [downloadingUnsplashIds, setDownloadingUnsplashIds] = useState<Set<string>>(new Set());
-  // File input ref (shared)
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Other states (audio, video, etc.) - unchanged
   const [showConfig, setShowConfig] = useState(true);
   const [audioMode, setAudioMode] = useState<"text" | "upload" | "record" | "clone">("text");
   const [audioScript, setAudioScript] = useState("");
@@ -409,18 +396,15 @@ const CreateProduct: React.FC = () => {
   const [isUpdatingOnly, setIsUpdatingOnly] = useState(false);
   const [updateOnlyError, setUpdateOnlyError] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
-  // Clone voice states
   const [voices, setVoices] = useState<UserVoice[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<number | null>(null);
   const [clonedAudioBlob, setClonedAudioBlob] = useState<Blob | null>(null);
   const [clonedAudioUrl, setClonedAudioUrl] = useState<string | null>(null);
   const [isGeneratingClonedAudio, setIsGeneratingClonedAudio] = useState(false);
   const [clonedAudioError, setClonedAudioError] = useState<string | null>(null);
-  // Video source states
   const [videoSource, setVideoSource] = useState<"generate" | "upload">("generate");
   const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
-  // Fetch categories
   const fetchCategories = useCallback(async () => {
     setCategoriesLoading(true);
     setCategoriesError(null);
@@ -446,7 +430,6 @@ const CreateProduct: React.FC = () => {
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
-  // Load audio from URL
   const loadAudioFromUrl = useCallback(async (url: string): Promise<Blob> => {
     const response = await fetch(url);
     if (!response.ok) {
@@ -454,7 +437,6 @@ const CreateProduct: React.FC = () => {
     }
     return await response.blob();
   }, []);
-  // Fetch voices
   const fetchVoices = useCallback(async () => {
     try {
       const response = await apiClient.get('/user-voices');
@@ -495,7 +477,6 @@ const CreateProduct: React.FC = () => {
       reject(new Error("Direct upload not implemented"));
     });
   }, []);
-  // Fetch product data for edit
   const fetchProductData = async (id: string) => {
     setIsLoadingProduct(true);
     try {
@@ -520,7 +501,6 @@ const CreateProduct: React.FC = () => {
         setAudioLanguage((product.audioLanguage as "en" | "te" | "hi") || "en");
         setVoiceGender(product.voiceGender || "female");
         setVideoLength(product.videoLength || 30);
-        // Load product images
         if (product.images && product.images.length > 0) {
           const imageUrls = product.images.map((img: any) => img.url).filter(Boolean);
           setProductImages({
@@ -539,10 +519,9 @@ const CreateProduct: React.FC = () => {
             errors: [],
           });
         }
-        // Load variants and their images
         if (product.variants && product.variants.length > 0) {
           const variantList = product.variants.map((v: any) => ({
-            id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            id: v.id,
             sku: v.sku || "",
             size: v.size || "",
             color: v.color || "",
@@ -551,10 +530,8 @@ const CreateProduct: React.FC = () => {
             stockQuantity: v.stockQuantity?.toString() || "",
           }));
           setVariants(variantList);
-          // Build variant images map
           const variantImagesMap: { [key: string]: any } = {};
           product.variants.forEach((v: any) => {
-            // Find images for this variant (if any)
             const variantImgUrls = product.images
               ?.filter((img: any) => img.variantId === v.id)
               .map((img: any) => img.url) || [];
@@ -570,7 +547,6 @@ const CreateProduct: React.FC = () => {
         } else {
           setVariants([createEmptyVariant()]);
         }
-        // Handle video URL
         if (product.cloudinaryVideoPublicId) {
           const cloudinaryUrl = getCloudinaryVideoUrl(product.cloudinaryVideoPublicId);
           if (cloudinaryUrl) {
@@ -603,8 +579,144 @@ const CreateProduct: React.FC = () => {
       fetchProductData(editId);
     }
   }, [editId]);
-  // Other useEffect hooks (unchanged) ...
-  // Handle Unsplash search
+  const handleCategoryChange = (categoryId: string) => {
+    if (categoryId === "__add_new__") {
+      setShowAddCategory(true);
+      setSelectedCategoryId("");
+      setSelectedSubcategoryId("");
+      setShowAddSubcategory(false);
+      setNewSubcategoryName("");
+      setNewSubcategoryError(null);
+      setErrors((prev) => {
+        const { category, subcategory, ...rest } = prev as any;
+        return rest;
+      });
+      return;
+    }
+    setSelectedCategoryId(categoryId);
+    setSelectedSubcategoryId("");
+    setShowAddSubcategory(false);
+    setNewSubcategoryName("");
+    setNewSubcategoryError(null);
+    setShowAddCategory(false);
+    setNewCategoryName("");
+    setNewCategoryError(null);
+    setErrors((prev) => {
+      const { category, subcategory, ...rest } = prev as any;
+      return rest;
+    });
+  };
+  const handleSubcategoryChange = (subcategoryId: string) => {
+    if (subcategoryId === "__add_new__") {
+      setShowAddSubcategory(true);
+      setSelectedSubcategoryId("");
+      return;
+    }
+    setSelectedSubcategoryId(subcategoryId);
+    setShowAddSubcategory(false);
+    setNewSubcategoryError(null);
+    setErrors((prev) => {
+      const { subcategory, ...rest } = prev;
+      return rest;
+    });
+  };
+  const handleAddNewCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) {
+      setNewCategoryError("Category name cannot be empty");
+      return;
+    }
+    const existing = categories.find(
+      (c) => c.name.toLowerCase() === name.toLowerCase()
+    );
+    if (existing) {
+      setNewCategoryError("A category with this name already exists");
+      return;
+    }
+    setNewCategoryError(null);
+    try {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('description', '');
+      formData.append('order', '0');
+      formData.append('isActive', 'true');
+      formData.append('showInCategoryGrid', 'true');
+      formData.append('showInHero', 'false');
+      const response = await apiClient.post('/categories', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const newCat = response.data;
+      await fetchCategories();
+      setSelectedCategoryId(String(newCat.id));
+      setSelectedSubcategoryId("");
+      setShowAddSubcategory(false);
+      setNewSubcategoryName("");
+      setNewSubcategoryError(null);
+      setShowAddCategory(false);
+      setNewCategoryName("");
+      setNewCategoryError(null);
+      setErrors((prev) => {
+        const { category, subcategory, ...rest } = prev as any;
+        return rest;
+      });
+    } catch (err: any) {
+      console.error('Error creating category:', err);
+      setNewCategoryError(err.response?.data?.message || 'Failed to create category');
+    }
+  };
+  const handleCancelAddCategory = () => {
+    setShowAddCategory(false);
+    setNewCategoryName("");
+    setNewCategoryError(null);
+  };
+  const handleAddNewSubcategory = async () => {
+    const name = newSubcategoryName.trim();
+    if (!name) {
+      setNewSubcategoryError("Subcategory name cannot be empty");
+      return;
+    }
+    if (!selectedCategoryId) {
+      setNewSubcategoryError("Please select a category first");
+      return;
+    }
+    const existing = categories
+      .find((c) => c.id === selectedCategoryId)
+      ?.subcategories.find(
+        (s) => s.name.toLowerCase() === name.toLowerCase()
+      );
+    if (existing) {
+      setNewSubcategoryError("A subcategory with this name already exists");
+      return;
+    }
+    setNewSubcategoryError(null);
+    try {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('parentId', selectedCategoryId);
+      formData.append('description', '');
+      formData.append('order', '0');
+      formData.append('isActive', 'true');
+      formData.append('showInCategoryGrid', 'true');
+      formData.append('showInHero', 'false');
+      const response = await apiClient.post('/categories', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const newSub = response.data;
+      await fetchCategories();
+      setSelectedSubcategoryId(String(newSub.id));
+      setShowAddSubcategory(false);
+      setNewSubcategoryName("");
+      setNewSubcategoryError(null);
+    } catch (err: any) {
+      console.error('Error creating subcategory:', err);
+      setNewSubcategoryError(err.response?.data?.message || 'Failed to create subcategory');
+    }
+  };
+  const handleCancelAddSubcategory = () => {
+    setShowAddSubcategory(false);
+    setNewSubcategoryName("");
+    setNewSubcategoryError(null);
+  };
   const handleUnsplashSearch = async () => {
     if (!unsplashQuery.trim()) return;
     setIsSearchingUnsplash(true);
@@ -624,7 +736,6 @@ const CreateProduct: React.FC = () => {
       setIsSearchingUnsplash(false);
     }
   };
-  // Handle Unsplash download for a specific target (product or variant)
   const handleDownloadUnsplash = async (photo: any, targetVariantId?: string) => {
     const photoId = photo.id;
     if (downloadingUnsplashIds.has(photoId)) return;
@@ -639,7 +750,6 @@ const CreateProduct: React.FC = () => {
       );
       const previewUrl = URL.createObjectURL(file);
       if (targetVariantId) {
-        // Add to variant
         setVariantImages((prev) => {
           const current = prev[targetVariantId] || {
             files: [], previews: [], urls: [], uploading: [], errors: [],
@@ -656,7 +766,6 @@ const CreateProduct: React.FC = () => {
           };
         });
       } else {
-        // Add to product
         setProductImages((prev) => ({
           ...prev,
           files: [...prev.files, file],
@@ -675,8 +784,6 @@ const CreateProduct: React.FC = () => {
       });
     }
   };
-  // Image upload handler for product and variants
-  // We'll reuse the same function with target
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -690,7 +797,6 @@ const CreateProduct: React.FC = () => {
       }
     }
     if (newFiles.length === 0) return;
-    // Add to current active tab
     if (activeImageTabVariant === 'product') {
       setProductImages((prev) => ({
         ...prev,
@@ -719,7 +825,6 @@ const CreateProduct: React.FC = () => {
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-  // Remove image from specific target
   const removeImage = (target: 'product' | string, index: number) => {
     if (target === 'product') {
       setProductImages((prev) => {
@@ -789,10 +894,8 @@ const CreateProduct: React.FC = () => {
       });
     }
   };
-  // Upload all images to ImageKit
   const uploadAllImages = async (): Promise<{ url: string; variantId: string | null }[]> => {
     const uploadedItems: { url: string; variantId: string | null }[] = [];
-    // Upload product-level images
     for (let i = 0; i < productImages.files.length; i++) {
       const file = productImages.files[i];
       if (file && file.size > 0) {
@@ -808,7 +911,6 @@ const CreateProduct: React.FC = () => {
         }
       }
     }
-    // Upload variant images
     for (const [variantId, state] of Object.entries(variantImages)) {
       for (let i = 0; i < state.files.length; i++) {
         const file = state.files[i];
@@ -826,13 +928,11 @@ const CreateProduct: React.FC = () => {
         }
       }
     }
-    // Include already uploaded URLs (cloud) for product
     for (const url of productImages.urls) {
       if (url && url.startsWith("http")) {
         uploadedItems.push({ url, variantId: null });
       }
     }
-    // Include already uploaded URLs for variants
     for (const [variantId, state] of Object.entries(variantImages)) {
       for (const url of state.urls) {
         if (url && url.startsWith("http")) {
@@ -842,13 +942,11 @@ const CreateProduct: React.FC = () => {
     }
     return uploadedItems;
   };
-  // Core save function
   const saveProductToDB = async () => {
     setIsUploadingImages(true);
     try {
       const uploadedImageItems = await uploadAllImages();
       setIsUploadingImages(false);
-      // Determine audio URL
       let audioUrl = customAudioUrl || undefined;
       if (audioMode === "clone" && clonedAudioUrl) {
         audioUrl = clonedAudioUrl;
@@ -872,6 +970,7 @@ const CreateProduct: React.FC = () => {
         showInNewArrivals,
         showInPremiumProducts,
         variants: variants.map((v) => ({
+          id: v.id,
           sku: v.sku,
           size: v.size,
           color: v.color,
@@ -906,11 +1005,9 @@ const CreateProduct: React.FC = () => {
         } else if (isEditMode) {
           setProductId(editId);
         }
-        // Update local state with returned images (optional)
         if (response.data?.data?.images) {
           const productImagesFromResponse = response.data.data.images.filter((img: any) => !img.variantId);
           const variantImagesFromResponse = response.data.data.images.filter((img: any) => img.variantId);
-          // Update product images
           setProductImages((prev) => ({
             ...prev,
             urls: productImagesFromResponse.map((img: any) => img.url),
@@ -919,7 +1016,6 @@ const CreateProduct: React.FC = () => {
             uploading: productImagesFromResponse.map(() => false),
             errors: productImagesFromResponse.map(() => ""),
           }));
-          // Update variant images
           const newVariantImages: any = {};
           for (const variant of variants) {
             const variantImgs = variantImagesFromResponse.filter((img: any) => img.variantId === variant.id);
@@ -944,7 +1040,6 @@ const CreateProduct: React.FC = () => {
       setIsUploadingImages(false);
     }
   };
-  // Handlers (unchanged)
   const handleSaveOnly = async () => {
     setIsUpdatingOnly(true);
     setUpdateOnlyError(null);
@@ -957,36 +1052,98 @@ const CreateProduct: React.FC = () => {
       setIsUpdatingOnly(false);
     }
   };
-  const handlePostToInstagram = async () => {
-    // no-op
-  };
-  // Reset all state (unchanged)
+  const handlePostToInstagram = async () => {};
   const resetAllState = () => {
-    // ... reset all states, including new ones
+    // Reset all states to initial values
     setProductImages({ files: [], previews: [], urls: [], uploading: [], errors: [] });
     setVariantImages({});
     setActiveImageTabVariant('product');
-    // ... other resets
-    // We'll keep existing reset logic but add new ones
-    // To avoid duplicating, we'll just reset relevant ones.
-    // We'll keep the original resetAllState logic but modify to include new states.
-    // Since the original is long, we'll just append reset for new states.
-    // But for brevity, we'll include it all.
-    // (Actually we'll just include the full resetAllState from original with additions)
-    // We'll copy the original resetAllState and add the new ones.
-    // Let's just include the new states reset.
-    // We'll keep original resetAllState body, but we need to add:
-    setProductImages({ files: [], previews: [], urls: [], uploading: [], errors: [] });
-    setVariantImages({});
-    setActiveImageTabVariant('product');
-    // We'll append to the original function.
+    setVariants([createEmptyVariant()]);
+    setCurrentStep(1);
+    setProductName("");
+    setPrice("");
+    setCostPrice("");
+    setStockQuantity("");
+    setSku("");
+    setDescription("");
+    setErrors({});
+    setSelectedCategoryId("");
+    setSelectedSubcategoryId("");
+    setShowAddCategory(false);
+    setNewCategoryName("");
+    setNewCategoryError(null);
+    setShowAddSubcategory(false);
+    setNewSubcategoryName("");
+    setNewSubcategoryError(null);
+    setShowInFeaturedProducts(false);
+    setShowInBestSellers(false);
+    setShowInNewArrivals(false);
+    setShowInPremiumProducts(false);
+    // Reset unsplash
+    setUnsplashQuery("");
+    setUnsplashResults([]);
+    setIsSearchingUnsplash(false);
+    setUnsplashError(null);
+    setDownloadingUnsplashIds(new Set());
+    // Reset audio/video states
+    setShowConfig(true);
+    setAudioMode("text");
+    setAudioScript("");
+    setAudioLanguage("en");
+    setVoiceGender("female");
+    setCustomAudioFile(null);
+    setCustomAudioUrl(null);
+    setTtsPreviewUrl(null);
+    setIsRecording(false);
+    setRecordedAudioBlob(null);
+    setRecordedAudioUrl(null);
+    setRecordingError(null);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    setVideoLength(30);
+    setIsGenerating(false);
+    setGenerationProgress(0);
+    setGenerationMessage("");
+    setVideoUrl(null);
+    setVideoKitUrl(null);
+    setGenerationError(null);
+    setVideoUploadProgress(false);
+    setAudioGenerating(false);
+    setAudioError(null);
+    setIsPosting(false);
+    setPostSuccess(false);
+    setCreateError(null);
+    setExistingVideoUrl(null);
+    setCloudinaryUploadStatus("idle");
+    setCloudinaryUploadProgress(0);
+    setCloudinaryUploadMessage("");
+    setCloudinaryPublicId(null);
+    setEditedVideoBlob(null);
+    setEditedVideoUrl(null);
+    setShowVideoEditor(false);
+    setIsUpdatingOnly(false);
+    setUpdateOnlyError(null);
+    setProductId(null);
+    setVoices([]);
+    setSelectedVoiceId(null);
+    setClonedAudioBlob(null);
+    if (clonedAudioUrl) {
+      URL.revokeObjectURL(clonedAudioUrl);
+      setClonedAudioUrl(null);
+    }
+    setIsGeneratingClonedAudio(false);
+    setClonedAudioError(null);
+    setVideoSource("generate");
+    setUploadedVideoFile(null);
+    if (uploadedVideoUrl) {
+      URL.revokeObjectURL(uploadedVideoUrl);
+      setUploadedVideoUrl(null);
+    }
+    // Reset any other relevant states
   };
-  // We'll just implement resetAllState fully later.
-  // For brevity, we'll keep the original resetAllState and just add the new ones at the end.
-  // We'll copy the original resetAllState from the provided code and add the new lines.
-  // For now, we'll skip the full resetAllState definition and keep it as is (assuming it will be updated).
-  // We'll need to pass all necessary props to ImageUpload.
-  // Render
   if (isLoadingProduct) {
     return (
       <div className="max-w-4xl mx-auto space-y-8 px-3 sm:px-0">
@@ -1004,7 +1161,6 @@ const CreateProduct: React.FC = () => {
       </div>
     );
   }
-  // Return main component with ImageUpload updated
   return (
     <div className="max-w-4xl mx-auto space-y-8 px-3 sm:px-0">
       <div className="flex items-center gap-4 mb-6 sm:mb-8">
@@ -1016,7 +1172,6 @@ const CreateProduct: React.FC = () => {
         </h1>
       </div>
       <div className="card-glass p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
-        {/* Steps */}
         <div className="w-full">
           <div className="flex items-center justify-between">
             {steps.map((step, idx) => (
@@ -1093,7 +1248,6 @@ const CreateProduct: React.FC = () => {
               handleAddVariant={() => {
                 const newVariant = createEmptyVariant();
                 setVariants([...variants, newVariant]);
-                // Initialize variant images entry
                 setVariantImages((prev) => ({
                   ...prev,
                   [newVariant.id]: {
@@ -1136,12 +1290,12 @@ const CreateProduct: React.FC = () => {
                   }))
                 );
               }}
-              handleAddNewCategory={() => {}}
-              handleCancelAddCategory={() => {}}
-              handleAddNewSubcategory={() => {}}
-              handleCancelAddSubcategory={() => {}}
-              handleCategoryChange={() => {}}
-              handleSubcategoryChange={() => {}}
+              handleAddNewCategory={handleAddNewCategory}
+              handleCancelAddCategory={handleCancelAddCategory}
+              handleAddNewSubcategory={handleAddNewSubcategory}
+              handleCancelAddSubcategory={handleCancelAddSubcategory}
+              handleCategoryChange={handleCategoryChange}
+              handleSubcategoryChange={handleSubcategoryChange}
               showInFeaturedProducts={showInFeaturedProducts}
               setShowInFeaturedProducts={setShowInFeaturedProducts}
               showInBestSellers={showInBestSellers}
@@ -1171,7 +1325,6 @@ const CreateProduct: React.FC = () => {
                 handleUnsplashSearch={handleUnsplashSearch}
                 handleDownloadUnsplash={handleDownloadUnsplash}
                 onImageClick={(url, variantId) => {
-                  // Build list of all images for lightbox
                   let allImages: string[] = [];
                   if (variantId) {
                     const state = variantImages[variantId];
@@ -1309,13 +1462,11 @@ const CreateProduct: React.FC = () => {
                   if (Object.keys(newErrors).length > 0) return;
                 }
                 if (currentStep === 2) {
-                  // Check if any images exist (product or variants)
                   const hasProductImages = productImages.urls.length > 0 || productImages.files.length > 0;
                   const hasVariantImages = Object.values(variantImages).some(
                     (state) => state.urls.length > 0 || state.files.length > 0
                   );
                   if (!hasProductImages && !hasVariantImages) {
-                    // Optionally show error, but we'll just block
                     return;
                   }
                 }
