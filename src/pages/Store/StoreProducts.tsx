@@ -4,7 +4,6 @@ import { Search, Grid, List, Filter, Star, Heart, X, ChevronDown, SlidersHorizon
 import axios from 'axios';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
-
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -20,7 +19,6 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
-
 interface Product {
   id: string;
   name: string;
@@ -37,13 +35,11 @@ interface Product {
   subcategoryId?: number | null;
   basePrice?: number;
 }
-
 interface Category {
   id: string;
   name: string;
   subcategories: { id: string; name: string }[];
 }
-
 interface ProductCardProps {
   product: Product;
   link: string;
@@ -51,32 +47,25 @@ interface ProductCardProps {
   onToggleWishlist: (productId: string) => void;
   viewMode: 'grid' | 'list';
 }
-
 const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, onToggleWishlist, viewMode }) => {
   const { addToCart } = useCart();
   const [wishlisted, setWishlisted] = useState(isWishlisted);
   const [loading, setLoading] = useState(false);
-
   useEffect(() => {
     setWishlisted(isWishlisted);
   }, [isWishlisted]);
-
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
   const hasVariants = (product.colors && product.colors.length > 0) || (product.sizes && product.sizes.length > 0);
-
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
     const firstVariant = product.variants && product.variants.length > 0 ? product.variants[0] : null;
     if (!firstVariant) {
       alert('This product is not configured correctly. Please contact support.');
       return;
     }
-
-    // Resolve a valid price: prefer mapped product.price, then variant.price, then basePrice
     let price = product.price;
     if (typeof price !== 'number' || price <= 0) {
       const variantPrice = parseFloat(firstVariant.price);
@@ -86,12 +75,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
         price = product.basePrice;
       }
     }
-
     if (typeof price !== 'number' || price <= 0) {
       alert('This product has an invalid price.');
       return;
     }
-
     await addToCart({
       id: product.id,
       name: product.name,
@@ -100,7 +87,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
       variantId: firstVariant.id,
     });
   };
-
   const handleWishlistClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -115,7 +101,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
       setLoading(false);
     }
   };
-
   if (viewMode === 'list') {
     return (
       <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 flex flex-col sm:flex-row">
@@ -162,7 +147,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
       </Link>
     );
   }
-
   return (
     <Link to={link} className="group bg-white rounded-xl overflow-hidden shadow-sm border border-purple-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
       <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50">
@@ -206,7 +190,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, link, isWishlisted, 
     </Link>
   );
 };
-
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest First' },
   { value: 'oldest', label: 'Oldest First' },
@@ -215,7 +198,6 @@ const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Name: A to Z' },
   { value: 'name_desc', label: 'Name: Z to A' },
 ];
-
 const DualRangeSlider: React.FC<{
   min: number;
   max: number;
@@ -228,25 +210,20 @@ const DualRangeSlider: React.FC<{
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
   const [localMin, setLocalMin] = useState(valueMin);
   const [localMax, setLocalMax] = useState(valueMax);
-
   useEffect(() => {
     if (!dragging) {
       setLocalMin(valueMin);
       setLocalMax(valueMax);
     }
   }, [valueMin, valueMax, dragging]);
-
   const safeMin = Math.max(min, Math.min(localMin, localMax - step));
   const safeMax = Math.min(max, Math.max(localMax, localMin + step));
-
   const getPercent = (value: number) => {
     if (max <= min) return 0;
     return ((value - min) / (max - min)) * 100;
   };
-
   const percentMin = getPercent(safeMin);
   const percentMax = getPercent(safeMax);
-
   const valueFromClientX = (clientX: number) => {
     if (!trackRef.current) return min;
     const rect = trackRef.current.getBoundingClientRect();
@@ -255,14 +232,12 @@ const DualRangeSlider: React.FC<{
     const stepped = Math.round(raw / step) * step;
     return Math.max(min, Math.min(max, stepped));
   };
-
   const handlePointerDown = (thumb: 'min' | 'max') => (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(thumb);
   };
-
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const newValue = valueFromClientX(e.clientX);
@@ -274,14 +249,12 @@ const DualRangeSlider: React.FC<{
       setLocalMax(clamped);
     }
   };
-
   const handlePointerUp = (e: React.PointerEvent) => {
     if (!dragging) return;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
     onChange(safeMin, safeMax);
     setDragging(null);
   };
-
   const handleTrackPointerDown = (e: React.PointerEvent) => {
     if (dragging) return;
     if ((e.target as HTMLElement).dataset.thumb) return;
@@ -298,7 +271,6 @@ const DualRangeSlider: React.FC<{
       onChange(safeMin, clamped);
     }
   };
-
   return (
     <div className="w-full select-none py-4">
       <div
@@ -347,7 +319,6 @@ const DualRangeSlider: React.FC<{
     </div>
   );
 };
-
 const StoreProducts: React.FC = () => {
   const location = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
@@ -356,7 +327,6 @@ const StoreProducts: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
   const { toggleWishlist } = useWishlist();
-
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('');
@@ -367,7 +337,11 @@ const StoreProducts: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('newest');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
-
+  // New filter states
+  const [showFeatured, setShowFeatured] = useState(false);
+  const [showBestSellers, setShowBestSellers] = useState(false);
+  const [showNewArrivals, setShowNewArrivals] = useState(false);
+  const [showPremiumProducts, setShowPremiumProducts] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const searchParam = params.get('search') || '';
@@ -376,14 +350,21 @@ const StoreProducts: React.FC = () => {
     const minP = params.get('minPrice');
     const maxP = params.get('maxPrice');
     const sort = params.get('sortBy') || 'newest';
+    const featured = params.get('featured') === 'true';
+    const bestSellers = params.get('bestSellers') === 'true';
+    const newArrivals = params.get('newArrivals') === 'true';
+    const premiumProducts = params.get('premiumProducts') === 'true';
     setSearchTerm(searchParam);
     setSelectedCategoryId(cat);
     setSelectedSubcategoryId(subcat);
     if (minP !== null && minP !== '') setMinPrice(Number(minP));
     if (maxP !== null && maxP !== '') setMaxPrice(Number(maxP));
     setSortBy(sort);
+    setShowFeatured(featured);
+    setShowBestSellers(bestSellers);
+    setShowNewArrivals(newArrivals);
+    setShowPremiumProducts(premiumProducts);
   }, [location.search]);
-
   useEffect(() => {
     const fetchCategories = async () => {
       setCategoriesLoading(true);
@@ -407,7 +388,6 @@ const StoreProducts: React.FC = () => {
     };
     fetchCategories();
   }, []);
-
   useEffect(() => {
     const fetchPriceBounds = async () => {
       try {
@@ -439,7 +419,6 @@ const StoreProducts: React.FC = () => {
     };
     fetchPriceBounds();
   }, []);
-
   const updateUrlParams = useCallback(
     (updates: Record<string, string>) => {
       const params = new URLSearchParams(location.search);
@@ -455,7 +434,6 @@ const StoreProducts: React.FC = () => {
     },
     [location.pathname, location.search]
   );
-
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
@@ -466,7 +444,10 @@ const StoreProducts: React.FC = () => {
       if (minPrice > 0) params.minPrice = minPrice;
       if (maxPrice > 0 && maxPrice < globalMaxPrice) params.maxPrice = maxPrice;
       if (sortBy) params.sortBy = sortBy;
-
+      if (showFeatured) params.featured = 'true';
+      if (showBestSellers) params.bestSellers = 'true';
+      if (showNewArrivals) params.newArrivals = 'true';
+      if (showPremiumProducts) params.premiumProducts = 'true';
       const response = await apiClient.get('/store/products', { params });
       const data = response.data.data || [];
       const mapped = data.map((p: any) => mapProduct(p));
@@ -477,15 +458,13 @@ const StoreProducts: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, selectedCategoryId, selectedSubcategoryId, minPrice, maxPrice, sortBy, globalMaxPrice]);
-
+  }, [searchTerm, selectedCategoryId, selectedSubcategoryId, minPrice, maxPrice, sortBy, globalMaxPrice, showFeatured, showBestSellers, showNewArrivals, showPremiumProducts]);
   useEffect(() => {
     if (priceInitialized) {
       fetchProducts();
     }
     fetchWishlist();
   }, [fetchProducts, priceInitialized]);
-
   const fetchWishlist = async () => {
     try {
       const response = await apiClient.get('/store/wishlist');
@@ -498,44 +477,35 @@ const StoreProducts: React.FC = () => {
       setWishlistedIds(new Set());
     }
   };
-
   const mapProduct = (apiProduct: any): Product => {
     let price = 0;
     let originalPrice = undefined;
     let colors: string[] = [];
     let sizes: string[] = [];
     const basePriceNum = apiProduct.basePrice ? parseFloat(apiProduct.basePrice) : 0;
-
     if (apiProduct.variants && apiProduct.variants.length > 0) {
-      // Prefer the lowest positive variant price
       const variantPrices = apiProduct.variants
         .map((v: any) => parseFloat(v.price))
         .filter((pr: number) => !isNaN(pr) && pr > 0);
-
       if (variantPrices.length > 0) {
         price = Math.min(...variantPrices);
       } else {
-        // All variants have 0 / invalid price → fall back to basePrice
         price = basePriceNum > 0 ? basePriceNum : 0;
       }
-
       const firstVariant = apiProduct.variants[0];
       const costPrice = firstVariant.costPrice ? parseFloat(firstVariant.costPrice) : null;
       if (costPrice && costPrice > price) {
         originalPrice = costPrice;
       }
-
       colors = apiProduct.variants.map((v: any) => v.color).filter(Boolean);
       sizes = apiProduct.variants.map((v: any) => v.size).filter(Boolean);
     } else {
       price = basePriceNum > 0 ? basePriceNum : 0;
     }
-
     const image =
       apiProduct.images && apiProduct.images.length > 0
         ? apiProduct.images[0].url
         : 'https://via.placeholder.com/300x400?text=No+Image';
-
     return {
       id: apiProduct.id,
       name: apiProduct.name,
@@ -552,7 +522,6 @@ const StoreProducts: React.FC = () => {
       basePrice: basePriceNum,
     };
   };
-
   const handleToggleWishlist = async (productId: string) => {
     const result = await toggleWishlist(productId);
     setWishlistedIds((prev) => {
@@ -565,24 +534,20 @@ const StoreProducts: React.FC = () => {
       return newSet;
     });
   };
-
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     updateUrlParams({ search: value });
   };
-
   const handleCategoryChange = (catId: string) => {
     setSelectedCategoryId(catId);
     setSelectedSubcategoryId('');
     updateUrlParams({ categoryId: catId, subcategoryId: '' });
   };
-
   const handleSubcategoryChange = (subId: string) => {
     setSelectedSubcategoryId(subId);
     updateUrlParams({ subcategoryId: subId });
   };
-
   const handlePriceRangeChange = (newMin: number, newMax: number) => {
     setMinPrice(newMin);
     setMaxPrice(newMax);
@@ -591,12 +556,27 @@ const StoreProducts: React.FC = () => {
       maxPrice: newMax < globalMaxPrice ? String(newMax) : '',
     });
   };
-
   const handleSortChange = (value: string) => {
     setSortBy(value);
     updateUrlParams({ sortBy: value });
   };
-
+  const handleFilterToggle = (filter: 'featured' | 'bestSellers' | 'newArrivals' | 'premiumProducts', value: boolean) => {
+    const updates: Record<string, string> = {};
+    if (filter === 'featured') {
+      setShowFeatured(value);
+      updates.featured = value ? 'true' : '';
+    } else if (filter === 'bestSellers') {
+      setShowBestSellers(value);
+      updates.bestSellers = value ? 'true' : '';
+    } else if (filter === 'newArrivals') {
+      setShowNewArrivals(value);
+      updates.newArrivals = value ? 'true' : '';
+    } else if (filter === 'premiumProducts') {
+      setShowPremiumProducts(value);
+      updates.premiumProducts = value ? 'true' : '';
+    }
+    updateUrlParams(updates);
+  };
   const clearAllFilters = () => {
     setSelectedCategoryId('');
     setSelectedSubcategoryId('');
@@ -604,19 +584,24 @@ const StoreProducts: React.FC = () => {
     setMaxPrice(globalMaxPrice);
     setSortBy('newest');
     setSearchTerm('');
+    setShowFeatured(false);
+    setShowBestSellers(false);
+    setShowNewArrivals(false);
+    setShowPremiumProducts(false);
     window.history.replaceState({}, '', `${location.pathname}`);
   };
-
   const hasActiveFilters =
     selectedCategoryId ||
     selectedSubcategoryId ||
     minPrice > 0 ||
     (maxPrice > 0 && maxPrice < globalMaxPrice) ||
     (sortBy && sortBy !== 'newest') ||
-    searchTerm;
-
+    searchTerm ||
+    showFeatured ||
+    showBestSellers ||
+    showNewArrivals ||
+    showPremiumProducts;
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
-
   const FilterPanel = ({ isMobile = false }: { isMobile?: boolean }) => (
     <div className={`bg-white rounded-xl border border-purple-100 shadow-sm ${isMobile ? 'p-4' : 'p-5'}`}>
       <div className="flex items-center justify-between mb-4">
@@ -630,7 +615,6 @@ const StoreProducts: React.FC = () => {
           </button>
         )}
       </div>
-
       <div className="mb-5">
         <h4 className="text-sm font-medium text-gray-700 mb-2">Category</h4>
         {categoriesLoading ? (
@@ -659,7 +643,6 @@ const StoreProducts: React.FC = () => {
           </div>
         )}
       </div>
-
       {selectedCategory && selectedCategory.subcategories.length > 0 && (
         <div className="mb-5">
           <h4 className="text-sm font-medium text-gray-700 mb-2">Subcategory</h4>
@@ -686,7 +669,6 @@ const StoreProducts: React.FC = () => {
           </div>
         </div>
       )}
-
       <div className="mb-5">
         <h4 className="text-sm font-medium text-gray-700 mb-1">Price Range (₹)</h4>
         {priceInitialized ? (
@@ -706,7 +688,45 @@ const StoreProducts: React.FC = () => {
           <span>₹{globalMaxPrice.toLocaleString('en-IN')}</span>
         </div>
       </div>
-
+      <div className="mb-5 space-y-2">
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Product Tags</h4>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showFeatured}
+            onChange={(e) => handleFilterToggle('featured', e.target.checked)}
+            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          Featured Products
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showBestSellers}
+            onChange={(e) => handleFilterToggle('bestSellers', e.target.checked)}
+            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          Best Sellers
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showNewArrivals}
+            onChange={(e) => handleFilterToggle('newArrivals', e.target.checked)}
+            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          New Arrivals
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showPremiumProducts}
+            onChange={(e) => handleFilterToggle('premiumProducts', e.target.checked)}
+            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          Premium Products
+        </label>
+      </div>
       <div className="mb-2">
         <h4 className="text-sm font-medium text-gray-700 mb-2">Sort By</h4>
         <div className="relative">
@@ -726,7 +746,6 @@ const StoreProducts: React.FC = () => {
       </div>
     </div>
   );
-
   if (loading && products.length === 0) {
     return (
       <div className="space-y-6">
@@ -739,7 +758,6 @@ const StoreProducts: React.FC = () => {
       </div>
     );
   }
-
   return (
     <div className="space-y-6 pb-20 lg:pb-0">
       <nav className="flex items-center gap-2 text-sm">
@@ -749,7 +767,6 @@ const StoreProducts: React.FC = () => {
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Products</span>
       </nav>
-
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">All Products</h1>
         <div className="flex items-center gap-3 flex-wrap">
@@ -779,10 +796,8 @@ const StoreProducts: React.FC = () => {
               <List className="w-4 h-4" />
             </button>
           </div>
-          {/* Mobile filter button removed from here — now sticky at bottom */}
         </div>
       </div>
-
       {hasActiveFilters && (
         <div className="flex flex-wrap items-center gap-2">
           {searchTerm && (
@@ -831,23 +846,52 @@ const StoreProducts: React.FC = () => {
               </button>
             </span>
           )}
+          {showFeatured && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              Featured
+              <button onClick={() => handleFilterToggle('featured', false)} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {showBestSellers && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              Best Sellers
+              <button onClick={() => handleFilterToggle('bestSellers', false)} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {showNewArrivals && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              New Arrivals
+              <button onClick={() => handleFilterToggle('newArrivals', false)} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {showPremiumProducts && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+              Premium
+              <button onClick={() => handleFilterToggle('premiumProducts', false)} className="hover:text-purple-900">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
         </div>
       )}
-
       <div className="flex flex-col lg:flex-row gap-6">
         <aside className="hidden lg:block w-64 flex-shrink-0">
           <div className="sticky top-6">
             <FilterPanel />
           </div>
         </aside>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-gray-500">
               {products.length} product{products.length !== 1 ? 's' : ''} found
             </p>
           </div>
-
           {products.length === 0 ? (
             <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
               <p className="text-gray-500 mb-3">No products found</p>
@@ -886,7 +930,6 @@ const StoreProducts: React.FC = () => {
           )}
         </div>
       </div>
-
       {isFilterOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsFilterOpen(false)} />
@@ -909,7 +952,6 @@ const StoreProducts: React.FC = () => {
           </div>
         </div>
       )}
-
       {/* Mobile Sticky Filter Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg px-4 py-3 flex items-center justify-between z-40">
         <button
@@ -927,5 +969,4 @@ const StoreProducts: React.FC = () => {
     </div>
   );
 };
-
 export default StoreProducts;
