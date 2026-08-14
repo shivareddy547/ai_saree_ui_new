@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Star,
@@ -48,6 +48,7 @@ interface ProductImage {
   id: string;
   url: string;
   position: number;
+  variantId?: string | null;
 }
 interface Product {
   id: string;
@@ -103,7 +104,6 @@ const StoreProductDetail: React.FC = () => {
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -133,25 +133,10 @@ const StoreProductDetail: React.FC = () => {
       }
       data.videoUrl = videoUrl;
       setProduct(data);
-      const items: MediaItem[] = [];
-      if (data.images && data.images.length > 0) {
-        data.images.forEach((img: ProductImage) => {
-          items.push({ type: 'image', url: img.url });
-        });
-      }
-      if (data.videoUrl) {
-        items.push({
-          type: 'video',
-          url: data.videoUrl,
-          thumbnail: data.images && data.images.length > 0 ? data.images[0].url : undefined,
-        });
-      }
-      setMediaItems(items);
       const allVariants: ProductVariant[] = data.variants || [];
       const meaningfulVariants = allVariants.filter(
         (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
       );
-      // Real configured variants (size/color) vs default single variant
       const variantsForSelection =
         meaningfulVariants.length > 0 ? meaningfulVariants : allVariants;
       const firstAvailable =
@@ -201,6 +186,47 @@ const StoreProductDetail: React.FC = () => {
     if (!matched) matched = pool[0];
     setSelectedVariant(matched || null);
   }, [selectedColor, selectedSize, product]);
+  // Compute display images based on selected variant
+  const displayImages = useMemo(() => {
+    if (!product) return [];
+    const allImages = product.images || [];
+    if (!selectedVariant) {
+      // No variant selected: show product-level images (variantId null)
+      const productImages = allImages.filter(img => img.variantId === null || img.variantId === undefined);
+      // Sort by position
+      productImages.sort((a, b) => (a.position || 0) - (b.position || 0));
+      return productImages.map(img => img.url);
+    }
+    // Variant selected: find images for this variant
+    const variantImages = allImages.filter(img => img.variantId === selectedVariant.id);
+    if (variantImages.length > 0) {
+      variantImages.sort((a, b) => (a.position || 0) - (b.position || 0));
+      return variantImages.map(img => img.url);
+    }
+    // Fallback to product-level images
+    const productImages = allImages.filter(img => img.variantId === null || img.variantId === undefined);
+    productImages.sort((a, b) => (a.position || 0) - (b.position || 0));
+    return productImages.map(img => img.url);
+  }, [product, selectedVariant]);
+  // Build media items (images + video) from displayImages and video
+  const mediaItems = useMemo(() => {
+    const items: MediaItem[] = [];
+    displayImages.forEach(url => {
+      items.push({ type: 'image', url });
+    });
+    if (product?.videoUrl) {
+      items.push({
+        type: 'video',
+        url: product.videoUrl,
+        thumbnail: displayImages.length > 0 ? displayImages[0] : undefined,
+      });
+    }
+    return items;
+  }, [displayImages, product?.videoUrl]);
+  // Reset active image when displayImages change
+  useEffect(() => {
+    setActiveImage(0);
+  }, [displayImages]);
   const handleQuantityChange = (delta: number) => {
     setQuantity((prev) => Math.max(1, prev + delta));
   };
@@ -211,8 +237,6 @@ const StoreProductDetail: React.FC = () => {
       (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
     );
     const hasConfiguredVariants = meaningfulVariants.length > 0;
-    // Use case 1: no configured variants → use basePrice, pass any real variant id (or omit)
-    // Use case 2: has variants → use selected variant price
     let variant: ProductVariant | null = selectedVariant;
     if (!variant && allVariants.length > 0) {
       variant = hasConfiguredVariants ? meaningfulVariants[0] : allVariants[0];
@@ -221,7 +245,6 @@ const StoreProductDetail: React.FC = () => {
     if (hasConfiguredVariants) {
       price = toPositivePrice(variant?.price, product.basePrice);
     } else {
-      // Products without variants: always prefer basePrice
       price = toPositivePrice(product.basePrice, variant?.price);
     }
     if (price <= 0) {
@@ -230,17 +253,12 @@ const StoreProductDetail: React.FC = () => {
     }
     setIsAdding(true);
     try {
-      // variantId may be undefined for true no-variant products;
-      // backend will create/sync a default variant with basePrice.
       await addToCart(
         {
           id: product.id,
           name: product.name,
           price,
-          image:
-            product.images && product.images.length > 0
-              ? product.images[0].url
-              : '',
+          image: displayImages.length > 0 ? displayImages[0] : '',
           variantId: variant?.id || '',
         },
         quantity
@@ -344,7 +362,6 @@ const StoreProductDetail: React.FC = () => {
     (v: ProductVariant) => v.sku && v.sku.trim() !== '' && (v.size || v.color)
   );
   const hasVariants = meaningfulVariants.length > 0;
-  // Display price: variants → selected variant price; no variants → basePrice
   const variantPrice = hasVariants
     ? toPositivePrice(selectedVariant?.price, product.basePrice)
     : toPositivePrice(product.basePrice, selectedVariant?.price);
@@ -354,10 +371,8 @@ const StoreProductDetail: React.FC = () => {
   const discount = originalPrice
     ? Math.round(((originalPrice - variantPrice) / originalPrice) * 100)
     : 0;
-  const images =
-    product.images && product.images.length > 0
-      ? product.images.map((img) => img.url)
-      : ['https://via.placeholder.com/600x800?text=No+Image'];
+  // Use displayImages for the main gallery
+  const images = displayImages.length > 0 ? displayImages : ['https://via.placeholder.com/600x800?text=No+Image'];
   let stockQuantity = 0;
   let isInStock = false;
   if (hasVariants) {
