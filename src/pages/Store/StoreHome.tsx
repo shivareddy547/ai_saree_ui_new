@@ -512,7 +512,7 @@ const StoreHome: React.FC = () => {
         <ProductGrid
           products={featuredProducts}
           title="Featured Products"
-          viewAllLink="/store/products"
+          viewAllLink="/store/products?featured=true"
           productLinkPrefix="/store/product"
           wishlistedIds={wishlistedIds}
           onToggleWishlist={handleToggleWishlist}
@@ -523,7 +523,7 @@ const StoreHome: React.FC = () => {
         <ProductGrid
           products={newArrivals}
           title="New Arrivals"
-          viewAllLink="/store/products"
+          viewAllLink="/store/products?newArrivals=true"
           productLinkPrefix="/store/product"
           wishlistedIds={wishlistedIds}
           onToggleWishlist={handleToggleWishlist}
