@@ -104,10 +104,6 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       size: item.variant?.size,
     }));
   };
-  /**
-   * Push guest localStorage cart items to the server cart for the logged-in user,
-   * then clear guest cart. Safe to call multiple times.
-   */
   const mergeGuestCart = useCallback(async () => {
     if (!isLoggedIn() || mergingRef.current) return;
     const guestItems = loadGuestCart();
@@ -136,7 +132,6 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setItems(loadGuestCart());
       return;
     }
-    // Merge any guest items before loading server cart
     await mergeGuestCart();
     try {
       const response = await apiClient.get('/cart');
@@ -151,29 +146,25 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setItems([]);
     }
   }, [mergeGuestCart]);
-  // Initial load
   useEffect(() => {
     fetchCart();
   }, [fetchCart]);
-  // Detect login transition (token appears) and merge + refresh cart
+  // Detect login/logout (same-tab via custom event + storage for other tabs)
   useEffect(() => {
-    const checkAuth = () => {
+    const onAuthChange = () => {
       const loggedIn = isLoggedIn();
       if (loggedIn && !wasLoggedInRef.current) {
-        // Just logged in → merge guest cart into server
         fetchCart();
       } else if (!loggedIn && wasLoggedInRef.current) {
-        // Logged out → show guest cart
         setItems(loadGuestCart());
       }
       wasLoggedInRef.current = loggedIn;
     };
-    // Poll lightly for auth changes (login pages set localStorage)
-    const interval = setInterval(checkAuth, 500);
-    window.addEventListener('storage', checkAuth);
+    window.addEventListener('auth-changed', onAuthChange);
+    window.addEventListener('storage', onAuthChange);
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', checkAuth);
+      window.removeEventListener('auth-changed', onAuthChange);
+      window.removeEventListener('storage', onAuthChange);
     };
   }, [fetchCart]);
   const addToCart = useCallback(
