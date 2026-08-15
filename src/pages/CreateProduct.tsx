@@ -7,6 +7,7 @@ import {
   Check,
   Loader2,
   Edit,
+  Save,
 } from "lucide-react";
 import { uploadToImageKit } from "../utils/imageKitUpload";
 import { uploadToCloudinary, getCloudinaryVideoUrl } from "../utils/cloudinaryUpload";
@@ -279,7 +280,7 @@ const loopAudioToDuration = async (
 };
 const CreateProduct: React.FC = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const sessionExpiry = localStorage.getItem('sessionExpiry');
@@ -396,6 +397,8 @@ const CreateProduct: React.FC = () => {
   const [isUpdatingOnly, setIsUpdatingOnly] = useState(false);
   const [updateOnlyError, setUpdateOnlyError] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
+  // Save progress success message
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   // Clone voice states
   const [voices, setVoices] = useState<UserVoice[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<number | null>(null);
@@ -412,6 +415,22 @@ const CreateProduct: React.FC = () => {
   const [variantVideoData, setVariantVideoData] = useState<{ [variantId: string]: { videoUrl: string | null; cloudinaryPublicId: string | null } }>({});
   // For posting: selected video ID (null = product, variantId = variant)
   const [selectedPostVideoId, setSelectedPostVideoId] = useState<string | null>('product');
+  // URL step persistence
+  useEffect(() => {
+    const stepParam = searchParams.get('step');
+    if (stepParam) {
+      const stepNum = parseInt(stepParam, 10);
+      if (stepNum >= 1 && stepNum <= steps.length) {
+        setCurrentStep(stepNum);
+      }
+    }
+  }, [searchParams]);
+  useEffect(() => {
+    // Update URL with current step, preserving existing parameters (like edit)
+    const params = new URLSearchParams(searchParams);
+    params.set('step', currentStep.toString());
+    setSearchParams(params, { replace: true });
+  }, [currentStep, setSearchParams, searchParams]);
   const fetchCategories = useCallback(async () => {
     setCategoriesLoading(true);
     setCategoriesError(null);
@@ -1161,6 +1180,23 @@ const CreateProduct: React.FC = () => {
       setIsUpdatingOnly(false);
     }
   };
+  // Save progress from any step (without setting postSuccess)
+  const handleSaveProgress = async () => {
+    setIsUpdatingOnly(true);
+    setUpdateOnlyError(null);
+    setSaveSuccessMessage(null);
+    try {
+      await saveProductToDB();
+      setSaveSuccessMessage('Product saved successfully!');
+      // Clear message after 3 seconds
+      setTimeout(() => setSaveSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setUpdateOnlyError(err.response?.data?.message || err.message || "Failed to save product");
+      // Also show error via saveSuccessMessage? We'll rely on updateOnlyError
+    } finally {
+      setIsUpdatingOnly(false);
+    }
+  };
   const handlePostToInstagram = async () => {};
   const resetAllState = () => {
     setProductImages({ files: [], previews: [], urls: [], uploading: [], errors: [] });
@@ -1837,6 +1873,13 @@ const CreateProduct: React.FC = () => {
         </h1>
       </div>
       <div className="card-glass p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+        {/* Toast for save success */}
+        {saveSuccessMessage && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 text-sm animate-fade-in">
+            <Check size={16} className="flex-shrink-0" />
+            <span>{saveSuccessMessage}</span>
+          </div>
+        )}
         {renderProgress()}
         <div className="space-y-6">
           {currentStep === 1 && (
@@ -2086,16 +2129,26 @@ const CreateProduct: React.FC = () => {
           )}
         </div>
         {currentStep < 5 && (
-          <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 pt-6 border-t">
-            <button
-              onClick={() => {
-                if (currentStep > 1) setCurrentStep(currentStep - 1);
-              }}
-              disabled={currentStep === 1 || (currentStep === 3 && isGenerating)}
-              className="btn-secondary flex items-center justify-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              <ArrowLeft size={20} /> Back
-            </button>
+          <div className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t">
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (currentStep > 1) setCurrentStep(currentStep - 1);
+                }}
+                disabled={currentStep === 1 || (currentStep === 3 && isGenerating)}
+                className="btn-secondary flex items-center justify-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ArrowLeft size={20} /> Back
+              </button>
+              <button
+                onClick={handleSaveProgress}
+                disabled={isUpdatingOnly || isGenerating || isPosting || isUploadingImages || cloudinaryUploadStatus === "uploading"}
+                className="btn-secondary flex items-center justify-center gap-2 px-6 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 disabled:opacity-50 bg-white"
+              >
+                <Save size={20} />
+                Save Progress
+              </button>
+            </div>
             <button
               onClick={() => {
                 if (currentStep === 1) {
