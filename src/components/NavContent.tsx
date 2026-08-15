@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  VideoIcon, 
-  BarChart3, 
+import {
+  VideoIcon,
+  BarChart3,
   HelpCircle,
   Grid3x3,
   Home,
@@ -12,7 +12,7 @@ import {
   Menu,
   X,
   Settings,
-  Video
+  Share2
 } from 'lucide-react';
 interface NavContentProps {
   isMobile?: boolean;
@@ -23,7 +23,6 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
   const location = useLocation();
   const [activeItem, setActiveItem] = useState<string>('dashboard');
   useEffect(() => {
-    // Set active based on current path
     const path = location.pathname;
     if (path.includes('/dashboard')) setActiveItem('dashboard');
     else if (path.includes('/create-product')) setActiveItem('create-product');
@@ -45,7 +44,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'categories', label: 'Categories', icon: Grid3x3, path: '/categories' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
     { id: 'help-us', label: 'Help Us', icon: HelpCircle, path: '/help-us' },
-    { id: 'social-post-video-config', label: 'Social Postvideo Configuration', icon: Video, path: '/social-post-video-config' },
+    { id: 'social-post-video-config', label: 'Social Post Video Config', icon: Share2, path: '/social-post-video-config' },
     { id: 'setup-providers', label: 'Setup SMTP or SMS Providers', icon: Settings, path: '/setup-providers' },
     { id: 'store', label: 'Store', icon: Store, path: '/store/home' },
   ];
@@ -67,8 +66,8 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
             onClick={() => handleNavigation(item.id, item.path)}
             className={`
               w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200
-              ${isActive 
-                ? 'bg-purple-50 text-purple-700' 
+              ${isActive
+                ? 'bg-purple-50 text-purple-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }
               ${isMobile ? 'justify-start' : 'justify-start'}
