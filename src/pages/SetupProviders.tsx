@@ -10,24 +10,22 @@ interface Provider {
   createdAt?: string;
   updatedAt?: string;
 }
-interface SmtpPreset {
+interface Preset {
   key: string;
   name: string;
-  host: string;
-  port: string;
-  encryption: string;
   notes: string;
   fields: { key: string; label: string; placeholder: string; type: string; required?: boolean }[];
 }
-const SMTP_PRESETS: SmtpPreset[] = [
+// SMTP presets
+const SMTP_PRESETS: Preset[] = [
   {
     key: 'brevo',
     name: 'Brevo (Sendinblue)',
-    host: 'smtp-relay.brevo.com',
-    port: '587',
-    encryption: 'STARTTLS',
     notes: '300 emails/day free • Small businesses',
     fields: [
+      { key: 'host', label: 'SMTP Host', placeholder: 'smtp-relay.brevo.com', type: 'text', required: true },
+      { key: 'port', label: 'Port', placeholder: '587', type: 'text', required: true },
+      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS', type: 'text' },
       { key: 'username', label: 'SMTP Login / Email', placeholder: 'your-brevo-login', type: 'text', required: true },
       { key: 'password', label: 'SMTP Key / Password', placeholder: 'xkeysib-...', type: 'password', required: true },
       { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
@@ -37,11 +35,11 @@ const SMTP_PRESETS: SmtpPreset[] = [
   {
     key: 'mailgun',
     name: 'Mailgun',
-    host: 'smtp.mailgun.org',
-    port: '587',
-    encryption: 'STARTTLS',
     notes: 'Limited trial • Developers • Pay-as-you-go',
     fields: [
+      { key: 'host', label: 'SMTP Host', placeholder: 'smtp.mailgun.org', type: 'text', required: true },
+      { key: 'port', label: 'Port', placeholder: '587', type: 'text', required: true },
+      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS', type: 'text' },
       { key: 'username', label: 'SMTP Username', placeholder: 'postmaster@yourdomain.mailgun.org', type: 'text', required: true },
       { key: 'password', label: 'SMTP Password', placeholder: 'your-mailgun-smtp-password', type: 'password', required: true },
       { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
@@ -51,11 +49,11 @@ const SMTP_PRESETS: SmtpPreset[] = [
   {
     key: 'sendgrid',
     name: 'SendGrid',
-    host: 'smtp.sendgrid.net',
-    port: '587',
-    encryption: 'STARTTLS',
     notes: 'Limited free • Transactional + marketing',
     fields: [
+      { key: 'host', label: 'SMTP Host', placeholder: 'smtp.sendgrid.net', type: 'text', required: true },
+      { key: 'port', label: 'Port', placeholder: '587', type: 'text', required: true },
+      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS', type: 'text' },
       { key: 'username', label: 'Username', placeholder: 'apikey', type: 'text', required: true },
       { key: 'password', label: 'API Key', placeholder: 'SG....', type: 'password', required: true },
       { key: 'from_email', label: 'From Email (Verified)', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
@@ -65,14 +63,14 @@ const SMTP_PRESETS: SmtpPreset[] = [
   {
     key: 'amazon_ses',
     name: 'Amazon SES',
-    host: 'email-smtp.us-east-1.amazonaws.com',
-    port: '587',
-    encryption: 'STARTTLS',
     notes: 'Very low cost (~$0.10 / 1,000 emails) • High-volume',
     fields: [
+      { key: 'host', label: 'SMTP Host', placeholder: 'email-smtp.us-east-1.amazonaws.com', type: 'text', required: true },
+      { key: 'port', label: 'Port', placeholder: '587', type: 'text', required: true },
+      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS', type: 'text' },
       { key: 'username', label: 'SMTP Username (IAM)', placeholder: 'AKIA...', type: 'text', required: true },
       { key: 'password', label: 'SMTP Password', placeholder: 'your-ses-smtp-password', type: 'password', required: true },
-      { key: 'region', label: 'AWS Region', placeholder: 'us-east-1', type: 'text', required: true },
+      { key: 'region', label: 'AWS Region', placeholder: 'us-east-1', type: 'text' },
       { key: 'from_email', label: 'From Email (Verified)', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
       { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
     ],
@@ -80,11 +78,11 @@ const SMTP_PRESETS: SmtpPreset[] = [
   {
     key: 'postmark',
     name: 'Postmark',
-    host: 'smtp.postmarkapp.com',
-    port: '587',
-    encryption: 'STARTTLS',
     notes: 'Trial available • Best for transactional emails',
     fields: [
+      { key: 'host', label: 'SMTP Host', placeholder: 'smtp.postmarkapp.com', type: 'text', required: true },
+      { key: 'port', label: 'Port', placeholder: '587', type: 'text', required: true },
+      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS', type: 'text' },
       { key: 'username', label: 'Server API Token', placeholder: 'your-server-token', type: 'text', required: true },
       { key: 'password', label: 'Server API Token (again)', placeholder: 'your-server-token', type: 'password', required: true },
       { key: 'from_email', label: 'From Email (Verified)', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
@@ -92,126 +90,139 @@ const SMTP_PRESETS: SmtpPreset[] = [
     ],
   },
   {
-    key: 'mailtrap',
-    name: 'Mailtrap',
-    host: 'sandbox.smtp.mailtrap.io',
-    port: '2525',
-    encryption: 'STARTTLS',
-    notes: 'Free testing • Development & testing',
-    fields: [
-      { key: 'username', label: 'Username', placeholder: 'your-mailtrap-username', type: 'text', required: true },
-      { key: 'password', label: 'Password', placeholder: 'your-mailtrap-password', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'test@example.com', type: 'text' },
-      { key: 'from_name', label: 'From Name', placeholder: 'Test App', type: 'text' },
-    ],
-  },
-  {
-    key: 'sparkpost',
-    name: 'SparkPost',
-    host: 'smtp.sparkpostmail.com',
-    port: '587',
-    encryption: 'STARTTLS',
-    notes: 'Limited free • High-volume sending',
-    fields: [
-      { key: 'username', label: 'Username', placeholder: 'SMTP_Injection', type: 'text', required: true },
-      { key: 'password', label: 'API Key', placeholder: 'your-sparkpost-api-key', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
-      { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-    ],
-  },
-  {
-    key: 'smtp2go',
-    name: 'SMTP2GO',
-    host: 'mail.smtp2go.com',
-    port: '587',
-    encryption: 'STARTTLS',
-    notes: '1,000 emails/month free • Small applications',
-    fields: [
-      { key: 'username', label: 'Username', placeholder: 'your-smtp2go-username', type: 'text', required: true },
-      { key: 'password', label: 'Password', placeholder: 'your-smtp2go-password', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
-      { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-    ],
-  },
-  {
-    key: 'elastic_email',
-    name: 'Elastic Email',
-    host: 'smtp.elasticemail.com',
-    port: '2525',
-    encryption: 'STARTTLS',
-    notes: 'Free trial • Bulk + transactional • Low cost',
-    fields: [
-      { key: 'username', label: 'Username (Email)', placeholder: 'your-account-email', type: 'text', required: true },
-      { key: 'password', label: 'API Key / Password', placeholder: 'your-api-key', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
-      { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-    ],
-  },
-  {
-    key: 'resend',
-    name: 'Resend',
-    host: 'smtp.resend.com',
-    port: '465',
-    encryption: 'SSL',
-    notes: 'Modern developer experience • Free tier + paid',
-    fields: [
-      { key: 'username', label: 'Username', placeholder: 'resend', type: 'text', required: true },
-      { key: 'password', label: 'API Key', placeholder: 're_...', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
-      { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-    ],
-  },
-  {
-    key: 'zeptomail',
-    name: 'ZeptoMail (Zoho)',
-    host: 'smtp.zeptomail.com',
-    port: '587',
-    encryption: 'STARTTLS',
-    notes: 'Transactional emails • Very affordable',
-    fields: [
-      { key: 'username', label: 'Email / Username', placeholder: 'emailapikey', type: 'text', required: true },
-      { key: 'password', label: 'Password / Send Mail Token', placeholder: 'your-zeptomail-token', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourdomain.com', type: 'text', required: true },
-      { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-    ],
-  },
-  {
-    key: 'google_workspace',
-    name: 'Google Workspace SMTP',
-    host: 'smtp.gmail.com',
-    port: '587',
-    encryption: 'STARTTLS',
-    notes: 'Limited • Small internal apps • Requires Workspace',
-    fields: [
-      { key: 'username', label: 'Google Workspace Email', placeholder: 'you@yourcompany.com', type: 'text', required: true },
-      { key: 'password', label: 'App Password', placeholder: '16-character app password', type: 'password', required: true },
-      { key: 'from_email', label: 'From Email', placeholder: 'you@yourcompany.com', type: 'text', required: true },
-      { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-    ],
-  },
-  {
     key: 'custom',
     name: 'Custom SMTP',
-    host: '',
-    port: '587',
-    encryption: 'STARTTLS',
     notes: 'Use any other SMTP server',
     fields: [
       { key: 'host', label: 'SMTP Host', placeholder: 'smtp.example.com', type: 'text', required: true },
       { key: 'port', label: 'Port', placeholder: '587', type: 'text', required: true },
+      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS / SSL / None', type: 'text' },
       { key: 'username', label: 'Username', placeholder: 'user@example.com', type: 'text', required: true },
       { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password', required: true },
       { key: 'from_email', label: 'From Email', placeholder: 'noreply@example.com', type: 'text', required: true },
       { key: 'from_name', label: 'From Name', placeholder: 'My App', type: 'text' },
-      { key: 'encryption', label: 'Encryption', placeholder: 'STARTTLS / SSL / None', type: 'text' },
     ],
   },
 ];
-const SMS_FIELDS = [
-  { key: 'api_key', label: 'API Key', placeholder: 'Your API Key', type: 'text', required: true },
-  { key: 'api_secret', label: 'API Secret', placeholder: 'Your API Secret', type: 'password' },
-  { key: 'sender_id', label: 'Sender ID', placeholder: 'SENDER', type: 'text', required: true },
-  { key: 'base_url', label: 'Base URL (optional)', placeholder: 'https://api.provider.com', type: 'text' },
+// SMS presets
+const SMS_PRESETS: Preset[] = [
+  {
+    key: 'twilio',
+    name: 'Twilio',
+    notes: 'Global • Premium • REST API',
+    fields: [
+      { key: 'account_sid', label: 'Account SID', placeholder: 'ACxxxxxxxxxxxxxxxx', type: 'text', required: true },
+      { key: 'auth_token', label: 'Auth Token', placeholder: '••••••••', type: 'password', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'vonage',
+    name: 'Vonage (Nexmo)',
+    notes: '200+ countries • Mid-range',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'api_secret', label: 'API Secret', placeholder: 'your-api-secret', type: 'password', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'messagebird',
+    name: 'MessageBird',
+    notes: '220+ countries • Mid-range',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'plivo',
+    name: 'Plivo',
+    notes: '190+ countries • Affordable',
+    fields: [
+      { key: 'auth_id', label: 'Auth ID', placeholder: 'your-auth-id', type: 'text', required: true },
+      { key: 'auth_token', label: 'Auth Token', placeholder: 'your-auth-token', type: 'password', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'infobip',
+    name: 'Infobip',
+    notes: 'Global • Enterprise',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'sinch',
+    name: 'Sinch',
+    notes: 'Global • Enterprise',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'api_secret', label: 'API Secret', placeholder: 'your-api-secret', type: 'password', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'telnyx',
+    name: 'Telnyx',
+    notes: 'Global • Competitive',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'aws_sns',
+    name: 'AWS SNS SMS',
+    notes: 'Global • Low cost',
+    fields: [
+      { key: 'access_key', label: 'Access Key', placeholder: 'AKIA...', type: 'text', required: true },
+      { key: 'secret_key', label: 'Secret Key', placeholder: 'your-secret-key', type: 'password', required: true },
+      { key: 'region', label: 'Region', placeholder: 'us-east-1', type: 'text', required: true },
+      { key: 'from_number', label: 'From Number', placeholder: '+1234567890', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'textlocal',
+    name: 'Textlocal',
+    notes: 'India, UK • Good for India',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'sender_id', label: 'Sender ID', placeholder: 'SENDER', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'msg91',
+    name: 'MSG91',
+    notes: 'India • Very popular',
+    fields: [
+      { key: 'auth_key', label: 'Auth Key', placeholder: 'your-auth-key', type: 'text', required: true },
+      { key: 'sender_id', label: 'Sender ID', placeholder: 'SENDER', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'exotel',
+    name: 'Exotel',
+    notes: 'India • Popular with startups',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'api_token', label: 'API Token', placeholder: 'your-api-token', type: 'password', required: true },
+      { key: 'sender_id', label: 'Sender ID', placeholder: 'SENDER', type: 'text', required: true },
+    ],
+  },
+  {
+    key: 'custom_sms',
+    name: 'Custom SMS',
+    notes: 'Use any other SMS provider',
+    fields: [
+      { key: 'api_key', label: 'API Key', placeholder: 'your-api-key', type: 'text', required: true },
+      { key: 'api_secret', label: 'API Secret', placeholder: 'your-api-secret', type: 'password' },
+      { key: 'sender_id', label: 'Sender ID', placeholder: 'SENDER', type: 'text', required: true },
+      { key: 'base_url', label: 'Base URL', placeholder: 'https://api.provider.com', type: 'text' },
+    ],
+  },
 ];
 const SetupProviders: React.FC = () => {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -225,13 +236,15 @@ const SetupProviders: React.FC = () => {
   const [selectedPresetKey, setSelectedPresetKey] = useState('brevo');
   const [formName, setFormName] = useState('');
   const [formCredentials, setFormCredentials] = useState<Record<string, string>>({});
+  const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
   const api = axios.create({
-    baseURL: process.env.REACT_APP_API_URL,
+    baseURL: apiBase,
     headers: {
       Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
     },
   });
-  const selectedPreset = SMTP_PRESETS.find((p) => p.key === selectedPresetKey) || SMTP_PRESETS[0];
+  const getPresets = () => (activeTab === 'smtp' ? SMTP_PRESETS : SMS_PRESETS);
+  const selectedPreset = getPresets().find((p) => p.key === selectedPresetKey) || getPresets()[0];
   const fetchProviders = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -248,14 +261,10 @@ const SetupProviders: React.FC = () => {
     fetchProviders();
   }, [fetchProviders]);
   const applyPreset = (key: string) => {
-    const preset = SMTP_PRESETS.find((p) => p.key === key) || SMTP_PRESETS[0];
+    const preset = getPresets().find((p) => p.key === key) || getPresets()[0];
     setSelectedPresetKey(key);
     setFormName(preset.name);
-    const creds: Record<string, string> = {
-      host: preset.host,
-      port: preset.port,
-      encryption: preset.encryption,
-    };
+    const creds: Record<string, string> = {};
     preset.fields.forEach((f) => {
       creds[f.key] = formCredentials[f.key] || '';
     });
@@ -266,7 +275,7 @@ const SetupProviders: React.FC = () => {
     setFormCredentials({});
     setEditingId(null);
     setShowForm(false);
-    setSelectedPresetKey('brevo');
+    setSelectedPresetKey(activeTab === 'smtp' ? 'brevo' : 'twilio');
     setError('');
     setSuccess('');
   };
@@ -275,12 +284,7 @@ const SetupProviders: React.FC = () => {
     if (activeTab === 'smtp') {
       applyPreset('brevo');
     } else {
-      const empty: Record<string, string> = {};
-      SMS_FIELDS.forEach((f) => {
-        empty[f.key] = '';
-      });
-      setFormCredentials(empty);
-      setFormName('');
+      applyPreset('twilio');
     }
     setShowForm(true);
   };
@@ -289,9 +293,11 @@ const SetupProviders: React.FC = () => {
     setFormName(provider.name);
     setFormCredentials({ ...provider.credentials });
     setActiveTab(provider.provider_type);
-    if (provider.provider_type === 'smtp') {
-      const matched = SMTP_PRESETS.find((p) => p.key === provider.provider_key);
-      setSelectedPresetKey(matched ? matched.key : 'custom');
+    if (provider.provider_key) {
+      const preset = getPresets().find((p) => p.key === provider.provider_key);
+      setSelectedPresetKey(preset ? preset.key : (activeTab === 'smtp' ? 'custom' : 'custom_sms'));
+    } else {
+      setSelectedPresetKey(activeTab === 'smtp' ? 'custom' : 'custom_sms');
     }
     setShowForm(true);
     setError('');
@@ -315,26 +321,14 @@ const SetupProviders: React.FC = () => {
         credentials: formCredentials,
       };
       if (editingId) {
-        if (activeTab === 'smtp') {
-          payload.provider_key = selectedPresetKey;
-        }
+        // For update, we only allow name, credentials, and provider_key
+        payload.provider_key = selectedPresetKey;
         await api.put(`/providers/${editingId}`, payload);
         setSuccess('Provider updated successfully');
       } else {
         payload.provider_type = activeTab;
         payload.is_enabled = false;
-        if (activeTab === 'smtp') {
-          payload.provider_key = selectedPresetKey;
-          // ensure host/port are present from preset
-          if (selectedPresetKey !== 'custom') {
-            payload.credentials = {
-              ...formCredentials,
-              host: selectedPreset.host,
-              port: selectedPreset.port,
-              encryption: selectedPreset.encryption,
-            };
-          }
-        }
+        payload.provider_key = selectedPresetKey;
         await api.post('/providers', payload);
         setSuccess('Provider added successfully');
       }
@@ -434,33 +428,28 @@ const SetupProviders: React.FC = () => {
                 : `Add New ${activeTab === 'smtp' ? 'SMTP' : 'SMS'} Provider`}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-5">
-              {activeTab === 'smtp' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Select Provider
-                  </label>
-                  <select
-                    value={selectedPresetKey}
-                    onChange={(e) => applyPreset(e.target.value)}
-                    className="input-field"
-                    disabled={saving || !!editingId}
-                  >
-                    {SMTP_PRESETS.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedPreset && (
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      {selectedPreset.notes}
-                      {selectedPreset.host && (
-                        <> • Host: <span className="font-mono">{selectedPreset.host}</span> • Port: {selectedPreset.port}</>
-                      )}
-                    </p>
-                  )}
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Select Provider
+                </label>
+                <select
+                  value={selectedPresetKey}
+                  onChange={(e) => applyPreset(e.target.value)}
+                  className="input-field"
+                  disabled={saving || !!editingId}
+                >
+                  {getPresets().map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedPreset && (
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    {selectedPreset.notes}
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Display Name
@@ -480,50 +469,24 @@ const SetupProviders: React.FC = () => {
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {activeTab === 'smtp'
-                  ? selectedPreset.fields.map((field) => (
-                      <div key={field.key} className={field.key === 'host' || field.key === 'encryption' ? 'sm:col-span-2' : ''}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {field.label}
-                          {field.required && <span className="text-red-500 ml-0.5">*</span>}
-                        </label>
-                        <input
-                          type={field.type}
-                          value={formCredentials[field.key] || ''}
-                          onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-                          className="input-field"
-                          placeholder={field.placeholder}
-                          required={field.required}
-                          disabled={saving}
-                        />
-                      </div>
-                    ))
-                  : SMS_FIELDS.map((field) => (
-                      <div key={field.key}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {field.label}
-                          {field.required && <span className="text-red-500 ml-0.5">*</span>}
-                        </label>
-                        <input
-                          type={field.type}
-                          value={formCredentials[field.key] || ''}
-                          onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-                          className="input-field"
-                          placeholder={field.placeholder}
-                          required={field.required}
-                          disabled={saving}
-                        />
-                      </div>
-                    ))}
-              </div>
-              {activeTab === 'smtp' && selectedPresetKey !== 'custom' && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-800">
-                  <strong>Connection details</strong>
-                  <div className="mt-1 font-mono text-xs">
-                    Host: {selectedPreset.host} &nbsp;|&nbsp; Port: {selectedPreset.port} &nbsp;|&nbsp; {selectedPreset.encryption}
+                {selectedPreset.fields.map((field) => (
+                  <div key={field.key}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {field.label}
+                      {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                    </label>
+                    <input
+                      type={field.type}
+                      value={formCredentials[field.key] || ''}
+                      onChange={(e) => handleCredentialChange(field.key, e.target.value)}
+                      className="input-field"
+                      placeholder={field.placeholder}
+                      required={field.required}
+                      disabled={saving}
+                    />
                   </div>
-                </div>
-              )}
+                ))}
+              </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" className="btn-primary" disabled={saving}>
                   {saving ? 'Saving...' : editingId ? 'Update Provider' : 'Add Provider'}
@@ -556,7 +519,7 @@ const SetupProviders: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {filteredProviders.map((provider) => {
-              const preset = SMTP_PRESETS.find((p) => p.key === provider.provider_key);
+              const preset = getPresets().find((p) => p.key === provider.provider_key);
               return (
                 <div
                   key={provider.id}
@@ -582,10 +545,10 @@ const SetupProviders: React.FC = () => {
                     </div>
                     <p className="text-sm text-gray-500 mt-1">
                       {provider.provider_type === 'smtp'
-                        ? `Host: ${provider.credentials?.host || preset?.host || '—'} • Port: ${provider.credentials?.port || preset?.port || '—'} • From: ${provider.credentials?.from_email || '—'}`
-                        : `Sender: ${provider.credentials?.sender_id || '—'} • Key: ${
-                            provider.credentials?.api_key
-                              ? '••••' + String(provider.credentials.api_key).slice(-4)
+                        ? `Host: ${provider.credentials?.host || '—'} • Port: ${provider.credentials?.port || '—'} • From: ${provider.credentials?.from_email || '—'}`
+                        : `Sender: ${provider.credentials?.sender_id || provider.credentials?.from_number || '—'} • Key: ${
+                            provider.credentials?.api_key || provider.credentials?.auth_token
+                              ? '••••' + String(provider.credentials?.api_key || provider.credentials?.auth_token || '').slice(-4)
                               : '—'
                           }`}
                     </p>
