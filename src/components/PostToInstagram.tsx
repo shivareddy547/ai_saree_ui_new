@@ -65,6 +65,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [caption, setCaption] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaType, setMediaType] = useState<'REELS' | 'VIDEO'>('REELS');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const apiClient = axios.create({
     baseURL: API_BASE,
@@ -87,6 +89,66 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     if (price) captionText += `\n\n💰 Price: ₹${price}`;
     captionText += `\n\n#Fashion #Style #NewCollection`;
     return captionText;
+  };
+  // Enhanced regeneration that fetches product details and builds a comprehensive message
+  const regenerateFromProductDetails = async () => {
+    if (!productId) {
+      // Fallback to local props if product not saved yet
+      setCaption(generateDefaultCaption());
+      setShowCaptionEditor(true);
+      return;
+    }
+    setIsRegenerating(true);
+    setRegenError(null);
+    try {
+      const response = await apiClient.get(`/store/products/${productId}`);
+      if (response.data.success) {
+        const product = response.data.data;
+        // Build formatted message
+        let message = '';
+        // Product name and description
+        message += `✨ ${product.name || productName}\n`;
+        if (product.description) {
+          message += `📝 ${product.description}\n\n`;
+        }
+        // Price and stock
+        const basePrice = product.basePrice ? parseFloat(product.basePrice) : 0;
+        message += `💰 Price: ₹${basePrice > 0 ? basePrice.toFixed(2) : 'N/A'}\n`;
+        const stockQty = product.stockQuantity !== undefined ? product.stockQuantity : 0;
+        message += `📦 Stock: ${stockQty} units\n\n`;
+        // Variants
+        if (product.variants && product.variants.length > 0) {
+          message += `🔄 Variants:\n`;
+          product.variants.forEach((v: any) => {
+            const vPrice = v.price ? parseFloat(v.price) : 0;
+            const vStock = v.stockQuantity !== undefined ? v.stockQuantity : 0;
+            const size = v.size || 'N/A';
+            const color = v.color || 'N/A';
+            message += `  • ${color} / ${size}: ₹${vPrice > 0 ? vPrice.toFixed(2) : 'N/A'}, Stock: ${vStock}\n`;
+          });
+          message += '\n';
+        }
+        // Booking link
+        const storeUrl = `${window.location.origin}/store/product/${productId}`;
+        message += `🔗 Book now: ${storeUrl}\n\n`;
+        // Contact number
+        message += `📞 For any queries, contact: 9790918533\n\n`;
+        // Hashtags
+        message += `#Fashion #Style #NewCollection #ProductLaunch #ShopNow`;
+        setCaption(message);
+        setShowCaptionEditor(true);
+      } else {
+        throw new Error('Failed to fetch product details');
+      }
+    } catch (err: any) {
+      console.error('Failed to regenerate caption:', err);
+      setRegenError(err.message || 'Failed to regenerate from product details');
+      // Fallback to basic generation
+      setCaption(generateDefaultCaption());
+      setShowCaptionEditor(true);
+    } finally {
+      setIsRegenerating(false);
+    }
   };
   useEffect(() => {
     if (!showCaptionEditor && !caption) {
@@ -513,6 +575,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           <span>{updateOnlyError}</span>
         </div>
       )}
+      {regenError && (
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3 text-yellow-700">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <span>{regenError}</span>
+        </div>
+      )}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected 
           ? 'bg-green-50 border-green-200' 
@@ -619,14 +687,21 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         <div className="p-4">
           {renderCaptionEditor()}
           <button
-            onClick={() => {
-              setCaption(generateDefaultCaption());
-              setShowCaptionEditor(true);
-            }}
-            className="mt-2 text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+            onClick={regenerateFromProductDetails}
+            disabled={isRegenerating}
+            className="mt-2 text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1 disabled:opacity-50"
           >
-            <RefreshCw size={12} />
-            Regenerate from product details
+            {isRegenerating ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Regenerating...
+              </>
+            ) : (
+              <>
+                <RefreshCw size={12} />
+                Regenerate from product details
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -732,7 +807,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         {onBack && (
           <button
             onClick={onBack}
-            disabled={isPosting || isPublishing || isUpdatingOnly || isConnecting}
+            disabled={isPosting || isPublishing || isUpdatingOnly || isConnecting || isRegenerating}
             className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <ArrowLeft size={20} />
@@ -741,9 +816,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         )}
         <button
           onClick={handlePublishToInstagram}
-          disabled={isPosting || !instagramStatus.connected || isConnecting || isPublishing || isUpdatingOnly || !productId}
+          disabled={isPosting || !instagramStatus.connected || isConnecting || isPublishing || isUpdatingOnly || !productId || isRegenerating}
           className={`flex-1 btn-primary flex items-center justify-center gap-2 py-3 ${
-            (!instagramStatus.connected || isConnecting || isPublishing || isUpdatingOnly || !productId) ? 'opacity-50 cursor-not-allowed' : ''
+            (!instagramStatus.connected || isConnecting || isPublishing || isUpdatingOnly || !productId || isRegenerating) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
           {isPublishing || isPosting ? (
@@ -771,9 +846,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
               console.warn('onUpdateProductOnly prop is not provided');
             }
           }}
-          disabled={isUpdatingOnly || isPosting || isPublishing || isConnecting}
+          disabled={isUpdatingOnly || isPosting || isPublishing || isConnecting || isRegenerating}
           className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${
-            (isUpdatingOnly || isPosting || isPublishing || isConnecting) ? 'opacity-50 cursor-not-allowed' : ''
+            (isUpdatingOnly || isPosting || isPublishing || isConnecting || isRegenerating) ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
           {isUpdatingOnly ? (
