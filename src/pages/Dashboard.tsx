@@ -191,8 +191,7 @@ const Dashboard: React.FC = () => {
     setConnectError(null);
     setStatusError(null);
     try {
-      // Do NOT pass redirectUri; let the backend use its own INSTAGRAM_REDIRECT_URI from .env
-      // This ensures consistency and avoids mismatches.
+      // Do NOT pass redirectUri; let the backend use its configured INSTAGRAM_REDIRECT_URI
       const urlResponse = await apiClient.get('/instagram/oauth-url');
       if (urlResponse.data.success) {
         const authUrl = urlResponse.data.data.url;
@@ -233,7 +232,7 @@ const Dashboard: React.FC = () => {
   const handleAuthComplete = async (code: string) => {
     try {
       setIsConnecting(true);
-      // No redirectUri needed; backend uses its own configured value
+      // Do NOT pass redirectUri; backend uses its configured value
       const response = await apiClient.post('/instagram/connect', { code });
       if (response.data.success) {
         await fetchInstagramStatus();

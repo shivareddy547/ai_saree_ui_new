@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { WishlistProvider } from './context/WishlistContext';
 import Layout from './components/Layout';
@@ -32,6 +32,22 @@ import StoreOrders from './pages/Store/StoreOrders';
 import StoreOrderDetail from './pages/Store/StoreOrderDetail';
 import StoreWishlist from './pages/Store/StoreWishlist';
 import StoreSettings from './pages/Store/StoreSettings';
+// OAuth callback handler component
+const OAuthCallbackHandler: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (code && state) {
+      // Redirect to social config page with the code and state
+      // so that the SocialPostVideoConfig component can process it
+      navigate(`/social-post-video-config?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`, { replace: true });
+    }
+  }, [location, navigate]);
+  return null;
+};
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
     children,
     allowedRoles,
@@ -112,6 +128,7 @@ const App: React.FC = () => {
                             <Route path="settings" element={<StoreSettings />} />
                         </Route>
                     </Routes>
+                    <OAuthCallbackHandler />
                 </Router>
             </WishlistProvider>
         </CartProvider>

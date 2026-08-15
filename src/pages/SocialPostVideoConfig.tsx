@@ -10,14 +10,25 @@ interface Provider {
   createdAt?: string;
   updatedAt?: string;
 }
+interface SocialConnection {
+  id: string;
+  providerId: string;
+  providerType: string;
+  accountId?: string;
+  username?: string;
+  accountType?: string;
+  tokenExpiresAt?: string;
+  connected: boolean;
+  error?: string;
+}
 interface Preset {
   key: string;
   name: string;
   notes: string;
   fields: { key: string; label: string; placeholder: string; type: string; required?: boolean }[];
 }
-// Social provider presets
 const SOCIAL_PRESETS: Preset[] = [
+  // ... (same as before, include all presets)
   {
     key: 'youtube',
     name: 'YouTube',
@@ -48,7 +59,7 @@ const SOCIAL_PRESETS: Preset[] = [
     fields: [
       { key: 'app_id', label: 'App ID', placeholder: 'your-app-id', type: 'text', required: true },
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
-      { key: 'scope', label: 'Scope', placeholder: 'instagram_basic,instagram_content_publish', type: 'text', required: true },
+      { key: 'scope', label: 'Scope', placeholder: 'instagram_business_basic,instagram_business_content_publish', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/instagram', type: 'text', required: true },
     ],
   },
@@ -167,6 +178,7 @@ const SOCIAL_PRESETS: Preset[] = [
 ];
 const SocialPostVideoConfig: React.FC = () => {
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [connections, setConnections] = useState<{ [providerId: string]: SocialConnection }>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -184,12 +196,12 @@ const SocialPostVideoConfig: React.FC = () => {
     },
   });
   const selectedPreset = SOCIAL_PRESETS.find((p) => p.key === selectedPresetKey) || SOCIAL_PRESETS[0];
+  // Fetch providers
   const fetchProviders = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const res = await api.get('/providers');
-      // Filter only social providers
       const all = res.data.data || [];
       const social = all.filter((p: any) => p.provider_type === 'social');
       setProviders(social);
@@ -199,9 +211,36 @@ const SocialPostVideoConfig: React.FC = () => {
       setLoading(false);
     }
   }, []);
+  // Fetch user's social connections
+  const fetchConnections = useCallback(async () => {
+    try {
+      const res = await api.get('/social/status');
+      if (res.data.success) {
+        const conns = res.data.data || [];
+        const map: { [id: string]: SocialConnection } = {};
+        conns.forEach((c: any) => {
+          map[c.providerId] = {
+            id: c.id,
+            providerId: c.providerId,
+            providerType: c.providerType,
+            accountId: c.accountId,
+            username: c.username,
+            accountType: c.accountType,
+            tokenExpiresAt: c.tokenExpiresAt,
+            connected: c.connected,
+            error: c.error,
+          };
+        });
+        setConnections(map);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch connections:', err);
+    }
+  }, []);
   useEffect(() => {
     fetchProviders();
-  }, [fetchProviders]);
+    fetchConnections();
+  }, [fetchProviders, fetchConnections]);
   const applyPreset = (key: string) => {
     const preset = SOCIAL_PRESETS.find((p) => p.key === key) || SOCIAL_PRESETS[0];
     setSelectedPresetKey(key);
@@ -261,7 +300,6 @@ const SocialPostVideoConfig: React.FC = () => {
         is_enabled: false,
       };
       if (editingId) {
-        // Update: only name, credentials, provider_key, is_enabled can be updated
         const updatePayload: any = {
           name: formName.trim(),
           credentials: formCredentials,
@@ -304,6 +342,91 @@ const SocialPostVideoConfig: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to delete provider');
     }
   };
+  // --- OAuth Connect logic ---
+  const [isConnecting, setIsConnecting] = useState<string | null>(null);
+  const [popupWindow, setPopupWindow] = useState<Window | null>(null);
+  const [authUrl, setAuthUrl] = useState<string>('');
+  const openAuthPopup = async (providerId: string) => {
+    setError('');
+    setIsConnecting(providerId);
+    try {
+      const response = await api.get(`/social/oauth-url/${providerId}`);
+      if (response.data.success) {
+        const url = response.data.data.url;
+        setAuthUrl(url);
+        const width = 500;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        const popup = window.open(
+          url,
+          'social-auth',
+          `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
+        );
+        if (!popup) {
+          setError('Please allow popups for this website');
+          setIsConnecting(null);
+          return;
+        }
+        setPopupWindow(popup);
+        // Monitor popup close
+        const checkPopup = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopup);
+            setPopupWindow(null);
+            setIsConnecting(null);
+            // Refresh connections
+            fetchConnections();
+          }
+        }, 500);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to initiate connection');
+      setIsConnecting(null);
+    }
+  };
+  // Handle OAuth callback from popup (redirect uri)
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const state = params.get('state');
+      const errorParam = params.get('error');
+      if (errorParam) {
+        setError(`Authorization failed: ${errorParam}`);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+      if (code && state) {
+        // State may contain providerId (we can store it in state)
+        // For simplicity, we'll assume providerId is stored in state and we can extract
+        // Alternatively, we can call a generic connect endpoint that uses the provider from the oauth-url call.
+        // We'll use the state to pass providerId.
+        try {
+          const response = await api.post('/social/connect', { code, state });
+          if (response.data.success) {
+            setSuccess('Social account connected successfully!');
+            await fetchConnections();
+          }
+        } catch (err: any) {
+          setError(err.response?.data?.message || 'Failed to connect account');
+        } finally {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    };
+    handleOAuthCallback();
+  }, []);
+  const handleDisconnect = async (connectionId: string) => {
+    if (!window.confirm('Are you sure you want to disconnect this account?')) return;
+    try {
+      await api.delete(`/social/disconnect/${connectionId}`);
+      setSuccess('Disconnected successfully');
+      await fetchConnections();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to disconnect');
+    }
+  };
   return (
     <div className="max-w-4xl mx-auto">
       <div className="card-glass p-8">
@@ -311,7 +434,7 @@ const SocialPostVideoConfig: React.FC = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Social Post Video Configuration</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Add and configure social media providers for posting videos, reels, and photos
+              Add and configure social media providers, then connect your accounts
             </p>
           </div>
           {!showForm && (
@@ -422,6 +545,8 @@ const SocialPostVideoConfig: React.FC = () => {
           <div className="space-y-4">
             {providers.map((provider) => {
               const preset = SOCIAL_PRESETS.find((p) => p.key === provider.provider_key);
+              const connection = connections[provider.id];
+              const isConnected = connection?.connected || false;
               return (
                 <div
                   key={provider.id}
@@ -444,6 +569,11 @@ const SocialPostVideoConfig: React.FC = () => {
                           {preset.name}
                         </span>
                       )}
+                      {isConnected && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                          Connected {connection.username ? `as @${connection.username}` : ''}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-500 mt-1 truncate">
                       {Object.entries(provider.credentials)
@@ -452,7 +582,37 @@ const SocialPostVideoConfig: React.FC = () => {
                         .join(' • ') || 'No credentials'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                    {provider.is_enabled && (
+                      <>
+                        {isConnected ? (
+                          <button
+                            onClick={() => handleDisconnect(connection.id)}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-all"
+                          >
+                            Disconnect
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openAuthPopup(provider.id)}
+                            disabled={isConnecting === provider.id}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1"
+                          >
+                            {isConnecting === provider.id ? (
+                              <span className="inline-block h-4 w-4 border-2 border-blue-700 border-t-transparent rounded-full animate-spin mr-1"></span>
+                            ) : null}
+                            Connect
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(provider)}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all"
+                    >
+                      Configure
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleToggle(provider.id)}
@@ -463,13 +623,6 @@ const SocialPostVideoConfig: React.FC = () => {
                       }`}
                     >
                       {provider.is_enabled ? 'Disable' : 'Enable'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openEditForm(provider)}
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all"
-                    >
-                      Configure
                     </button>
                     <button
                       type="button"

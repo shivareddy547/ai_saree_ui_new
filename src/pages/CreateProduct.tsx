@@ -1337,12 +1337,18 @@ const CreateProduct: React.FC = () => {
   // Build variant video list for PostToInstagram
   const variantVideoList = Object.entries(variantVideoData)
     .filter(([_, data]) => data.cloudinaryPublicId || data.videoUrl)
-    .map(([id, data]) => ({
-      variantId: id,
-      label: variants.find(v => v.id === id)?.color || variants.find(v => v.id === id)?.size || id,
-      cloudinaryPublicId: data.cloudinaryPublicId,
-      videoUrl: data.videoUrl,
-    }));
+    .map(([id, data]) => {
+      let videoUrl = data.videoUrl;
+      if (!videoUrl && data.cloudinaryPublicId) {
+        const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart';
+        videoUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${data.cloudinaryPublicId}`;
+      }
+      return {
+        id: id,
+        videoUrl: videoUrl || '',
+        variantName: variants.find(v => v.id === id)?.color || variants.find(v => v.id === id)?.size || id,
+      };
+    });
   // Generate video handler
   const handleGenerateVideo = async () => {
     setIsGenerating(true);
