@@ -1592,55 +1592,22 @@ const CreateProduct: React.FC = () => {
           gradient.addColorStop(1, "#0f3460");
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, width, height);
+          // Draw image to fill the entire canvas (cover)
           if (imageElements.length > 0) {
             const img = imageElements[imageIndex % imageElements.length];
             const imgWidth = img.width;
             const imgHeight = img.height;
-            const paddingPercent = 0.02;
-            const maxWidth = width * (1 - paddingPercent);
-            const maxHeight = height * (1 - paddingPercent);
-            const scaleX = maxWidth / imgWidth;
-            const scaleY = maxHeight / imgHeight;
-            const scale = Math.min(scaleX, scaleY);
-            let drawWidth = imgWidth * scale;
-            let drawHeight = imgHeight * scale;
-            let drawX = (width - drawWidth) / 2;
-            let drawY = (height - drawHeight) / 2;
-            const zoom = 1 + Math.sin(progress * Math.PI * 4) * 0.015;
-            const scaledWidth = drawWidth * zoom;
-            const scaledHeight = drawHeight * zoom;
-            const offsetX = (drawWidth - scaledWidth) / 2;
-            const offsetY = (drawHeight - scaledHeight) / 2;
-            ctx.save();
-            ctx.shadowColor = "rgba(0, 0, 0, 0.2)";
-            ctx.shadowBlur = 20;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            const x = drawX + offsetX;
-            const y = drawY + offsetY;
-            const cornerRadius = 8;
-            ctx.beginPath();
-            ctx.moveTo(x + cornerRadius, y);
-            ctx.lineTo(x + scaledWidth - cornerRadius, y);
-            ctx.quadraticCurveTo(x + scaledWidth, y, x + scaledWidth, y + cornerRadius);
-            ctx.lineTo(x + scaledWidth, y + scaledHeight - cornerRadius);
-            ctx.quadraticCurveTo(x + scaledWidth, y + scaledHeight, x + scaledWidth - cornerRadius, y + scaledHeight);
-            ctx.lineTo(x + cornerRadius, y + scaledHeight);
-            ctx.quadraticCurveTo(x, y + scaledHeight, x, y + scaledHeight - cornerRadius);
-            ctx.lineTo(x, y + cornerRadius);
-            ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
-            ctx.closePath();
-            ctx.clip();
-            ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
-            ctx.restore();
-            ctx.save();
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + Math.sin(progress * Math.PI * 4) * 0.03})`;
-            ctx.lineWidth = 1;
-            ctx.shadowColor = "rgba(255, 255, 255, 0.05)";
-            ctx.shadowBlur = 10;
-            ctx.strokeRect(drawX + offsetX, drawY + offsetY, scaledWidth, scaledHeight);
-            ctx.restore();
+            // Calculate scale to cover the canvas
+            const scaleX = width / imgWidth;
+            const scaleY = height / imgHeight;
+            const scale = Math.max(scaleX, scaleY);
+            const drawWidth = imgWidth * scale;
+            const drawHeight = imgHeight * scale;
+            const drawX = (width - drawWidth) / 2;
+            const drawY = (height - drawHeight) / 2;
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
           }
+          // Overlay gradient and text
           const overlayGradient = ctx.createLinearGradient(0, height - 100, 0, height);
           overlayGradient.addColorStop(0, "rgba(0,0,0,0)");
           overlayGradient.addColorStop(1, "rgba(0,0,0,0.7)");
