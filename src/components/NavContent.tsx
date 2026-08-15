@@ -11,7 +11,8 @@ import {
   Store,
   Menu,
   X,
-  Settings
+  Settings,
+  Video
 } from 'lucide-react';
 interface NavContentProps {
   isMobile?: boolean;
@@ -31,6 +32,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     else if (path.includes('/categories')) setActiveItem('categories');
     else if (path.includes('/analytics')) setActiveItem('analytics');
     else if (path.includes('/help-us')) setActiveItem('help-us');
+    else if (path.includes('/social-post-video-config')) setActiveItem('social-post-video-config');
     else if (path.includes('/setup-providers')) setActiveItem('setup-providers');
     else if (path.includes('/store')) setActiveItem('store');
     else setActiveItem('dashboard');
@@ -43,6 +45,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'categories', label: 'Categories', icon: Grid3x3, path: '/categories' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
     { id: 'help-us', label: 'Help Us', icon: HelpCircle, path: '/help-us' },
+    { id: 'social-post-video-config', label: 'Social Postvideo Configuration', icon: Video, path: '/social-post-video-config' },
     { id: 'setup-providers', label: 'Setup SMTP or SMS Providers', icon: Settings, path: '/setup-providers' },
     { id: 'store', label: 'Store', icon: Store, path: '/store/home' },
   ];
