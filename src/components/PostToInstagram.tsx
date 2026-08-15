@@ -438,6 +438,16 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           }
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          {onBack && (
+            <button
+              onClick={onBack}
+              disabled={isPosting || isPublishing || isUpdatingOnly || isConnecting}
+              className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <ArrowLeft size={20} />
+              Back
+            </button>
+          )}
           <button
             onClick={resetAllState}
             className="btn-primary flex items-center justify-center gap-2"
