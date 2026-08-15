@@ -22,22 +22,35 @@ interface WishlistContextType {
   isWishlisted: (productId: string) => Promise<boolean>;
 }
 const WishlistContext = createContext<WishlistContextType | undefined>(undefined);
+const isLoggedIn = () => !!localStorage.getItem('authToken');
 export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [wishlistCount, setWishlistCount] = useState(0);
   const fetchWishlistCount = useCallback(async () => {
+    if (!isLoggedIn()) {
+      setWishlistCount(0);
+      return;
+    }
     try {
       const response = await apiClient.get('/store/wishlist/count');
       if (response.data.success) {
         setWishlistCount(response.data.data.count);
       }
-    } catch (error) {
-      console.error('Failed to fetch wishlist count:', error);
+    } catch (error: any) {
+      // Silently ignore 401 for guests
+      if (error?.response?.status !== 401) {
+        console.error('Failed to fetch wishlist count:', error);
+      }
+      setWishlistCount(0);
     }
   }, []);
   useEffect(() => {
     fetchWishlistCount();
   }, [fetchWishlistCount]);
   const toggleWishlist = useCallback(async (productId: string) => {
+    if (!isLoggedIn()) {
+      // Prompt login – caller can also handle this
+      throw new Error('LOGIN_REQUIRED');
+    }
     try {
       const response = await apiClient.post('/store/wishlist/toggle', { productId });
       if (response.data.success) {
@@ -52,19 +65,29 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, []);
   const isWishlisted = useCallback(async (productId: string) => {
+    if (!isLoggedIn()) return false;
     try {
       const response = await apiClient.get(`/store/wishlist/status/${productId}`);
       if (response.data.success) {
         return response.data.data.isWishlisted;
       }
       return false;
-    } catch (error) {
-      console.error('Check wishlist status error:', error);
+    } catch (error: any) {
+      if (error?.response?.status !== 401) {
+        console.error('Check wishlist status error:', error);
+      }
       return false;
     }
   }, []);
   return (
-    <WishlistContext.Provider value={{ wishlistCount, fetchWishlistCount, toggleWishlist, isWishlisted }}>
+    <WishlistContext.Provider
+      value={{
+        wishlistCount,
+        fetchWishlistCount,
+        toggleWishlist,
+        isWishlisted,
+      }}
+    >
       {children}
     </WishlistContext.Provider>
   );

@@ -20,15 +20,31 @@ apiClient.interceptors.request.use(
 );
 const StoreCheckout: React.FC = () => {
   const navigate = useNavigate();
-  const { items, totalPrice, clearCart, fetchCart } = useCart();
+  const { items, totalPrice, clearCart, fetchCart, mergeGuestCart } = useCart();
   const [shippingAddress, setShippingAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderId, setOrderId] = useState<number | null>(null);
+  const [initLoading, setInitLoading] = useState(true);
   useEffect(() => {
-    fetchCart();
-  }, [fetchCart]);
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      navigate('/login', { state: { from: '/store/checkout' } });
+      return;
+    }
+    const init = async () => {
+      setInitLoading(true);
+      try {
+        // Ensure guest items are merged into server cart before placing order
+        await mergeGuestCart();
+        await fetchCart();
+      } finally {
+        setInitLoading(false);
+      }
+    };
+    init();
+  }, [fetchCart, mergeGuestCart, navigate]);
   const subtotal = totalPrice;
   const shipping = subtotal > 999 ? 0 : 99;
   const tax = Math.round(subtotal * 0.12);
@@ -45,6 +61,8 @@ const StoreCheckout: React.FC = () => {
     }
     setLoading(true);
     try {
+      // Final merge attempt in case items were only in guest storage
+      await mergeGuestCart();
       const response = await apiClient.post('/orders', {
         shippingAddress: shippingAddress.trim(),
         paymentMethod,
@@ -73,6 +91,13 @@ const StoreCheckout: React.FC = () => {
       </div>
     );
   }
+  if (initLoading) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">Loading checkout...</p>
+      </div>
+    );
+  }
   if (items.length === 0) {
     return (
       <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
@@ -87,16 +112,23 @@ const StoreCheckout: React.FC = () => {
   return (
     <div className="space-y-6">
       <nav className="flex items-center gap-2 text-sm">
-        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">Store</Link>
+        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
+          Store
+        </Link>
         <span className="text-gray-300">/</span>
-        <Link to="/store/cart" className="text-gray-500 hover:text-purple-600">Cart</Link>
+        <Link to="/store/cart" className="text-gray-500 hover:text-purple-600">
+          Cart
+        </Link>
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Checkout</span>
       </nav>
       <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <form onSubmit={handlePlaceOrder} className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 space-y-6">
+          <form
+            onSubmit={handlePlaceOrder}
+            className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 space-y-6"
+          >
             <div>
               <label htmlFor="shippingAddress" className="block text-sm font-medium text-gray-700 mb-1">
                 Shipping Address
@@ -153,7 +185,17 @@ const StoreCheckout: React.FC = () => {
         <div className="lg:col-span-1">
           <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 sticky top-24">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Order Summary</h2>
-            <div className="space-y-3">
+            <div className="space-y-3 mb-4">
+              {items.map((item) => (
+                <div key={item.id} className="flex justify-between text-sm text-gray-600">
+                  <span className="truncate mr-2">
+                    {item.name} × {item.quantity}
+                  </span>
+                  <span className="flex-shrink-0">₹{item.price * item.quantity}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3 border-t border-gray-100 pt-3">
               <div className="flex justify-between text-gray-600">
                 <span>Subtotal</span>
                 <span>₹{subtotal}</span>

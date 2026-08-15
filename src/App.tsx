@@ -36,10 +36,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
     const token = localStorage.getItem('authToken');
     const userStr = localStorage.getItem('user');
     const navigate = useNavigate();
-    console.log('[ProtectedRoute] token:', token);
-    console.log('[ProtectedRoute] userStr:', userStr);
     if (!token) {
-        console.log('[ProtectedRoute] No token, redirecting to login');
         return <Navigate to="/login" />;
     }
     let userRole = 'user';
@@ -47,29 +44,19 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
         try {
             const user = JSON.parse(userStr);
             userRole = user.role || 'user';
-            console.log('[ProtectedRoute] Parsed user:', user);
-            console.log('[ProtectedRoute] User role:', userRole);
         } catch (err) {
-            console.error('[ProtectedRoute] Failed to parse user:', err);
+            console.error('Failed to parse user:', err);
         }
-    } else {
-        console.log('[ProtectedRoute] No user in localStorage');
     }
-    console.log('[ProtectedRoute] Allowed roles:', allowedRoles);
-    console.log('[ProtectedRoute] User role:', userRole);
     if (!allowedRoles.includes(userRole)) {
         if (userRole === 'user' && allowedRoles.includes('admin')) {
-            console.log('[ProtectedRoute] User is not admin, redirecting to store');
             return <Navigate to="/store" />;
         }
         if (userRole === 'admin' && !allowedRoles.includes('admin')) {
-            console.log('[ProtectedRoute] Admin but not allowed, redirecting to dashboard');
             return <Navigate to="/dashboard" />;
         }
-        console.log('[ProtectedRoute] Fallback redirect to login');
         return <Navigate to="/login" />;
     }
-    console.log('[ProtectedRoute] Access granted, rendering children');
     return <>{children}</>;
 };
 const App: React.FC = () => {
@@ -85,6 +72,7 @@ const App: React.FC = () => {
                         <Route path="/forgot-password" element={<ForgotPasswordEmail />} />
                         <Route path="/forgot-password-otp" element={<ForgotPasswordOTP />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
+                        {/* Admin routes - protected */}
                         <Route
                             path="/"
                             element={
@@ -105,14 +93,8 @@ const App: React.FC = () => {
                             <Route path="analytics" element={<Analytics />} />
                             <Route path="help-us" element={<HelpUs />} />
                         </Route>
-                        <Route
-                            path="/store"
-                            element={
-                                <ProtectedRoute allowedRoles={['admin', 'user']}>
-                                    <StoreLayout />
-                                </ProtectedRoute>
-                            }
-                        >
+                        {/* Store routes - public (authentication handled inside components) */}
+                        <Route path="/store" element={<StoreLayout />}>
                             <Route index element={<Navigate to="/store/home" />} />
                             <Route path="home" element={<StoreHome />} />
                             <Route path="products" element={<StoreProducts />} />

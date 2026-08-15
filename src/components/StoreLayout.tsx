@@ -60,6 +60,28 @@ const StoreLayout: React.FC = () => {
       // ignore
     }
   }
+  // Define public store routes that do not require authentication
+  const publicStorePaths = [
+    '/store/home',
+    '/store/products',
+    '/store/product', // prefix for product detail
+    '/store/cart',
+  ];
+  const isPublicPath = (path: string) => {
+    return publicStorePaths.some(p => path.startsWith(p));
+  };
+  // Check authentication and redirect if needed
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const currentPath = location.pathname;
+    // Only enforce for store routes
+    if (currentPath.startsWith('/store')) {
+      // If the current path is not public and user is not logged in, redirect to login
+      if (!isPublicPath(currentPath) && !token) {
+        navigate('/login', { state: { from: currentPath } });
+      }
+    }
+  }, [location.pathname, navigate]);
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);

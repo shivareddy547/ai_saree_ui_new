@@ -1,21 +1,40 @@
 import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Trash2, Plus, Minus, ChevronRight, ArrowRight } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 const StoreCart: React.FC = () => {
-  const { items, fetchCart, updateQuantity, removeFromCart, totalPrice, totalItems } = useCart();
+  const { items, fetchCart, updateQuantity, removeFromCart, totalPrice, mergeGuestCart } = useCart();
+  const navigate = useNavigate();
   useEffect(() => {
-    fetchCart();
-  }, [fetchCart]);
+    // On cart page load: if logged in, merge any guest items then refresh
+    const init = async () => {
+      if (localStorage.getItem('authToken')) {
+        await mergeGuestCart();
+      }
+      await fetchCart();
+    };
+    init();
+  }, [fetchCart, mergeGuestCart]);
   const subtotal = totalPrice;
   const shipping = subtotal > 999 ? 0 : 99;
   const tax = Math.round(subtotal * 0.12);
   const total = subtotal + shipping + tax;
+  const handleCheckoutClick = () => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      navigate('/store/checkout');
+    } else {
+      // After login, user should return to cart so items can be merged
+      navigate('/login', { state: { from: '/store/cart' } });
+    }
+  };
   if (items.length === 0) {
     return (
       <div className="space-y-6">
         <nav className="flex items-center gap-2 text-sm">
-          <Link to="/store/home" className="text-gray-500 hover:text-purple-600">Store</Link>
+          <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
+            Store
+          </Link>
           <span className="text-gray-300">/</span>
           <span className="text-gray-900 font-medium">Shopping Cart</span>
         </nav>
@@ -23,7 +42,10 @@ const StoreCart: React.FC = () => {
           <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h2 className="text-xl font-medium text-gray-600">Your cart is empty</h2>
           <p className="text-gray-400 mt-2">Start shopping to add items to your cart</p>
-          <Link to="/store/products" className="inline-flex items-center gap-2 mt-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition-all">
+          <Link
+            to="/store/products"
+            className="inline-flex items-center gap-2 mt-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition-all"
+          >
             Continue Shopping <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
@@ -33,7 +55,9 @@ const StoreCart: React.FC = () => {
   return (
     <div className="space-y-6">
       <nav className="flex items-center gap-2 text-sm">
-        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">Store</Link>
+        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
+          Store
+        </Link>
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Shopping Cart</span>
       </nav>
@@ -41,7 +65,10 @@ const StoreCart: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {items.map((item) => (
-            <div key={item.id} className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 flex flex-col sm:flex-row gap-4 hover:shadow-md transition-shadow">
+            <div
+              key={item.id}
+              className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-purple-100 flex flex-col sm:flex-row gap-4 hover:shadow-md transition-shadow"
+            >
               <div className="w-full sm:w-24 h-32 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg overflow-hidden flex-shrink-0">
                 <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
               </div>
@@ -59,15 +86,26 @@ const StoreCart: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-3">
                   <div className="flex items-center gap-3">
                     <div className="flex items-center border border-gray-200 rounded-lg bg-white/80 backdrop-blur-sm">
-                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-3 py-1 hover:bg-gray-50 transition-colors text-gray-600">
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        className="px-3 py-1 hover:bg-gray-50 transition-colors text-gray-600"
+                      >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="px-3 py-1 font-medium text-gray-900 min-w-[2rem] text-center">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="px-3 py-1 hover:bg-gray-50 transition-colors text-gray-600">
+                      <span className="px-3 py-1 font-medium text-gray-900 min-w-[2rem] text-center">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        className="px-3 py-1 hover:bg-gray-50 transition-colors text-gray-600"
+                      >
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
-                    <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-600 transition-colors flex items-center gap-1 text-sm">
+                    <button
+                      onClick={() => removeFromCart(item.id)}
+                      className="text-red-500 hover:text-red-600 transition-colors flex items-center gap-1 text-sm"
+                    >
                       <Trash2 className="w-4 h-4" /> Remove
                     </button>
                   </div>
@@ -101,12 +139,20 @@ const StoreCart: React.FC = () => {
                   <span className="text-purple-600">₹{total}</span>
                 </div>
               </div>
-              {shipping > 0 && <p className="text-xs text-gray-500">Add ₹{999 - subtotal} more for free shipping</p>}
+              {shipping > 0 && (
+                <p className="text-xs text-gray-500">Add ₹{999 - subtotal} more for free shipping</p>
+              )}
             </div>
-            <Link to="/store/checkout" className="w-full mt-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
+            <button
+              onClick={handleCheckoutClick}
+              className="w-full mt-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            >
               Proceed to Checkout <ChevronRight className="w-4 h-4" />
-            </Link>
-            <Link to="/store/products" className="w-full mt-3 text-center text-sm text-purple-600 hover:text-purple-700 block">
+            </button>
+            <Link
+              to="/store/products"
+              className="w-full mt-3 text-center text-sm text-purple-600 hover:text-purple-700 block"
+            >
               Continue Shopping
             </Link>
           </div>
