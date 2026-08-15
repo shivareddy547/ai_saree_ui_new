@@ -10,7 +10,8 @@ import {
   ShoppingCart,
   Store,
   Menu,
-  X
+  X,
+  Settings
 } from 'lucide-react';
 interface NavContentProps {
   isMobile?: boolean;
@@ -30,6 +31,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     else if (path.includes('/categories')) setActiveItem('categories');
     else if (path.includes('/analytics')) setActiveItem('analytics');
     else if (path.includes('/help-us')) setActiveItem('help-us');
+    else if (path.includes('/setup-providers')) setActiveItem('setup-providers');
     else if (path.includes('/store')) setActiveItem('store');
     else setActiveItem('dashboard');
   }, [location.pathname]);
@@ -41,6 +43,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'categories', label: 'Categories', icon: Grid3x3, path: '/categories' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
     { id: 'help-us', label: 'Help Us', icon: HelpCircle, path: '/help-us' },
+    { id: 'setup-providers', label: 'Setup SMTP or SMS Providers', icon: Settings, path: '/setup-providers' },
     { id: 'store', label: 'Store', icon: Store, path: '/store/home' },
   ];
   const handleNavigation = (id: string, path: string) => {

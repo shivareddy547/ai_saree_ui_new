@@ -21,6 +21,7 @@ import AllVideos from './pages/AllVideos';
 import Categories from './pages/Categories';
 import Analytics from './pages/Analytics';
 import HelpUs from './pages/HelpUs';
+import SetupProviders from './pages/SetupProviders';
 import StoreHome from './pages/Store/StoreHome';
 import StoreProducts from './pages/Store/StoreProducts';
 import StoreProductDetail from './pages/Store/StoreProductDetail';
@@ -92,6 +93,7 @@ const App: React.FC = () => {
                             <Route path="categories" element={<Categories />} />
                             <Route path="analytics" element={<Analytics />} />
                             <Route path="help-us" element={<HelpUs />} />
+                            <Route path="setup-providers" element={<SetupProviders />} />
                         </Route>
                         {/* Store routes - public (authentication handled inside components) */}
                         <Route path="/store" element={<StoreLayout />}>
