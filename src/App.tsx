@@ -30,6 +30,7 @@ import StoreCheckout from './pages/Store/StoreCheckout';
 import StoreOrders from './pages/Store/StoreOrders';
 import StoreOrderDetail from './pages/Store/StoreOrderDetail';
 import StoreWishlist from './pages/Store/StoreWishlist';
+import StoreSettings from './pages/Store/StoreSettings';
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
     children,
     allowedRoles,
@@ -106,6 +107,7 @@ const App: React.FC = () => {
                             <Route path="orders" element={<StoreOrders />} />
                             <Route path="order/:id" element={<StoreOrderDetail />} />
                             <Route path="wishlist" element={<StoreWishlist />} />
+                            <Route path="settings" element={<StoreSettings />} />
                         </Route>
                     </Routes>
                 </Router>
