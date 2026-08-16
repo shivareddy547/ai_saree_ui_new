@@ -32,12 +32,12 @@ const SOCIAL_PRESETS: Preset[] = [
   {
     key: 'youtube',
     name: 'YouTube',
-    notes: 'Post videos, shorts, and live streams',
+    notes: 'Post videos, shorts, and live streams. Use scope: https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly (or https://www.googleapis.com/auth/youtube). Redirect URI must exactly match the one registered in Google Cloud Console. Enable YouTube Data API v3.',
     environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
-      { key: 'scope', label: 'Scope', placeholder: 'https://www.googleapis.com/auth/youtube.upload', type: 'text', required: true },
+      { key: 'scope', label: 'Scope', placeholder: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/youtube', type: 'text', required: true },
       { key: 'api_key', label: 'API Key (optional)', placeholder: 'your-api-key', type: 'text' },
     ],
@@ -271,7 +271,12 @@ const SocialPostVideoConfig: React.FC = () => {
     setFormEnvironment(defaultEnv);
     const creds: Record<string, string> = {};
     preset.fields.forEach((f) => {
-      creds[f.key] = formCredentials[f.key] || '';
+      // Prefer existing form value, otherwise use improved default for YouTube scope
+      if (key === 'youtube' && f.key === 'scope' && !formCredentials[f.key]) {
+        creds[f.key] = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly';
+      } else {
+        creds[f.key] = formCredentials[f.key] || '';
+      }
     });
     // Preserve environment if it exists in current credentials (for editing)
     if (formCredentials.environment) {
@@ -424,7 +429,12 @@ const SocialPostVideoConfig: React.FC = () => {
         }, 500);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to initiate connection');
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to initiate connection';
+      setError(
+        msg.includes('YouTube channel info')
+          ? `${msg}. Check: 1) Scope includes youtube.readonly or youtube, 2) Redirect URI matches Google Cloud Console exactly, 3) YouTube Data API v3 is enabled, 4) Credentials are correct.`
+          : msg
+      );
       setIsConnecting(null);
     }
   };
@@ -452,7 +462,12 @@ const SocialPostVideoConfig: React.FC = () => {
             await fetchConnections();
           }
         } catch (err: any) {
-          setError(err.response?.data?.message || 'Failed to connect account');
+          const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to connect account';
+          setError(
+            msg.includes('YouTube channel info') || msg.includes('Failed to fetch YouTube')
+              ? `${msg}. Fix tips: Ensure Scope contains https://www.googleapis.com/auth/youtube.upload and https://www.googleapis.com/auth/youtube.readonly (or https://www.googleapis.com/auth/youtube). Redirect URI must match Google Cloud Console. Enable YouTube Data API v3. Re-save provider credentials then try Connect again.`
+              : msg
+          );
         } finally {
           window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -487,7 +502,7 @@ const SocialPostVideoConfig: React.FC = () => {
           )}
         </div>
         {error && (
-          <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm mb-4">
+          <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm mb-4 whitespace-pre-wrap">
             {error}
           </div>
         )}
@@ -586,6 +601,17 @@ const SocialPostVideoConfig: React.FC = () => {
                   </div>
                 ))}
               </div>
+              {selectedPresetKey === 'youtube' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                  <p className="font-medium mb-1">YouTube connection checklist</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-xs">
+                    <li>Scope must include <code className="bg-amber-100 px-1 rounded">youtube.upload</code> and <code className="bg-amber-100 px-1 rounded">youtube.readonly</code> (or use <code className="bg-amber-100 px-1 rounded">https://www.googleapis.com/auth/youtube</code>)</li>
+                    <li>Redirect URI must exactly match the Authorized redirect URI in Google Cloud Console</li>
+                    <li>Enable YouTube Data API v3 in Google Cloud Console</li>
+                    <li>After changing credentials, Disable → Enable the provider, then click Connect again</li>
+                  </ul>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button type="submit" className="btn-primary" disabled={saving}>
                   {saving ? 'Saving...' : editingId ? 'Update Provider' : 'Add Provider'}
@@ -647,6 +673,11 @@ const SocialPostVideoConfig: React.FC = () => {
                           Connected {connection.username ? `as @${connection.username}` : ''}
                         </span>
                       )}
+                      {connection?.error && !isConnected && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700" title={connection.error}>
+                          Connection error
+                        </span>
+                      )}
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                         {environment.charAt(0).toUpperCase() + environment.slice(1)}
                       </span>
@@ -657,6 +688,11 @@ const SocialPostVideoConfig: React.FC = () => {
                         .map(([k, v]) => `${k}: ${v ? '••••' + v.slice(-4) : '—'}`)
                         .join(' • ') || 'No credentials'}
                     </p>
+                    {connection?.error && !isConnected && (
+                      <p className="text-xs text-red-500 mt-1 truncate" title={connection.error}>
+                        {connection.error}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                     {provider.is_enabled && (
