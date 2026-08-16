@@ -32,6 +32,8 @@ import StoreOrders from './pages/Store/StoreOrders';
 import StoreOrderDetail from './pages/Store/StoreOrderDetail';
 import StoreWishlist from './pages/Store/StoreWishlist';
 import StoreSettings from './pages/Store/StoreSettings';
+import StoreReturnPolicy from './pages/Store/StoreReturnPolicy';
+
 // OAuth callback handler component
 const OAuthCallbackHandler: React.FC = () => {
   const location = useLocation();
@@ -48,6 +50,7 @@ const OAuthCallbackHandler: React.FC = () => {
   }, [location, navigate]);
   return null;
 };
+
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
     children,
     allowedRoles,
@@ -55,9 +58,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
     const token = localStorage.getItem('authToken');
     const userStr = localStorage.getItem('user');
     const navigate = useNavigate();
+
     if (!token) {
         return <Navigate to="/login" />;
     }
+
     let userRole = 'user';
     if (userStr) {
         try {
@@ -67,6 +72,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
             console.error('Failed to parse user:', err);
         }
     }
+
     if (!allowedRoles.includes(userRole)) {
         if (userRole === 'user' && allowedRoles.includes('admin')) {
             return <Navigate to="/store" />;
@@ -76,8 +82,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
         }
         return <Navigate to="/login" />;
     }
+
     return <>{children}</>;
 };
+
 const App: React.FC = () => {
     return (
         <CartProvider>
@@ -91,6 +99,7 @@ const App: React.FC = () => {
                         <Route path="/forgot-password" element={<ForgotPasswordEmail />} />
                         <Route path="/forgot-password-otp" element={<ForgotPasswordOTP />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
+
                         {/* Admin routes - protected */}
                         <Route
                             path="/"
@@ -114,6 +123,7 @@ const App: React.FC = () => {
                             <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
                             <Route path="setup-providers" element={<SetupProviders />} />
                         </Route>
+
                         {/* Store routes - public (authentication handled inside components) */}
                         <Route path="/store" element={<StoreLayout />}>
                             <Route index element={<Navigate to="/store/home" />} />
@@ -126,6 +136,7 @@ const App: React.FC = () => {
                             <Route path="order/:id" element={<StoreOrderDetail />} />
                             <Route path="wishlist" element={<StoreWishlist />} />
                             <Route path="settings" element={<StoreSettings />} />
+                            <Route path="return-policy" element={<StoreReturnPolicy />} />
                         </Route>
                     </Routes>
                     <OAuthCallbackHandler />
@@ -134,4 +145,5 @@ const App: React.FC = () => {
         </CartProvider>
     );
 };
+
 export default App;
