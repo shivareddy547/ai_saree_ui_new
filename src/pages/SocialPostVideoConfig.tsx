@@ -26,12 +26,14 @@ interface Preset {
   name: string;
   notes: string;
   fields: { key: string; label: string; placeholder: string; type: string; required?: boolean }[];
+  environments?: string[]; // optional list of supported environments
 }
 const SOCIAL_PRESETS: Preset[] = [
   {
     key: 'youtube',
     name: 'YouTube',
     notes: 'Post videos, shorts, and live streams',
+    environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -44,6 +46,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'tiktok',
     name: 'TikTok',
     notes: 'Post videos and reels',
+    environments: ['production', 'sandbox'],
     fields: [
       { key: 'client_key', label: 'Client Key', placeholder: 'your-client-key', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -55,6 +58,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'instagram',
     name: 'Instagram',
     notes: 'Post photos, videos, reels (Business account required)',
+    environments: ['production', 'sandbox'],
     fields: [
       { key: 'app_id', label: 'App ID', placeholder: 'your-app-id', type: 'text', required: true },
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
@@ -66,6 +70,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'facebook',
     name: 'Facebook',
     notes: 'Post to pages and groups',
+    environments: ['production', 'sandbox'],
     fields: [
       { key: 'app_id', label: 'App ID', placeholder: 'your-app-id', type: 'text', required: true },
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
@@ -77,6 +82,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'linkedin',
     name: 'LinkedIn',
     notes: 'Post articles and updates',
+    environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -88,6 +94,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'twitter',
     name: 'X (Twitter)',
     notes: 'Post tweets and media (OAuth 2.0)',
+    environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -99,6 +106,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'pinterest',
     name: 'Pinterest',
     notes: 'Post pins and boards',
+    environments: ['production', 'sandbox'],
     fields: [
       { key: 'app_id', label: 'App ID', placeholder: 'your-app-id', type: 'text', required: true },
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
@@ -110,6 +118,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'snapchat',
     name: 'Snapchat',
     notes: 'Post stories and ads',
+    environments: ['production', 'sandbox'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -121,6 +130,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'threads',
     name: 'Threads',
     notes: 'Post text and media threads',
+    environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -132,6 +142,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'reddit',
     name: 'Reddit',
     notes: 'Post to subreddits',
+    environments: ['production', 'sandbox'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -143,6 +154,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'vimeo',
     name: 'Vimeo',
     notes: 'Post videos',
+    environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -154,6 +166,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'dailymotion',
     name: 'Dailymotion',
     notes: 'Post videos',
+    environments: ['production', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -165,6 +178,7 @@ const SOCIAL_PRESETS: Preset[] = [
     key: 'custom_social',
     name: 'Custom Social',
     notes: 'Use any other OAuth 2.0 provider',
+    environments: ['production', 'sandbox', 'testing'],
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
@@ -187,6 +201,7 @@ const SocialPostVideoConfig: React.FC = () => {
   const [selectedPresetKey, setSelectedPresetKey] = useState('youtube');
   const [formName, setFormName] = useState('');
   const [formCredentials, setFormCredentials] = useState<Record<string, string>>({});
+  const [formEnvironment, setFormEnvironment] = useState('production');
   const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
   // Axios instance for authenticated requests (sends token and credentials)
   const api = axios.create({
@@ -251,15 +266,23 @@ const SocialPostVideoConfig: React.FC = () => {
     const preset = SOCIAL_PRESETS.find((p) => p.key === key) || SOCIAL_PRESETS[0];
     setSelectedPresetKey(key);
     setFormName(preset.name);
+    // Reset environment to default (production) unless we are editing
+    const defaultEnv = preset.environments && preset.environments.includes('production') ? 'production' : (preset.environments?.[0] || 'production');
+    setFormEnvironment(defaultEnv);
     const creds: Record<string, string> = {};
     preset.fields.forEach((f) => {
       creds[f.key] = formCredentials[f.key] || '';
     });
+    // Preserve environment if it exists in current credentials (for editing)
+    if (formCredentials.environment) {
+      setFormEnvironment(formCredentials.environment);
+    }
     setFormCredentials(creds);
   };
   const resetForm = () => {
     setFormName('');
     setFormCredentials({});
+    setFormEnvironment('production');
     setEditingId(null);
     setShowForm(false);
     setSelectedPresetKey('youtube');
@@ -275,6 +298,18 @@ const SocialPostVideoConfig: React.FC = () => {
     setEditingId(provider.id);
     setFormName(provider.name);
     setFormCredentials({ ...provider.credentials });
+    // Set environment from credentials if exists
+    if (provider.credentials.environment) {
+      setFormEnvironment(provider.credentials.environment);
+    } else {
+      // set to default for this preset
+      const preset = SOCIAL_PRESETS.find((p) => p.key === provider.provider_key);
+      if (preset && preset.environments && preset.environments.length > 0) {
+        setFormEnvironment(preset.environments[0]);
+      } else {
+        setFormEnvironment('production');
+      }
+    }
     if (provider.provider_key) {
       const preset = SOCIAL_PRESETS.find((p) => p.key === provider.provider_key);
       setSelectedPresetKey(preset ? preset.key : 'custom_social');
@@ -298,17 +333,19 @@ const SocialPostVideoConfig: React.FC = () => {
     setError('');
     setSuccess('');
     try {
+      // Merge credentials with environment
+      const credentialsWithEnv = { ...formCredentials, environment: formEnvironment };
       const payload: any = {
         provider_type: 'social',
         name: formName.trim(),
-        credentials: formCredentials,
+        credentials: credentialsWithEnv,
         provider_key: selectedPresetKey,
         is_enabled: false,
       };
       if (editingId) {
         const updatePayload: any = {
           name: formName.trim(),
-          credentials: formCredentials,
+          credentials: credentialsWithEnv,
           provider_key: selectedPresetKey,
         };
         await api.put(`/providers/${editingId}`, updatePayload);
@@ -501,6 +538,35 @@ const SocialPostVideoConfig: React.FC = () => {
                   disabled={saving}
                 />
               </div>
+              {/* Environment Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Environment
+                </label>
+                <select
+                  value={formEnvironment}
+                  onChange={(e) => setFormEnvironment(e.target.value)}
+                  className="input-field"
+                  disabled={saving}
+                >
+                  {selectedPreset.environments && selectedPreset.environments.length > 0 ? (
+                    selectedPreset.environments.map((env) => (
+                      <option key={env} value={env}>
+                        {env.charAt(0).toUpperCase() + env.slice(1)}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="production">Production</option>
+                      <option value="sandbox">Sandbox</option>
+                      <option value="testing">Testing</option>
+                    </>
+                  )}
+                </select>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Select the environment for this provider (e.g., sandbox for testing, production for live).
+                </p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {selectedPreset.fields.map((field) => (
                   <div key={field.key}>
@@ -553,6 +619,7 @@ const SocialPostVideoConfig: React.FC = () => {
               const preset = SOCIAL_PRESETS.find((p) => p.key === provider.provider_key);
               const connection = connections[provider.id];
               const isConnected = connection?.connected || false;
+              const environment = provider.credentials?.environment || 'production';
               return (
                 <div
                   key={provider.id}
@@ -580,10 +647,13 @@ const SocialPostVideoConfig: React.FC = () => {
                           Connected {connection.username ? `as @${connection.username}` : ''}
                         </span>
                       )}
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                        {environment.charAt(0).toUpperCase() + environment.slice(1)}
+                      </span>
                     </div>
                     <p className="text-sm text-gray-500 mt-1 truncate">
                       {Object.entries(provider.credentials)
-                        .filter(([k]) => k.includes('client_id') || k.includes('app_id') || k.includes('api_key'))
+                        .filter(([k]) => k !== 'environment' && (k.includes('client_id') || k.includes('app_id') || k.includes('api_key')))
                         .map(([k, v]) => `${k}: ${v ? '••••' + v.slice(-4) : '—'}`)
                         .join(' • ') || 'No credentials'}
                     </p>
