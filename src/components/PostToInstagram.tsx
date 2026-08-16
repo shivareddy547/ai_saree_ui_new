@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
+
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
 // Move apiClient outside component to avoid recreation on each render
 const apiClient = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
 });
+
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
@@ -17,12 +20,14 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
 interface SocialProvider {
   id: string;
   name: string;
   provider_key: string;
   is_enabled: boolean;
 }
+
 interface PostToInstagramProps {
   isPosting: boolean;
   postSuccess: boolean;
@@ -44,6 +49,7 @@ interface PostToInstagramProps {
   selectedVideoId?: string | null;
   onSelectVideo?: (id: string) => void;
 }
+
 const PostToInstagram: React.FC<PostToInstagramProps> = ({
   isPosting,
   postSuccess,
@@ -89,7 +95,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [selectedProvider, setSelectedProvider] = useState<string>('');
   const [socialProviders, setSocialProviders] = useState<SocialProvider[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
+  const [youtubeTitle, setYoutubeTitle] = useState('');
+  const [privacyStatus, setPrivacyStatus] = useState<'public' | 'unlisted' | 'private'>('public');
   const videoRef = useRef<HTMLVideoElement>(null);
+
   const generateDefaultCaption = () => {
     let captionText = '';
     if (productName) captionText += `✨ ${productName}`;
@@ -98,11 +107,21 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     captionText += `\n\n#Fashion #Style #NewCollection`;
     return captionText;
   };
+
+  const generateDefaultYoutubeTitle = () => {
+    if (productName) return `${productName} | Fashion Video`;
+    return 'Product Video';
+  };
+
   useEffect(() => {
     if (!showCaptionEditor && !caption) {
       setCaption(generateDefaultCaption());
     }
+    if (!youtubeTitle) {
+      setYoutubeTitle(generateDefaultYoutubeTitle());
+    }
   }, [productName, description, price]);
+
   const togglePlay = () => {
     if (videoRef.current) {
       if (isPlaying) {
@@ -113,6 +132,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setIsPlaying(!isPlaying);
     }
   };
+
   // Fetch social providers - now stable
   const fetchSocialProviders = useCallback(async () => {
     setLoadingProviders(true);
@@ -133,7 +153,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     } finally {
       setLoadingProviders(false);
     }
-  }, [selectedProvider]); // only depends on selectedProvider
+  }, [selectedProvider]);
+
   // Check Instagram status - now stable (no external dependencies)
   const checkInstagramStatus = useCallback(async () => {
     setIsLoadingStatus(true);
@@ -150,7 +171,8 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     } finally {
       setIsLoadingStatus(false);
     }
-  }, []); // no dependencies
+  }, []);
+
   const disconnectInstagram = async () => {
     try {
       await apiClient.post('/instagram/disconnect');
@@ -162,6 +184,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setStatusError(err.response?.data?.message || 'Failed to disconnect Instagram');
     }
   };
+
   const openAuthPopup = async () => {
     setConnectError(null);
     try {
@@ -203,6 +226,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       setConnectError(err.response?.data?.message || 'Failed to initiate Instagram connection');
     }
   };
+
   const handleAuthComplete = async (code: string) => {
     const redirectUri = sessionStorage.getItem('instagram_redirect_uri');
     if (!redirectUri) return;
@@ -230,6 +254,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       sessionStorage.removeItem('instagram_redirect_uri');
     }
   };
+
+  const selectedProviderObj = socialProviders.find(p => p.id === selectedProvider);
+  const isYouTube = selectedProviderObj?.provider_key?.toLowerCase() === 'youtube';
+
   const handlePublishToProvider = async () => {
     let targetCloudinaryId = cloudinaryPublicId;
     if (selectedVideoId && variantVideos.length > 0) {
@@ -255,23 +283,35 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     setPublishError(null);
     setPublishSuccess(null);
     try {
-      const response = await apiClient.post('/social/post', {
+      const payload: any = {
         providerId: selectedProvider,
         video_url: videoUrlToPost,
         media_type: mediaType,
         caption: caption || generateDefaultCaption()
-      });
+      };
+      if (isYouTube) {
+        payload.title = youtubeTitle || generateDefaultYoutubeTitle();
+        payload.privacyStatus = privacyStatus;
+      }
+      const response = await apiClient.post('/social/post', payload);
       if (response.data.success) {
         const providerName = socialProviders.find(p => p.id === selectedProvider)?.name || 'Social';
-        setPublishSuccess(`Video posted to ${providerName} successfully! 🎉`);
+        const extra = response.data.data?.url
+          ? ` Watch: ${response.data.data.url}`
+          : '';
+        setPublishSuccess(
+          response.data.message ||
+          `Video posted to ${providerName} successfully! 🎉${extra}`
+        );
       }
     } catch (err: any) {
       console.error('Failed to post to social provider:', err);
-      setPublishError(err.response?.data?.message || 'Failed to post video');
+      setPublishError(err.response?.data?.message || err.response?.data?.error || 'Failed to post video');
     } finally {
       setIsPublishing(false);
     }
   };
+
   useEffect(() => {
     const handleOAuthCallback = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -294,11 +334,13 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     };
     handleOAuthCallback();
   }, []);
+
   // Run status check and fetch providers only once on mount
   useEffect(() => {
     checkInstagramStatus();
     fetchSocialProviders();
-  }, []); // empty dependency array ensures it runs only once
+  }, []);
+
   const getPreviewVideoUrl = () => {
     if (selectedVideoId && variantVideos.length > 0) {
       const selected = variantVideos.find(v => v.id === selectedVideoId);
@@ -306,7 +348,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     }
     return videoUrl;
   };
+
   const previewVideoUrl = getPreviewVideoUrl();
+
   const renderVideoPreview = () => {
     if (!previewVideoUrl) {
       return (
@@ -347,6 +391,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       </div>
     );
   };
+
   const renderCaptionEditor = () => {
     if (showCaptionEditor) {
       return (
@@ -402,6 +447,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       </div>
     );
   };
+
   if (postSuccess) {
     return (
       <div className="space-y-6 text-center py-8">
@@ -447,6 +493,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       </div>
     );
   }
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
@@ -459,6 +506,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </span>
         {isEditMode ? 'Update & Post to Social' : 'Post to Social'}
       </h2>
+
       {connectError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
@@ -474,7 +522,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
       {publishSuccess && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 text-green-700">
           <CheckCircle size={20} className="flex-shrink-0 mt-0.5" />
-          <span>{publishSuccess}</span>
+          <span className="break-all">{publishSuccess}</span>
         </div>
       )}
       {updateOnlyError && (
@@ -483,6 +531,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           <span>{updateOnlyError}</span>
         </div>
       )}
+
       {/* Instagram Connection Status */}
       <div className={`rounded-lg p-4 border ${
         instagramStatus.connected
@@ -555,6 +604,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         )}
       </div>
+
       {/* Social Provider Selection */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b">
@@ -598,6 +648,54 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </p>
         </div>
       </div>
+
+      {/* YouTube-specific options */}
+      {isYouTube && (
+        <div className="bg-white rounded-lg border border-red-100 overflow-hidden">
+          <div className="p-4 border-b bg-red-50">
+            <h3 className="font-medium text-slate-700 flex items-center gap-2">
+              <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+              YouTube Options
+            </h3>
+          </div>
+          <div className="p-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Video Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={youtubeTitle}
+                onChange={(e) => setYoutubeTitle(e.target.value)}
+                className="input-field w-full"
+                placeholder="Enter YouTube video title"
+                maxLength={100}
+              />
+              <p className="text-xs text-gray-400 mt-1">{youtubeTitle.length}/100 characters</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Privacy
+              </label>
+              <select
+                value={privacyStatus}
+                onChange={(e) => setPrivacyStatus(e.target.value as any)}
+                className="input-field w-full"
+              >
+                <option value="public">Public</option>
+                <option value="unlisted">Unlisted</option>
+                <option value="private">Private</option>
+              </select>
+            </div>
+            <p className="text-xs text-gray-500">
+              For Shorts: choose <strong>Reels</strong> below and keep the video under 60 seconds.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Variant Video Selector */}
       {variantVideos && variantVideos.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -620,6 +718,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         </div>
       )}
+
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -631,17 +730,19 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           {renderVideoPreview()}
         </div>
       </div>
+
       {cloudinaryPublicId && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm text-green-700">
           <CheckCircle size={16} className="flex-shrink-0" />
           <span>Video uploaded to Cloudinary: <strong>{cloudinaryPublicId}</strong></span>
         </div>
       )}
+
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
             <FileText size={18} className="text-purple-600" />
-            Caption
+            {isYouTube ? 'Description' : 'Caption'}
           </h3>
         </div>
         <div className="p-4">
@@ -658,6 +759,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </button>
         </div>
       </div>
+
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -673,7 +775,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
         </div>
         <div className="p-4 space-y-2">
           <p className="text-sm text-gray-600 mb-2">
-            Select the type of post. If you see "AI Creator" label, try switching to "Video" instead of "Reels".
+            {isYouTube
+              ? 'Choose Reels for YouTube Shorts (≤ 60s) or Video for regular YouTube upload.'
+              : 'Select the type of post. If you see "AI Creator" label, try switching to "Video" instead of "Reels".'}
           </p>
           <div className="flex gap-4">
             <label className="flex items-center gap-2">
@@ -685,7 +789,9 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
                 onChange={() => setMediaType('REELS')}
                 className="text-purple-600 focus:ring-purple-500"
               />
-              <span className="text-sm font-medium text-gray-700">Reels</span>
+              <span className="text-sm font-medium text-gray-700">
+                {isYouTube ? 'Shorts (Reels)' : 'Reels'}
+              </span>
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -696,14 +802,14 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
                 onChange={() => setMediaType('VIDEO')}
                 className="text-purple-600 focus:ring-purple-500"
               />
-              <span className="text-sm font-medium text-gray-700">Video (Feed)</span>
+              <span className="text-sm font-medium text-gray-700">
+                {isYouTube ? 'Regular Video' : 'Video (Feed)'}
+              </span>
             </label>
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Note: "Video" posts appear in the main feed, "Reels" appear in the Reels tab. The "AI Creator" label may appear based on detection.
-          </p>
         </div>
       </div>
+
       <div className="bg-gray-50 rounded-lg p-4 sm:p-6 space-y-3 border border-gray-200">
         <h3 className="font-medium text-slate-700">Product Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
@@ -729,12 +835,14 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           </div>
         </div>
       </div>
+
       {createError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
           <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           <span>{createError}</span>
         </div>
       )}
+
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
         {onBack && (
           <button
@@ -766,7 +874,11 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           ) : (
             <>
               <Send size={20} />
-              {!cloudinaryPublicId ? 'Upload to Cloudinary First' : 'Post to Social'}
+              {!cloudinaryPublicId
+                ? 'Upload to Cloudinary First'
+                : isYouTube
+                  ? (mediaType === 'REELS' ? 'Post to YouTube Shorts' : 'Post to YouTube')
+                  : 'Post to Social'}
             </>
           )}
         </button>
@@ -802,14 +914,10 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           Start Over
         </button>
       </div>
+
       {!productId && !isEditMode && (
         <p className="text-sm text-yellow-600 text-center">
           ⚠️ Please save the product first before posting.
-        </p>
-      )}
-      {!instagramStatus.connected && !isConnecting && (
-        <p className="text-sm text-yellow-600 text-center">
-          ⚠️ Connect your Instagram account to enable posting
         </p>
       )}
       {!cloudinaryPublicId && (
@@ -817,16 +925,12 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           ⚠️ Video must be uploaded to Cloudinary before posting
         </p>
       )}
-      {isConnecting && (
-        <p className="text-sm text-purple-600 text-center">
-          🔄 Please wait while we connect your Instagram account...
-        </p>
-      )}
       {isPublishing && (
         <p className="text-sm text-purple-600 text-center">
-          📤 Posting your video...
+          📤 Uploading your video to {isYouTube ? 'YouTube' : 'the selected platform'}… this can take a minute for larger files.
         </p>
       )}
+
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
@@ -936,4 +1040,5 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     </div>
   );
 };
+
 export default PostToInstagram;
