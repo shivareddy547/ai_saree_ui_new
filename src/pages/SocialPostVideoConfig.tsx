@@ -28,7 +28,6 @@ interface Preset {
   fields: { key: string; label: string; placeholder: string; type: string; required?: boolean }[];
 }
 const SOCIAL_PRESETS: Preset[] = [
-  // ... (same as before, include all presets)
   {
     key: 'youtube',
     name: 'YouTube',
@@ -189,14 +188,21 @@ const SocialPostVideoConfig: React.FC = () => {
   const [formName, setFormName] = useState('');
   const [formCredentials, setFormCredentials] = useState<Record<string, string>>({});
   const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+  // Axios instance for authenticated requests (sends token and credentials)
   const api = axios.create({
     baseURL: apiBase,
     headers: {
       Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
     },
+    withCredentials: true, // send cookies for cross-origin
+  });
+  // Public instance for endpoints that don't require auth (also with credentials if needed)
+  const publicApi = axios.create({
+    baseURL: apiBase,
+    withCredentials: true,
   });
   const selectedPreset = SOCIAL_PRESETS.find((p) => p.key === selectedPresetKey) || SOCIAL_PRESETS[0];
-  // Fetch providers
+  // Fetch providers - use authenticated instance (matches SetupProviders pattern)
   const fetchProviders = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -211,7 +217,7 @@ const SocialPostVideoConfig: React.FC = () => {
       setLoading(false);
     }
   }, []);
-  // Fetch user's social connections
+  // Fetch user's social connections (requires auth)
   const fetchConnections = useCallback(async () => {
     try {
       const res = await api.get('/social/status');

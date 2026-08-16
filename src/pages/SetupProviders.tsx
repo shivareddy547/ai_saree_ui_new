@@ -237,11 +237,13 @@ const SetupProviders: React.FC = () => {
   const [formName, setFormName] = useState('');
   const [formCredentials, setFormCredentials] = useState<Record<string, string>>({});
   const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+  // Axios instance with credentials and authorization
   const api = axios.create({
     baseURL: apiBase,
     headers: {
       Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
     },
+    withCredentials: true, // send cookies for cross-origin
   });
   const getPresets = () => (activeTab === 'smtp' ? SMTP_PRESETS : SMS_PRESETS);
   const selectedPreset = getPresets().find((p) => p.key === selectedPresetKey) || getPresets()[0];
