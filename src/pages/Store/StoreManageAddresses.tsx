@@ -69,6 +69,7 @@ const StoreManageAddresses: React.FC = () => {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationSuccess, setLocationSuccess] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streetInputRef = useRef<HTMLDivElement>(null);
 
@@ -172,50 +173,91 @@ const StoreManageAddresses: React.FC = () => {
     return await response.json();
   };
 
+  /**
+   * Robust address extractor that works with Indian + international Nominatim responses.
+   * Handles missing city / house_number by falling back to neighbourhood, county, etc.
+   */
   const extractAddressFromNominatim = (data: any) => {
-    if (!data || !data.address) throw new Error('No address found');
-    const addr = data.address;
+    if (!data) throw new Error('No address found');
+
+    const addr = data.address || {};
+
+    // --- Street address ---
+    // Prefer house_number + road. Fall back to name / first part of display_name
     const streetParts = [
       addr.house_number,
-      addr.road || addr.street || addr.footway || addr.path,
-    ]
-      .filter(Boolean)
-      .join(' ');
+      addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || addr.residential,
+    ].filter(Boolean);
+
+    let streetAddress = streetParts.join(' ').trim();
+    if (!streetAddress) {
+      // Use the "name" field (often the road name) or first segment of display_name
+      streetAddress = data.name || (data.display_name ? data.display_name.split(',')[0].trim() : '');
+    }
+
+    // --- Apartment / locality (neighbourhood, suburb, residential area) ---
+    const apartment =
+      addr.neighbourhood ||
+      addr.suburb ||
+      addr.residential ||
+      addr.quarter ||
+      addr.city_district ||
+      '';
+
+    // --- City ---
+    // Many Indian responses put the area in neighbourhood/county instead of city
     const city =
-      addr.city || addr.town || addr.village || addr.municipality || addr.suburb || '';
-    const state = addr.state || addr.region || addr.county || '';
-    const postcode = addr.postcode || '';
+      addr.city ||
+      addr.town ||
+      addr.village ||
+      addr.municipality ||
+      addr.suburb ||
+      addr.neighbourhood ||
+      addr.county ||
+      addr.city_district ||
+      '';
+
+    // --- State ---
+    const state =
+      addr.state ||
+      addr.state_district ||
+      addr.region ||
+      addr.county ||
+      '';
+
+    // --- Postcode & Country ---
+    const zipCode = addr.postcode || '';
     const country = addr.country || '';
+
     return {
-      streetAddress: streetParts || data.display_name?.split(',')[0] || '',
+      streetAddress,
+      apartment,
       city,
       state,
-      zipCode: postcode,
+      zipCode,
       country,
-      formattedAddress:
-        data.display_name || `${streetParts}, ${city}, ${state}`,
+      formattedAddress: data.display_name || `${streetAddress}, ${city}, ${state}`,
     };
   };
 
   const handleAutofillLocation = () => {
-    // 1. Check secure context first (most common cause of silent failure)
     if (!window.isSecureContext) {
-      const msg =
-        'Location access requires HTTPS or localhost. Please open the site via https:// or http://localhost';
-      setLocationError(msg);
-      alert(msg);
+      setLocationError(
+        'Location access requires HTTPS or localhost. Please open the site via https:// or http://localhost'
+      );
+      setLocationSuccess(false);
       return;
     }
 
     if (!navigator.geolocation) {
-      const msg = 'Geolocation is not supported by your browser.';
-      setLocationError(msg);
-      alert(msg);
+      setLocationError('Geolocation is not supported by your browser.');
+      setLocationSuccess(false);
       return;
     }
 
     setIsLocating(true);
     setLocationError(null);
+    setLocationSuccess(false);
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -223,43 +265,44 @@ const StoreManageAddresses: React.FC = () => {
         try {
           const data = await getAddressFromNominatim(latitude, longitude);
           const address = extractAddressFromNominatim(data);
+
           setFormData((prev) => ({
             ...prev,
             streetAddress: address.streetAddress || prev.streetAddress,
+            apartment: address.apartment || prev.apartment,
             city: address.city || prev.city,
             state: address.state || prev.state,
             zipCode: address.zipCode || prev.zipCode,
             country: address.country || prev.country,
           }));
-          alert(
-            `📍 Location found!\n\n${address.formattedAddress}\n\nAddress fields have been auto-filled.`
-          );
+
+          setLocationError(null);
+          setLocationSuccess(true);
+          setTimeout(() => setLocationSuccess(false), 4000);
         } catch (err) {
           console.error('Reverse geocoding error:', err);
-          setLocationError('Failed to get address from location. You can still type it manually.');
-          alert('Failed to get address from location. Please try again or enter manually.');
+          setLocationError(
+            'Got your location but failed to convert it to an address. Please enter it manually.'
+          );
+          setLocationSuccess(false);
         } finally {
           setIsLocating(false);
         }
       },
       (error: GeolocationPositionError) => {
         console.error('Geolocation error:', error);
-
         let message = 'Unable to retrieve your location. ';
 
         switch (error.code) {
-          case error.PERMISSION_DENIED: // 1
+          case error.PERMISSION_DENIED:
             message +=
-              'Location permission is blocked.\n\n' +
-              '• Click the lock / tune icon in the address bar → Site settings → Location → Allow\n' +
-              '• Or go to browser Settings → Privacy → Site settings → Location and allow this site\n' +
-              '• Then reload the page and try again.';
+              'Location permission is blocked. Click the lock icon in the address bar → Site settings → Location → Allow, then reload.';
             break;
-          case error.POSITION_UNAVAILABLE: // 2
+          case error.POSITION_UNAVAILABLE:
             message +=
-              'Location is currently unavailable (GPS/network issue). Please try again in a moment or enter the address manually.';
+              'Location is currently unavailable. Please try again or enter the address manually.';
             break;
-          case error.TIMEOUT: // 3
+          case error.TIMEOUT:
             message +=
               'Location request timed out. Please try again or enter the address manually.';
             break;
@@ -268,13 +311,13 @@ const StoreManageAddresses: React.FC = () => {
         }
 
         setLocationError(message);
-        alert(message);
+        setLocationSuccess(false);
         setIsLocating(false);
       },
       {
         enableHighAccuracy: true,
         timeout: 15000,
-        maximumAge: 0, // force fresh position
+        maximumAge: 0,
       }
     );
   };
@@ -308,6 +351,7 @@ const StoreManageAddresses: React.FC = () => {
     setEditingId(null);
     setFormData(emptyForm);
     setLocationError(null);
+    setLocationSuccess(false);
     setShowForm(true);
   };
 
@@ -325,6 +369,7 @@ const StoreManageAddresses: React.FC = () => {
       isDefault: !!addr.isDefault,
     });
     setLocationError(null);
+    setLocationSuccess(false);
     setShowForm(true);
   };
 
@@ -335,6 +380,7 @@ const StoreManageAddresses: React.FC = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setLocationError(null);
+    setLocationSuccess(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -578,24 +624,31 @@ const StoreManageAddresses: React.FC = () => {
                 className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg px-4 py-3 mb-5 ${
                   locationError
                     ? 'bg-red-50 border border-red-200'
+                    : locationSuccess
+                    ? 'bg-green-50 border border-green-200'
                     : 'bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200'
                 }`}
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800">
-                    📍{' '}
                     {locationError
-                      ? 'Location Error'
-                      : 'Autofill with OpenStreetMap'}
+                      ? '📍 Location Error'
+                      : locationSuccess
+                      ? '✅ Location found!'
+                      : '📍 Autofill with OpenStreetMap'}
                   </p>
                   {locationError ? (
                     <p className="text-xs text-red-600 whitespace-pre-line mt-1">
                       {locationError}
                     </p>
+                  ) : locationSuccess ? (
+                    <p className="text-xs text-green-700 mt-1">
+                      Address fields have been auto-filled successfully.
+                    </p>
                   ) : (
                     <p className="text-xs text-gray-600">
                       Free and accurate address detection using OpenStreetMap.
-                      Works only on HTTPS or localhost.
+                      Works on HTTPS or localhost.
                     </p>
                   )}
                 </div>
@@ -606,6 +659,8 @@ const StoreManageAddresses: React.FC = () => {
                   className={`text-sm font-medium px-4 py-1.5 rounded-full transition disabled:opacity-60 shrink-0 ${
                     locationError
                       ? 'bg-red-500 hover:bg-red-600 text-white'
+                      : locationSuccess
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-white border border-gray-300 text-gray-800 hover:bg-gray-50'
                   }`}
                 >
@@ -614,6 +669,8 @@ const StoreManageAddresses: React.FC = () => {
                       <span className="inline-block w-3 h-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
                       Locating...
                     </span>
+                  ) : locationSuccess ? (
+                    'Done'
                   ) : (
                     '📍 Autofill'
                   )}
