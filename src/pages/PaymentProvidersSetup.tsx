@@ -89,6 +89,19 @@ const PAYMENT_PRESETS: Preset[] = [
     ],
   },
   {
+    key: 'cod',
+    name: 'Cash on Delivery',
+    notes: 'Allow customers to pay with cash when the order is delivered. No API keys required. You can set optional instructions shown to customers at checkout.',
+    environments: ['production'],
+    fields: [
+      { key: 'display_label', label: 'Display Label', placeholder: 'Cash on Delivery', type: 'text', required: true },
+      { key: 'instructions', label: 'Customer Instructions (optional)', placeholder: 'Please keep exact change ready. COD available for orders under ₹5000.', type: 'text' },
+      { key: 'min_order_amount', label: 'Minimum Order Amount (optional)', placeholder: '0', type: 'text' },
+      { key: 'max_order_amount', label: 'Maximum Order Amount (optional)', placeholder: '5000', type: 'text' },
+      { key: 'extra_charge', label: 'Extra COD Charge (optional)', placeholder: '0', type: 'text' },
+    ],
+  },
+  {
     key: 'custom_payment',
     name: 'Custom Payment',
     notes: 'Use for any other payment provider. Store all required credentials as key-value pairs.',
@@ -150,7 +163,11 @@ const PaymentProvidersSetup: React.FC = () => {
     setFormEnvironment(defaultEnv);
     const creds: Record<string, string> = {};
     preset.fields.forEach((f) => {
-      creds[f.key] = formCredentials[f.key] || '';
+      if (key === 'cod' && f.key === 'display_label' && !formCredentials[f.key]) {
+        creds[f.key] = 'Cash on Delivery';
+      } else {
+        creds[f.key] = formCredentials[f.key] || '';
+      }
     });
     if (formCredentials.environment) {
       setFormEnvironment(formCredentials.environment);
@@ -267,7 +284,7 @@ const PaymentProvidersSetup: React.FC = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Payment Providers Setup</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Add and configure payment gateways for your store. Credentials are stored securely and used when processing payments.
+              Add and configure payment gateways for your store (including Cash on Delivery). Credentials are stored securely and used when processing payments.
             </p>
           </div>
           {!showForm && (
@@ -321,7 +338,7 @@ const PaymentProvidersSetup: React.FC = () => {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="input-field"
-                  placeholder="e.g., Razorpay Production"
+                  placeholder="e.g., Razorpay Production / COD"
                   required
                   disabled={saving}
                 />
@@ -356,7 +373,7 @@ const PaymentProvidersSetup: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {selectedPreset.fields.map((field) => (
-                  <div key={field.key}>
+                  <div key={field.key} className={field.key === 'instructions' ? 'sm:col-span-2' : ''}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       {field.label}
                       {field.required && <span className="text-red-500 ml-0.5">*</span>}
@@ -373,6 +390,17 @@ const PaymentProvidersSetup: React.FC = () => {
                   </div>
                 ))}
               </div>
+              {selectedPresetKey === 'cod' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                  <p className="font-medium mb-1">Cash on Delivery tips</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-xs">
+                    <li>No API keys needed – just enable the provider to show COD at checkout.</li>
+                    <li>Use Min/Max order amount to restrict COD eligibility.</li>
+                    <li>Extra COD charge is added to the order total when customer selects COD.</li>
+                    <li>Instructions are shown to the customer on the checkout page.</li>
+                  </ul>
+                </div>
+              )}
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button type="submit" className="btn-primary" disabled={saving}>
                   {saving ? 'Saving...' : editingId ? 'Update Provider' : 'Add Provider'}
@@ -405,6 +433,7 @@ const PaymentProvidersSetup: React.FC = () => {
             {providers.map((provider) => {
               const preset = PAYMENT_PRESETS.find((p) => p.key === provider.provider_key);
               const environment = provider.credentials?.environment || 'production';
+              const isCod = provider.provider_key === 'cod';
               return (
                 <div
                   key={provider.id}
@@ -432,18 +461,35 @@ const PaymentProvidersSetup: React.FC = () => {
                       </span>
                     </div>
                     <p className="text-sm text-gray-500 mt-1 truncate">
-                      {Object.entries(provider.credentials)
-                        .filter(
-                          ([k]) =>
-                            k !== 'environment' &&
-                            (k.includes('key') ||
-                              k.includes('id') ||
-                              k.includes('mid') ||
-                              k.includes('merchant') ||
-                              k.includes('access'))
-                        )
-                        .map(([k, v]) => `${k}: ${v ? '••••' + String(v).slice(-4) : '—'}`)
-                        .join(' • ') || 'No credentials'}
+                      {isCod
+                        ? [
+                            provider.credentials?.display_label
+                              ? `Label: ${provider.credentials.display_label}`
+                              : null,
+                            provider.credentials?.min_order_amount
+                              ? `Min: ₹${provider.credentials.min_order_amount}`
+                              : null,
+                            provider.credentials?.max_order_amount
+                              ? `Max: ₹${provider.credentials.max_order_amount}`
+                              : null,
+                            provider.credentials?.extra_charge
+                              ? `Charge: ₹${provider.credentials.extra_charge}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' • ') || 'Cash on Delivery'
+                        : Object.entries(provider.credentials)
+                            .filter(
+                              ([k]) =>
+                                k !== 'environment' &&
+                                (k.includes('key') ||
+                                  k.includes('id') ||
+                                  k.includes('mid') ||
+                                  k.includes('merchant') ||
+                                  k.includes('access'))
+                            )
+                            .map(([k, v]) => `${k}: ${v ? '••••' + String(v).slice(-4) : '—'}`)
+                            .join(' • ') || 'No credentials'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
