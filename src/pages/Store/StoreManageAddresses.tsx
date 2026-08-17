@@ -11,7 +11,9 @@ import {
   CheckCircle2,
   Home,
 } from 'lucide-react';
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
 interface Address {
   id: number;
   fullName: string;
@@ -24,6 +26,7 @@ interface Address {
   phone?: string | null;
   isDefault: boolean;
 }
+
 interface FormData {
   country: string;
   fullName: string;
@@ -35,6 +38,7 @@ interface FormData {
   phone: string;
   isDefault: boolean;
 }
+
 const emptyForm: FormData = {
   country: 'India',
   fullName: '',
@@ -46,6 +50,7 @@ const emptyForm: FormData = {
   phone: '',
   isDefault: false,
 };
+
 const StoreManageAddresses: React.FC = () => {
   const navigate = useNavigate();
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -57,6 +62,7 @@ const StoreManageAddresses: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
   // Photon + Nominatim state
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -65,6 +71,7 @@ const StoreManageAddresses: React.FC = () => {
   const [locationError, setLocationError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streetInputRef = useRef<HTMLDivElement>(null);
+
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
     return {
@@ -73,6 +80,7 @@ const StoreManageAddresses: React.FC = () => {
       },
     };
   };
+
   const fetchAddresses = useCallback(async () => {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -94,9 +102,11 @@ const StoreManageAddresses: React.FC = () => {
       setLoading(false);
     }
   }, [navigate]);
+
   useEffect(() => {
     fetchAddresses();
   }, [fetchAddresses]);
+
   // Photon search
   const searchPhoton = async (query: string) => {
     if (!query || query.length < 3) {
@@ -118,12 +128,14 @@ const StoreManageAddresses: React.FC = () => {
       setIsLoadingSuggestions(false);
     }
   };
+
   const handleStreetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setFormData((prev) => ({ ...prev, streetAddress: value }));
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchPhoton(value), 350);
   };
+
   const selectSuggestion = (feature: any) => {
     const p = feature.properties;
     const streetParts = [p.housenumber, p.street || p.name].filter(Boolean).join(' ');
@@ -138,6 +150,7 @@ const StoreManageAddresses: React.FC = () => {
     setSuggestions([]);
     setShowSuggestions(false);
   };
+
   const getSuggestionLabel = (feature: any) => {
     const p = feature.properties;
     const parts = [
@@ -149,6 +162,7 @@ const StoreManageAddresses: React.FC = () => {
     ].filter(Boolean);
     return parts.join(', ');
   };
+
   // Nominatim reverse geocode
   const getAddressFromNominatim = async (lat: number, lng: number) => {
     const response = await fetch(
@@ -157,6 +171,7 @@ const StoreManageAddresses: React.FC = () => {
     if (!response.ok) throw new Error('Nominatim request failed');
     return await response.json();
   };
+
   const extractAddressFromNominatim = (data: any) => {
     if (!data || !data.address) throw new Error('No address found');
     const addr = data.address;
@@ -181,13 +196,27 @@ const StoreManageAddresses: React.FC = () => {
         data.display_name || `${streetParts}, ${city}, ${state}`,
     };
   };
+
   const handleAutofillLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
+    // 1. Check secure context first (most common cause of silent failure)
+    if (!window.isSecureContext) {
+      const msg =
+        'Location access requires HTTPS or localhost. Please open the site via https:// or http://localhost';
+      setLocationError(msg);
+      alert(msg);
       return;
     }
+
+    if (!navigator.geolocation) {
+      const msg = 'Geolocation is not supported by your browser.';
+      setLocationError(msg);
+      alert(msg);
+      return;
+    }
+
     setIsLocating(true);
     setLocationError(null);
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
@@ -207,31 +236,49 @@ const StoreManageAddresses: React.FC = () => {
           );
         } catch (err) {
           console.error('Reverse geocoding error:', err);
-          setLocationError('Failed to get address from location');
-          alert(
-            'Failed to get address from location. Please try again or enter manually.'
-          );
+          setLocationError('Failed to get address from location. You can still type it manually.');
+          alert('Failed to get address from location. Please try again or enter manually.');
         } finally {
           setIsLocating(false);
         }
       },
-      (error) => {
+      (error: GeolocationPositionError) => {
         console.error('Geolocation error:', error);
+
         let message = 'Unable to retrieve your location. ';
-        if (error.code === 1) {
-          message += 'Please allow location access in your browser settings.';
-        } else if (error.code === 2) {
-          message += 'Location unavailable. Please try again.';
-        } else {
-          message += 'Please enter your address manually.';
+
+        switch (error.code) {
+          case error.PERMISSION_DENIED: // 1
+            message +=
+              'Location permission is blocked.\n\n' +
+              '• Click the lock / tune icon in the address bar → Site settings → Location → Allow\n' +
+              '• Or go to browser Settings → Privacy → Site settings → Location and allow this site\n' +
+              '• Then reload the page and try again.';
+            break;
+          case error.POSITION_UNAVAILABLE: // 2
+            message +=
+              'Location is currently unavailable (GPS/network issue). Please try again in a moment or enter the address manually.';
+            break;
+          case error.TIMEOUT: // 3
+            message +=
+              'Location request timed out. Please try again or enter the address manually.';
+            break;
+          default:
+            message += 'Please enter your address manually.';
         }
+
         setLocationError(message);
         alert(message);
         setIsLocating(false);
       },
-      { enableHighAccuracy: true, timeout: 15000 }
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0, // force fresh position
+      }
     );
   };
+
   // Close suggestions on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -245,6 +292,7 @@ const StoreManageAddresses: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -255,12 +303,14 @@ const StoreManageAddresses: React.FC = () => {
       [name]: type === 'checkbox' ? checked : value,
     }));
   };
+
   const openAddForm = () => {
     setEditingId(null);
     setFormData(emptyForm);
     setLocationError(null);
     setShowForm(true);
   };
+
   const openEditForm = (addr: Address) => {
     setEditingId(addr.id);
     setFormData({
@@ -277,6 +327,7 @@ const StoreManageAddresses: React.FC = () => {
     setLocationError(null);
     setShowForm(true);
   };
+
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
@@ -285,6 +336,7 @@ const StoreManageAddresses: React.FC = () => {
     setShowSuggestions(false);
     setLocationError(null);
   };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
@@ -323,6 +375,7 @@ const StoreManageAddresses: React.FC = () => {
       setSubmitting(false);
     }
   };
+
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this address?')) return;
     setDeletingId(id);
@@ -338,6 +391,7 @@ const StoreManageAddresses: React.FC = () => {
       setDeletingId(null);
     }
   };
+
   const handleSetDefault = async (id: number) => {
     setError(null);
     try {
@@ -353,6 +407,7 @@ const StoreManageAddresses: React.FC = () => {
       setError(err?.response?.data?.message || 'Failed to set default address');
     }
   };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -360,6 +415,7 @@ const StoreManageAddresses: React.FC = () => {
       </div>
     );
   }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8">
       {/* Header */}
@@ -380,6 +436,7 @@ const StoreManageAddresses: React.FC = () => {
           Add New Address
         </button>
       </div>
+
       {/* Success / Error toasts */}
       {successMsg && (
         <div className="mb-4 flex items-center gap-2 bg-green-50 border border-green-200 text-green-800 text-sm rounded-lg px-4 py-3">
@@ -392,6 +449,7 @@ const StoreManageAddresses: React.FC = () => {
           {error}
         </div>
       )}
+
       {/* Address list */}
       {addresses.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 shadow-sm">
@@ -487,6 +545,7 @@ const StoreManageAddresses: React.FC = () => {
           ))}
         </div>
       )}
+
       {/* Add / Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -506,21 +565,23 @@ const StoreManageAddresses: React.FC = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
             <div className="p-5 sm:p-6">
               {error && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                   {error}
                 </div>
               )}
+
               {/* Autofill banner */}
               <div
-                className={`flex items-center justify-between rounded-lg px-4 py-3 mb-5 ${
+                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg px-4 py-3 mb-5 ${
                   locationError
                     ? 'bg-red-50 border border-red-200'
                     : 'bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200'
                 }`}
               >
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800">
                     📍{' '}
                     {locationError
@@ -528,10 +589,13 @@ const StoreManageAddresses: React.FC = () => {
                       : 'Autofill with OpenStreetMap'}
                   </p>
                   {locationError ? (
-                    <p className="text-xs text-red-600">{locationError}</p>
+                    <p className="text-xs text-red-600 whitespace-pre-line mt-1">
+                      {locationError}
+                    </p>
                   ) : (
                     <p className="text-xs text-gray-600">
-                      Free and accurate address detection using OpenStreetMap
+                      Free and accurate address detection using OpenStreetMap.
+                      Works only on HTTPS or localhost.
                     </p>
                   )}
                 </div>
@@ -539,7 +603,7 @@ const StoreManageAddresses: React.FC = () => {
                   type="button"
                   onClick={handleAutofillLocation}
                   disabled={isLocating}
-                  className={`text-sm font-medium px-4 py-1.5 rounded-full transition disabled:opacity-60 shrink-0 ml-3 ${
+                  className={`text-sm font-medium px-4 py-1.5 rounded-full transition disabled:opacity-60 shrink-0 ${
                     locationError
                       ? 'bg-red-500 hover:bg-red-600 text-white'
                       : 'bg-white border border-gray-300 text-gray-800 hover:bg-gray-50'
@@ -555,6 +619,7 @@ const StoreManageAddresses: React.FC = () => {
                   )}
                 </button>
               </div>
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
@@ -575,6 +640,7 @@ const StoreManageAddresses: React.FC = () => {
                     <option value="France">France</option>
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
                     Full name (First and Last name)
@@ -589,6 +655,7 @@ const StoreManageAddresses: React.FC = () => {
                     placeholder="John Doe"
                   />
                 </div>
+
                 <div className="relative" ref={streetInputRef}>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
                     Street address
@@ -613,6 +680,7 @@ const StoreManageAddresses: React.FC = () => {
                       </div>
                     )}
                   </div>
+
                   {showSuggestions && suggestions.length > 0 && (
                     <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
                       {suggestions.map((feature, idx) => (
@@ -632,6 +700,7 @@ const StoreManageAddresses: React.FC = () => {
                       ))}
                     </ul>
                   )}
+
                   <input
                     type="text"
                     name="apartment"
@@ -641,6 +710,7 @@ const StoreManageAddresses: React.FC = () => {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50 mt-2"
                   />
                 </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
                     City
@@ -654,6 +724,7 @@ const StoreManageAddresses: React.FC = () => {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
                   />
                 </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
                     State / Province / Region
@@ -666,6 +737,7 @@ const StoreManageAddresses: React.FC = () => {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
                   />
                 </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
                     Zip Code
@@ -678,6 +750,7 @@ const StoreManageAddresses: React.FC = () => {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
                   />
                 </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-1">
                     Phone number
@@ -694,6 +767,7 @@ const StoreManageAddresses: React.FC = () => {
                     May be used to assist delivery
                   </p>
                 </div>
+
                 <div className="flex items-center gap-2 pt-1">
                   <input
                     type="checkbox"
@@ -707,6 +781,7 @@ const StoreManageAddresses: React.FC = () => {
                     Use as my default address.
                   </label>
                 </div>
+
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
@@ -733,6 +808,7 @@ const StoreManageAddresses: React.FC = () => {
                   </button>
                 </div>
               </form>
+
               <p className="text-xs text-gray-400 mt-6 text-center">
                 Address search powered by{' '}
                 <a
@@ -761,4 +837,5 @@ const StoreManageAddresses: React.FC = () => {
     </div>
   );
 };
+
 export default StoreManageAddresses;
