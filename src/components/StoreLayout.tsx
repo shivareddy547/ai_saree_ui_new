@@ -15,7 +15,8 @@ import {
   HelpCircle,
   Store,
   ChevronRight,
-  XCircle
+  XCircle,
+  MapPin
 } from 'lucide-react';
 import CartPopup from './CartPopup';
 import { useCart } from '../context/CartContext';
@@ -305,6 +306,14 @@ const StoreLayout: React.FC = () => {
                     >
                       <Heart className="w-4 h-4" />
                       <span className="text-sm">Wishlist</span>
+                    </Link>
+                    <Link
+                      to="/store/manage-addresses"
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors text-gray-700"
+                      onClick={() => setShowProfileMenu(false)}
+                    >
+                      <MapPin className="w-4 h-4" />
+                      <span className="text-sm">Manage Addresses</span>
                     </Link>
                     <Link
                       to="/store/settings"
