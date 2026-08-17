@@ -12,7 +12,8 @@ import {
   Menu,
   X,
   Settings,
-  Share2
+  Share2,
+  CreditCard
 } from 'lucide-react';
 interface NavContentProps {
   isMobile?: boolean;
@@ -32,6 +33,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     else if (path.includes('/analytics')) setActiveItem('analytics');
     else if (path.includes('/help-us')) setActiveItem('help-us');
     else if (path.includes('/social-post-video-config')) setActiveItem('social-post-video-config');
+    else if (path.includes('/payment-providers-setup')) setActiveItem('payment-providers-setup');
     else if (path.includes('/setup-providers')) setActiveItem('setup-providers');
     else if (path.includes('/store')) setActiveItem('store');
     else setActiveItem('dashboard');
@@ -45,6 +47,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
     { id: 'help-us', label: 'Help Us', icon: HelpCircle, path: '/help-us' },
     { id: 'social-post-video-config', label: 'Social Post Video Config', icon: Share2, path: '/social-post-video-config' },
+    { id: 'payment-providers-setup', label: 'Payment Providers Setup', icon: CreditCard, path: '/payment-providers-setup' },
     { id: 'setup-providers', label: 'Setup SMTP or SMS Providers', icon: Settings, path: '/setup-providers' },
     { id: 'store', label: 'Store', icon: Store, path: '/store/home' },
   ];
