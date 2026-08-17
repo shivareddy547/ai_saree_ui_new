@@ -14,6 +14,22 @@ import {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 interface Address {
   id: number;
   fullName: string;
@@ -73,15 +89,6 @@ const StoreManageAddresses: React.FC = () => {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streetInputRef = useRef<HTMLDivElement>(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('authToken');
-    return {
-      headers: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
-    };
-  };
-
   const fetchAddresses = useCallback(async () => {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -91,7 +98,7 @@ const StoreManageAddresses: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get(`${API_BASE_URL}/addresses`, getAuthHeaders());
+      const res = await apiClient.get('/addresses');
       setAddresses(res.data?.data || []);
     } catch (err: any) {
       if (err?.response?.status === 401) {
@@ -398,14 +405,10 @@ const StoreManageAddresses: React.FC = () => {
     setError(null);
     try {
       if (editingId) {
-        await axios.put(
-          `${API_BASE_URL}/addresses/${editingId}`,
-          formData,
-          getAuthHeaders()
-        );
+        await apiClient.put(`/addresses/${editingId}`, formData);
         setSuccessMsg('Address updated successfully');
       } else {
-        await axios.post(`${API_BASE_URL}/addresses`, formData, getAuthHeaders());
+        await apiClient.post('/addresses', formData);
         setSuccessMsg('Address added successfully');
       }
       closeForm();
@@ -427,7 +430,7 @@ const StoreManageAddresses: React.FC = () => {
     setDeletingId(id);
     setError(null);
     try {
-      await axios.delete(`${API_BASE_URL}/addresses/${id}`, getAuthHeaders());
+      await apiClient.delete(`/addresses/${id}`);
       setSuccessMsg('Address deleted successfully');
       await fetchAddresses();
       setTimeout(() => setSuccessMsg(null), 3000);
@@ -441,11 +444,7 @@ const StoreManageAddresses: React.FC = () => {
   const handleSetDefault = async (id: number) => {
     setError(null);
     try {
-      await axios.patch(
-        `${API_BASE_URL}/addresses/${id}/default`,
-        {},
-        getAuthHeaders()
-      );
+      await apiClient.patch(`/addresses/${id}/default`, {});
       setSuccessMsg('Default address updated');
       await fetchAddresses();
       setTimeout(() => setSuccessMsg(null), 3000);
