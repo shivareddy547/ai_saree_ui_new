@@ -43,14 +43,12 @@ const PAYMENT_PRESETS: Preset[] = [
   {
     key: 'phonepe',
     name: 'PhonePe PG',
-    notes: 'PhonePe Payment Gateway. Get Merchant ID, Salt Key and Salt Index from PhonePe Business Dashboard.',
+    notes: 'PhonePe Payment Gateway (Standard Checkout SDK). Get Client ID, Client Secret and Client Version from PhonePe Business Dashboard → Developer Settings. Use SANDBOX credentials for testing.',
     environments: ['production', 'sandbox'],
     fields: [
-      { key: 'merchant_id', label: 'Merchant ID', placeholder: 'your-merchant-id', type: 'text', required: true },
-      { key: 'salt_key', label: 'Salt Key', placeholder: 'your-salt-key', type: 'password', required: true },
-      { key: 'salt_index', label: 'Salt Index', placeholder: '1', type: 'text', required: true },
-      { key: 'client_id', label: 'Client ID (optional)', placeholder: 'optional-client-id', type: 'text' },
-      { key: 'client_secret', label: 'Client Secret (optional)', placeholder: 'optional-client-secret', type: 'password' },
+      { key: 'client_id', label: 'Client ID', placeholder: 'your-client-id', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
+      { key: 'client_version', label: 'Client Version', placeholder: '1', type: 'text', required: true },
     ],
   },
   {
@@ -165,6 +163,8 @@ const PaymentProvidersSetup: React.FC = () => {
     preset.fields.forEach((f) => {
       if (key === 'cod' && f.key === 'display_label' && !formCredentials[f.key]) {
         creds[f.key] = 'Cash on Delivery';
+      } else if (key === 'phonepe' && f.key === 'client_version' && !formCredentials[f.key]) {
+        creds[f.key] = '1';
       } else {
         creds[f.key] = formCredentials[f.key] || '';
       }
@@ -284,7 +284,7 @@ const PaymentProvidersSetup: React.FC = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Payment Providers Setup</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Add and configure payment gateways for your store (including Cash on Delivery). Credentials are stored securely and used when processing payments.
+              Add and configure payment gateways for your store (including Cash on Delivery & PhonePe). Credentials are stored securely and used when processing payments.
             </p>
           </div>
           {!showForm && (
@@ -338,7 +338,7 @@ const PaymentProvidersSetup: React.FC = () => {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="input-field"
-                  placeholder="e.g., Razorpay Production / COD"
+                  placeholder="e.g., PhonePe Sandbox / COD"
                   required
                   disabled={saving}
                 />
@@ -398,6 +398,17 @@ const PaymentProvidersSetup: React.FC = () => {
                     <li>Use Min/Max order amount to restrict COD eligibility.</li>
                     <li>Extra COD charge is added to the order total when customer selects COD.</li>
                     <li>Instructions are shown to the customer on the checkout page.</li>
+                  </ul>
+                </div>
+              )}
+              {selectedPresetKey === 'phonepe' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                  <p className="font-medium mb-1">PhonePe setup checklist</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-xs">
+                    <li>Use Client ID, Client Secret and Client Version from PhonePe Business Dashboard.</li>
+                    <li>Start with <strong>Sandbox</strong> environment for testing.</li>
+                    <li>After saving, Enable the provider so it appears on the store checkout.</li>
+                    <li>Orders are created as pending and marked paid only after successful PhonePe status check.</li>
                   </ul>
                 </div>
               )}
@@ -486,7 +497,8 @@ const PaymentProvidersSetup: React.FC = () => {
                                   k.includes('id') ||
                                   k.includes('mid') ||
                                   k.includes('merchant') ||
-                                  k.includes('access'))
+                                  k.includes('access') ||
+                                  k.includes('client'))
                             )
                             .map(([k, v]) => `${k}: ${v ? '••••' + String(v).slice(-4) : '—'}`)
                             .join(' • ') || 'No credentials'}

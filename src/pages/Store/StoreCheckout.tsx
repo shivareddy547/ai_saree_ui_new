@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
 import axios from 'axios';
 import {
   CheckCircle,
   ArrowRight,
-  Shield,
-  Truck,
   CreditCard,
   ShoppingBag,
   MapPin,
@@ -14,15 +12,13 @@ import {
   Loader2,
   X,
   Home,
+  Banknote,
 } from 'lucide-react';
-
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
-
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
-
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
@@ -33,7 +29,6 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
-
 interface Address {
   id: number;
   fullName: string;
@@ -46,7 +41,6 @@ interface Address {
   phone?: string | null;
   isDefault: boolean;
 }
-
 interface AddressFormData {
   country: string;
   fullName: string;
@@ -58,7 +52,20 @@ interface AddressFormData {
   phone: string;
   isDefault: boolean;
 }
-
+interface PaymentProvider {
+  id: string;
+  name: string;
+  provider_key: string;
+  is_enabled: boolean;
+  credentials: {
+    environment?: string;
+    display_label?: string;
+    instructions?: string | null;
+    min_order_amount?: string | null;
+    max_order_amount?: string | null;
+    extra_charge?: string | null;
+  };
+}
 const emptyAddressForm: AddressFormData = {
   country: 'India',
   fullName: '',
@@ -70,7 +77,6 @@ const emptyAddressForm: AddressFormData = {
   phone: '',
   isDefault: false,
 };
-
 const formatAddress = (addr: Address): string => {
   const lines = [
     addr.fullName,
@@ -81,31 +87,30 @@ const formatAddress = (addr: Address): string => {
   ].filter(Boolean);
   return lines.join('\n');
 };
-
 const StoreCheckout: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { items, totalPrice, clearCart, fetchCart, mergeGuestCart } = useCart();
-
-  const [paymentMethod, setPaymentMethod] = useState('COD');
+  const [paymentProviders, setPaymentProviders] = useState<PaymentProvider[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderId, setOrderId] = useState<number | null>(null);
   const [initLoading, setInitLoading] = useState(true);
-
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   // Addresses
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressesLoading, setAddressesLoading] = useState(true);
   const [selectedShippingId, setSelectedShippingId] = useState<number | null>(null);
   const [selectedBillingId, setSelectedBillingId] = useState<number | null>(null);
   const [sameAsShipping, setSameAsShipping] = useState(true);
-
   // Add address modal
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressFormFor, setAddressFormFor] = useState<'shipping' | 'billing'>('shipping');
   const [formData, setFormData] = useState<AddressFormData>(emptyAddressForm);
   const [submittingAddress, setSubmittingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
-
   // Photon
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -115,14 +120,12 @@ const StoreCheckout: React.FC = () => {
   const [locationSuccess, setLocationSuccess] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streetInputRef = useRef<HTMLDivElement>(null);
-
   const fetchAddresses = useCallback(async () => {
     setAddressesLoading(true);
     try {
       const res = await apiClient.get('/addresses');
       const list: Address[] = res.data?.data || [];
       setAddresses(list);
-
       const defaultAddr = list.find((a) => a.isDefault) || list[0] || null;
       if (defaultAddr) {
         setSelectedShippingId((prev) => prev ?? defaultAddr.id);
@@ -134,37 +137,81 @@ const StoreCheckout: React.FC = () => {
       setAddressesLoading(false);
     }
   }, []);
-
+  const fetchPaymentProviders = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/orders/payment-providers');
+      const list: PaymentProvider[] = res.data?.data || [];
+      setPaymentProviders(list);
+      if (list.length > 0 && !selectedProviderId) {
+        // Prefer COD if available, else first
+        const cod = list.find((p) => p.provider_key === 'cod');
+        setSelectedProviderId(cod ? cod.id : list[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load payment providers', err);
+    }
+  }, [selectedProviderId]);
+  // Handle return from PhonePe
+  useEffect(() => {
+    const returnedOrderId = searchParams.get('orderId');
+    const payment = searchParams.get('payment');
+    if (returnedOrderId && payment === 'phonepe') {
+      setVerifyingPayment(true);
+      setPaymentError(null);
+      apiClient
+        .post(`/orders/${returnedOrderId}/verify-payment`)
+        .then((res) => {
+          if (res.data?.data?.paid) {
+            setOrderId(Number(returnedOrderId));
+            setOrderPlaced(true);
+            clearCart().then(() => fetchCart());
+            setTimeout(() => navigate('/store/orders'), 3000);
+          } else {
+            setPaymentError(
+              `Payment not completed (${res.data?.data?.state || 'PENDING'}). You can try again or contact support.`
+            );
+          }
+        })
+        .catch((err) => {
+          setPaymentError(
+            err?.response?.data?.message || 'Failed to verify payment status'
+          );
+        })
+        .finally(() => setVerifyingPayment(false));
+    }
+  }, [searchParams, clearCart, fetchCart, navigate]);
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
       navigate('/login', { state: { from: '/store/checkout' } });
       return;
     }
-
     const init = async () => {
       setInitLoading(true);
       try {
         await mergeGuestCart();
         await fetchCart();
         await fetchAddresses();
+        await fetchPaymentProviders();
       } finally {
         setInitLoading(false);
       }
     };
     init();
-  }, [fetchCart, mergeGuestCart, navigate, fetchAddresses]);
-
+  }, [fetchCart, mergeGuestCart, navigate, fetchAddresses, fetchPaymentProviders]);
+  const selectedProvider = paymentProviders.find((p) => p.id === selectedProviderId) || null;
+  const isCod = selectedProvider?.provider_key === 'cod';
+  const extraCodCharge = isCod
+    ? parseFloat(selectedProvider?.credentials?.extra_charge || '0') || 0
+    : 0;
   const subtotal = totalPrice;
   const shipping = subtotal > 999 ? 0 : 99;
   const tax = Math.round(subtotal * 0.12);
-  const total = subtotal + shipping + tax;
-
+  const total = subtotal + shipping + tax + extraCodCharge;
   const selectedShipping = addresses.find((a) => a.id === selectedShippingId) || null;
   const selectedBilling = sameAsShipping
     ? selectedShipping
     : addresses.find((a) => a.id === selectedBillingId) || null;
-
   // ---- Address form helpers (Photon + Nominatim) ----
   const searchPhoton = async (query: string) => {
     if (!query || query.length < 3) {
@@ -185,14 +232,12 @@ const StoreCheckout: React.FC = () => {
       setIsLoadingSuggestions(false);
     }
   };
-
   const handleStreetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setFormData((prev) => ({ ...prev, streetAddress: value }));
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchPhoton(value), 350);
   };
-
   const selectSuggestion = (feature: any) => {
     const p = feature.properties;
     const streetParts = [p.housenumber, p.street || p.name].filter(Boolean).join(' ');
@@ -207,7 +252,6 @@ const StoreCheckout: React.FC = () => {
     setSuggestions([]);
     setShowSuggestions(false);
   };
-
   const getSuggestionLabel = (feature: any) => {
     const p = feature.properties;
     return [
@@ -220,7 +264,6 @@ const StoreCheckout: React.FC = () => {
       .filter(Boolean)
       .join(', ');
   };
-
   const getAddressFromNominatim = async (lat: number, lng: number) => {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`
@@ -228,11 +271,9 @@ const StoreCheckout: React.FC = () => {
     if (!response.ok) throw new Error('Nominatim request failed');
     return await response.json();
   };
-
   const extractAddressFromNominatim = (data: any) => {
     if (!data) throw new Error('No address found');
     const addr = data.address || {};
-
     const streetParts = [
       addr.house_number,
       addr.road ||
@@ -242,14 +283,12 @@ const StoreCheckout: React.FC = () => {
         addr.path ||
         addr.residential,
     ].filter(Boolean);
-
     let streetAddress = streetParts.join(' ').trim();
     if (!streetAddress) {
       streetAddress =
         data.name ||
         (data.display_name ? data.display_name.split(',')[0].trim() : '');
     }
-
     const apartment =
       addr.neighbourhood ||
       addr.suburb ||
@@ -257,7 +296,6 @@ const StoreCheckout: React.FC = () => {
       addr.quarter ||
       addr.city_district ||
       '';
-
     const city =
       addr.city ||
       addr.town ||
@@ -268,10 +306,8 @@ const StoreCheckout: React.FC = () => {
       addr.county ||
       addr.city_district ||
       '';
-
     const state =
       addr.state || addr.state_district || addr.region || addr.county || '';
-
     return {
       streetAddress,
       apartment,
@@ -281,7 +317,6 @@ const StoreCheckout: React.FC = () => {
       country: addr.country || '',
     };
   };
-
   const handleAutofillLocation = () => {
     if (!window.isSecureContext) {
       setLocationError(
@@ -295,11 +330,9 @@ const StoreCheckout: React.FC = () => {
       setLocationSuccess(false);
       return;
     }
-
     setIsLocating(true);
     setLocationError(null);
     setLocationSuccess(false);
-
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         try {
@@ -348,7 +381,6 @@ const StoreCheckout: React.FC = () => {
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
-
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -361,7 +393,6 @@ const StoreCheckout: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
   const openAddAddress = (forType: 'shipping' | 'billing') => {
     setAddressFormFor(forType);
     setFormData(emptyAddressForm);
@@ -370,7 +401,6 @@ const StoreCheckout: React.FC = () => {
     setLocationSuccess(false);
     setShowAddressForm(true);
   };
-
   const closeAddressForm = () => {
     setShowAddressForm(false);
     setFormData(emptyAddressForm);
@@ -380,7 +410,6 @@ const StoreCheckout: React.FC = () => {
     setLocationError(null);
     setLocationSuccess(false);
   };
-
   const handleAddressFormChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -391,7 +420,6 @@ const StoreCheckout: React.FC = () => {
       [name]: type === 'checkbox' ? checked : value,
     }));
   };
-
   const handleSaveAddress = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
@@ -427,10 +455,8 @@ const StoreCheckout: React.FC = () => {
       setSubmittingAddress(false);
     }
   };
-
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!selectedShipping) {
       alert('Please select or add a shipping address');
       return;
@@ -443,33 +469,43 @@ const StoreCheckout: React.FC = () => {
       alert('Your cart is empty');
       return;
     }
-
+    if (!selectedProviderId) {
+      alert('Please select a payment method');
+      return;
+    }
     setLoading(true);
+    setPaymentError(null);
     try {
       await mergeGuestCart();
-
       const shippingText = formatAddress(selectedShipping);
       const billingText = sameAsShipping
         ? shippingText
         : formatAddress(selectedBilling!);
-
+      const redirectBaseUrl = `${window.location.origin}/store/checkout`;
       const response = await apiClient.post('/orders', {
         shippingAddress: shippingText,
         billingAddress: billingText,
-        paymentMethod,
+        paymentMethod: selectedProvider?.provider_key || 'COD',
+        paymentProviderId: selectedProviderId,
+        redirectBaseUrl,
       });
-
-      setOrderId(response.data.data.id);
+      const data = response.data;
+      if (data.paymentRequired && data.redirectUrl) {
+        // Redirect to PhonePe
+        window.location.href = data.redirectUrl;
+        return;
+      }
+      // COD or immediate success
+      setOrderId(data.data.id);
       setOrderPlaced(true);
       await clearCart();
       await fetchCart();
-
       setTimeout(() => {
         navigate('/store/orders');
       }, 3000);
     } catch (error: any) {
       console.error('Order placement failed:', error);
-      alert(
+      setPaymentError(
         error.response?.data?.message ||
           'Failed to place order. Please try again.'
       );
@@ -477,7 +513,6 @@ const StoreCheckout: React.FC = () => {
       setLoading(false);
     }
   };
-
   const AddressCard = ({
     addr,
     selected,
@@ -526,7 +561,15 @@ const StoreCheckout: React.FC = () => {
       </div>
     </label>
   );
-
+  if (verifyingPayment) {
+    return (
+      <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
+        <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-gray-900">Verifying payment...</h2>
+        <p className="text-gray-600 mt-2">Please wait while we confirm your PhonePe payment.</p>
+      </div>
+    );
+  }
   if (orderPlaced) {
     return (
       <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-green-100">
@@ -539,7 +582,6 @@ const StoreCheckout: React.FC = () => {
       </div>
     );
   }
-
   if (initLoading) {
     return (
       <div className="text-center py-12">
@@ -548,7 +590,6 @@ const StoreCheckout: React.FC = () => {
       </div>
     );
   }
-
   if (items.length === 0) {
     return (
       <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
@@ -563,7 +604,6 @@ const StoreCheckout: React.FC = () => {
       </div>
     );
   }
-
   return (
     <div className="space-y-6">
       <nav className="flex items-center gap-2 text-sm">
@@ -577,9 +617,12 @@ const StoreCheckout: React.FC = () => {
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Checkout</span>
       </nav>
-
       <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
-
+      {paymentError && (
+        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm border border-red-100">
+          {paymentError}
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <form
@@ -602,7 +645,6 @@ const StoreCheckout: React.FC = () => {
                   Add New
                 </button>
               </div>
-
               {addressesLoading ? (
                 <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -639,7 +681,6 @@ const StoreCheckout: React.FC = () => {
                 </div>
               )}
             </div>
-
             {/* Same as shipping */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -657,7 +698,6 @@ const StoreCheckout: React.FC = () => {
                 Billing address same as shipping
               </span>
             </label>
-
             {/* Billing Address */}
             {!sameAsShipping && (
               <div>
@@ -675,7 +715,6 @@ const StoreCheckout: React.FC = () => {
                     Add New
                   </button>
                 </div>
-
                 {addresses.length === 0 ? (
                   <div className="text-center py-6 border border-dashed border-gray-300 rounded-xl">
                     <p className="text-sm text-gray-500 mb-3">
@@ -704,372 +743,273 @@ const StoreCheckout: React.FC = () => {
                 )}
               </div>
             )}
-
-            {/* Payment Method */}
+            {/* Payment Method - Dynamic from enabled providers */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Payment Method
               </label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="COD"
-                    checked={paymentMethod === 'COD'}
-                    onChange={() => setPaymentMethod('COD')}
-                    className="w-4 h-4 text-purple-600"
-                  />
-                  <CreditCard className="w-5 h-5 text-gray-600" />
-                  <span className="font-medium">Cash on Delivery</span>
-                </label>
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="Online"
-                    checked={paymentMethod === 'Online'}
-                    onChange={() => setPaymentMethod('Online')}
-                    className="w-4 h-4 text-purple-600"
-                  />
-                  <CreditCard className="w-5 h-5 text-gray-600" />
-                  <span className="font-medium">Online Payment (UPI/Card)</span>
-                </label>
-              </div>
+              {paymentProviders.length === 0 ? (
+                <div className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                  No payment methods are currently enabled. Please contact the store administrator.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {paymentProviders.map((provider) => {
+                    const label =
+                      provider.credentials?.display_label || provider.name;
+                    const isSelected = selectedProviderId === provider.id;
+                    const isCodOption = provider.provider_key === 'cod';
+                    return (
+                      <label
+                        key={provider.id}
+                        className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-200'
+                            : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentProvider"
+                          value={provider.id}
+                          checked={isSelected}
+                          onChange={() => setSelectedProviderId(provider.id)}
+                          className="mt-1 w-4 h-4 text-purple-600"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            {isCodOption ? (
+                              <Banknote className="w-5 h-5 text-gray-600" />
+                            ) : (
+                              <CreditCard className="w-5 h-5 text-gray-600" />
+                            )}
+                            <span className="font-medium">{label}</span>
+                            {provider.provider_key === 'phonepe' && (
+                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                                PhonePe
+                              </span>
+                            )}
+                          </div>
+                          {isCodOption && provider.credentials?.instructions && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {provider.credentials.instructions}
+                            </p>
+                          )}
+                          {isCodOption && extraCodCharge > 0 && isSelected && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              Extra COD charge: ₹{extraCodCharge}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-
             <button
               type="submit"
-              disabled={loading || !selectedShipping}
+              disabled={loading || !selectedShipping || !selectedProviderId || paymentProviders.length === 0}
               className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center gap-2"
             >
-              {loading ? 'Placing Order...' : 'Place Order'}
+              {loading
+                ? isCod
+                  ? 'Placing Order...'
+                  : 'Redirecting to Payment...'
+                : isCod
+                ? 'Place Order (Cash on Delivery)'
+                : 'Pay & Place Order'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         </div>
-
         {/* Order Summary */}
         <div className="lg:col-span-1">
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 sticky top-24">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Order Summary</h2>
-            <div className="space-y-3 mb-4">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex justify-between text-sm text-gray-600"
-                >
-                  <span className="truncate mr-2">
-                    {item.name} × {item.quantity}
-                  </span>
-                  <span className="flex-shrink-0">
-                    ₹{item.price * item.quantity}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="space-y-3 border-t border-gray-100 pt-3">
-              <div className="flex justify-between text-gray-600">
-                <span>Subtotal</span>
-                <span>₹{subtotal}</span>
+          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 sticky top-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h2>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Subtotal ({items.length} items)</span>
+                <span className="font-medium">₹{subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Shipping</span>
-                <span className={shipping === 0 ? 'text-green-600' : 'text-gray-600'}>
-                  {shipping === 0 ? 'Free' : `₹${shipping}`}
+              <div className="flex justify-between">
+                <span className="text-gray-600">Shipping</span>
+                <span className="font-medium">
+                  {shipping === 0 ? 'FREE' : `₹${shipping.toFixed(2)}`}
                 </span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Tax (12%)</span>
-                <span>₹{tax}</span>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Tax (12%)</span>
+                <span className="font-medium">₹{tax.toFixed(2)}</span>
               </div>
-              <div className="border-t border-gray-200 pt-3">
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
-                  <span className="text-purple-600">₹{total}</span>
+              {extraCodCharge > 0 && (
+                <div className="flex justify-between text-amber-700">
+                  <span>COD Charge</span>
+                  <span className="font-medium">₹{extraCodCharge.toFixed(2)}</span>
                 </div>
+              )}
+              <div className="border-t border-gray-200 pt-3 flex justify-between text-base font-bold">
+                <span>Total</span>
+                <span className="text-purple-700">₹{total.toFixed(2)}</span>
               </div>
-            </div>
-            <div className="mt-6 flex items-center gap-2 text-sm text-gray-500">
-              <Shield className="w-4 h-4" />
-              <span>Secure checkout</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-              <Truck className="w-4 h-4" />
-              <span>Free shipping on orders above ₹999</span>
             </div>
           </div>
         </div>
       </div>
-
       {/* Add Address Modal */}
       {showAddressForm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={closeAddressForm}
-          />
-          <div className="relative w-full max-w-xl max-h-[95vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-xl">
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between z-10">
-              <h2 className="text-lg font-bold text-gray-900">
-                Add {addressFormFor === 'shipping' ? 'Shipping' : 'Billing'}{' '}
-                Address
-              </h2>
-              <button
-                onClick={closeAddressForm}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
-              >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-semibold text-gray-900">
+                Add {addressFormFor === 'shipping' ? 'Shipping' : 'Billing'} Address
+              </h3>
+              <button type="button" onClick={closeAddressForm} className="p-1 hover:bg-gray-100 rounded">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <div className="p-5 sm:p-6">
+            <form onSubmit={handleSaveAddress} className="p-4 space-y-4">
               {addressError && (
-                <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-                  {addressError}
-                </div>
+                <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{addressError}</div>
               )}
-
-              <div
-                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg px-4 py-3 mb-5 ${
-                  locationError
-                    ? 'bg-red-50 border border-red-200'
-                    : locationSuccess
-                    ? 'bg-green-50 border border-green-200'
-                    : 'bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200'
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800">
-                    {locationError
-                      ? '📍 Location Error'
-                      : locationSuccess
-                      ? '✅ Location found!'
-                      : '📍 Autofill with OpenStreetMap'}
-                  </p>
-                  {locationError ? (
-                    <p className="text-xs text-red-600 mt-1">{locationError}</p>
-                  ) : locationSuccess ? (
-                    <p className="text-xs text-green-700 mt-1">
-                      Address fields auto-filled.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-600">
-                      Free address detection via OpenStreetMap
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAutofillLocation}
-                  disabled={isLocating}
-                  className={`text-sm font-medium px-4 py-1.5 rounded-full transition disabled:opacity-60 shrink-0 ${
-                    locationError
-                      ? 'bg-red-500 hover:bg-red-600 text-white'
-                      : locationSuccess
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : 'bg-white border border-gray-300 text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  {isLocating ? (
-                    <span className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
-                      Locating...
-                    </span>
-                  ) : locationSuccess ? (
-                    'Done'
-                  ) : (
-                    '📍 Autofill'
-                  )}
-                </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                <input
+                  name="fullName"
+                  value={formData.fullName}
+                  onChange={handleAddressFormChange}
+                  className="input-field"
+                  required
+                />
               </div>
-
-              <form onSubmit={handleSaveAddress} className="space-y-4">
+              <div ref={streetInputRef} className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
+                <input
+                  name="streetAddress"
+                  value={formData.streetAddress}
+                  onChange={handleStreetChange}
+                  className="input-field"
+                  required
+                  autoComplete="off"
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <ul className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg mt-1 shadow-lg max-h-48 overflow-auto">
+                    {suggestions.map((f, i) => (
+                      <li
+                        key={i}
+                        className="px-3 py-2 text-sm hover:bg-purple-50 cursor-pointer"
+                        onClick={() => selectSuggestion(f)}
+                      >
+                        {getSuggestionLabel(f)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {isLoadingSuggestions && (
+                  <p className="text-xs text-gray-400 mt-1">Searching...</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Apartment / Landmark</label>
+                <input
+                  name="apartment"
+                  value={formData.apartment}
+                  onChange={handleAddressFormChange}
+                  className="input-field"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    Country/Region
-                  </label>
-                  <select
-                    name="country"
-                    value={formData.country}
-                    onChange={handleAddressFormChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
-                  >
-                    <option value="India">India</option>
-                    <option value="United States">United States</option>
-                    <option value="United Kingdom">United Kingdom</option>
-                    <option value="Canada">Canada</option>
-                    <option value="Australia">Australia</option>
-                    <option value="Germany">Germany</option>
-                    <option value="France">France</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    Full name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
                   <input
-                    type="text"
-                    name="fullName"
-                    value={formData.fullName}
-                    onChange={handleAddressFormChange}
-                    required
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
-                    placeholder="John Doe"
-                  />
-                </div>
-
-                <div className="relative" ref={streetInputRef}>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    Street address
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      name="streetAddress"
-                      value={formData.streetAddress}
-                      onChange={handleStreetChange}
-                      onFocus={() =>
-                        suggestions.length > 0 && setShowSuggestions(true)
-                      }
-                      required
-                      placeholder="Street address, P.O. box, company name"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
-                      autoComplete="off"
-                    />
-                    {isLoadingSuggestions && (
-                      <div className="absolute right-3 top-2.5">
-                        <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                      </div>
-                    )}
-                  </div>
-                  {showSuggestions && suggestions.length > 0 && (
-                    <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                      {suggestions.map((feature, idx) => (
-                        <li
-                          key={idx}
-                          onClick={() => selectSuggestion(feature)}
-                          className="px-3 py-2.5 text-sm cursor-pointer hover:bg-purple-50 border-b border-gray-100 last:border-0"
-                        >
-                          <div className="font-medium text-gray-900">
-                            {getSuggestionLabel(feature)}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <input
-                    type="text"
-                    name="apartment"
-                    value={formData.apartment}
-                    onChange={handleAddressFormChange}
-                    placeholder="Apartment, suite, unit, floor, etc."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 mt-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    City
-                  </label>
-                  <input
-                    type="text"
                     name="city"
                     value={formData.city}
                     onChange={handleAddressFormChange}
+                    className="input-field"
                     required
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    State / Province / Region
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
                   <input
-                    type="text"
                     name="state"
                     value={formData.state}
                     onChange={handleAddressFormChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                    className="input-field"
                   />
                 </div>
-
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    Zip Code
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
                   <input
-                    type="text"
                     name="zipCode"
                     value={formData.zipCode}
                     onChange={handleAddressFormChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                    className="input-field"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-1">
-                    Phone number
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
                   <input
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
+                    name="country"
+                    value={formData.country}
                     onChange={handleAddressFormChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
-                    placeholder="(555) 555-5555"
+                    className="input-field"
+                    required
                   />
                 </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    name="isDefault"
-                    id="isDefaultCheckout"
-                    checked={formData.isDefault}
-                    onChange={handleAddressFormChange}
-                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                  />
-                  <label
-                    htmlFor="isDefaultCheckout"
-                    className="text-sm text-gray-800"
-                  >
-                    Use as my default address
-                  </label>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={closeAddressForm}
-                    className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-full font-medium text-sm hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submittingAddress}
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2.5 rounded-full font-medium text-sm hover:shadow-lg disabled:opacity-70 flex items-center justify-center gap-2"
-                  >
-                    {submittingAddress ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      'Save address'
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleAddressFormChange}
+                  className="input-field"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="isDefault"
+                  checked={formData.isDefault}
+                  onChange={handleAddressFormChange}
+                  className="w-4 h-4 text-purple-600"
+                />
+                <span className="text-sm text-gray-700">Set as default address</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAutofillLocation}
+                disabled={isLocating}
+                className="text-sm text-purple-600 hover:underline disabled:opacity-50"
+              >
+                {isLocating ? 'Getting location...' : 'Use my current location'}
+              </button>
+              {locationError && <p className="text-xs text-red-600">{locationError}</p>}
+              {locationSuccess && <p className="text-xs text-green-600">Location filled successfully</p>}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={submittingAddress}
+                  className="btn-primary flex-1"
+                >
+                  {submittingAddress ? 'Saving...' : 'Save Address'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeAddressForm}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
     </div>
   );
 };
-
 export default StoreCheckout;
