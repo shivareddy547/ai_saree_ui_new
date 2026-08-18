@@ -19,6 +19,7 @@ import InstagramPreview from './pages/InstagramPreview';
 import PostSuccess from './pages/PostSuccess';
 import AllVideos from './pages/AllVideos';
 import Categories from './pages/Categories';
+import Orders from './pages/Orders';
 import Analytics from './pages/Analytics';
 import HelpUs from './pages/HelpUs';
 import SetupProviders from './pages/SetupProviders';
@@ -122,6 +123,7 @@ const App: React.FC = () => {
                             <Route path="post-success" element={<PostSuccess />} />
                             <Route path="all-videos" element={<AllVideos />} />
                             <Route path="categories" element={<Categories />} />
+                            <Route path="orders" element={<Orders />} />
                             <Route path="analytics" element={<Analytics />} />
                             <Route path="help-us" element={<HelpUs />} />
                             <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
