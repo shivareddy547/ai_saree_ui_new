@@ -51,6 +51,14 @@ const OAuthCallbackHandler: React.FC = () => {
   }, [location, navigate]);
   return null;
 };
+// Scroll to top on route change
+const ScrollToTop: React.FC = () => {
+  const { pathname } = useLocation();
+  React.useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+};
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
     children,
     allowedRoles,
@@ -86,6 +94,7 @@ const App: React.FC = () => {
         <CartProvider>
             <WishlistProvider>
                 <Router>
+                    <ScrollToTop />
                     <Routes>
                         <Route path="/login" element={<LoginEmail />} />
                         <Route path="/signup" element={<SignupEmail />} />
