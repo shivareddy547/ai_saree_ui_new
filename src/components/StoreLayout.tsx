@@ -211,16 +211,16 @@ const StoreLayout: React.FC = () => {
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-purple-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <Link to="/store/home" className="flex items-center gap-2">
+            <Link to="/store/home" className="flex items-center gap-3">
               {logoUrl ? (
                 <img
                   src={logoUrl}
                   alt={storeName}
-                  className="w-8 h-8 object-contain rounded-lg"
+                  className="w-11 h-11 object-contain rounded-lg flex-shrink-0"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                  <Store className="w-5 h-5 text-white" />
+                <div className="w-11 h-11 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                  <Store className="w-6 h-6 text-white" />
                 </div>
               )}
               <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">

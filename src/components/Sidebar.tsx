@@ -51,19 +51,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, onClose, onLogout }
   return (
     <div className="flex flex-col h-full bg-white border-r border-gray-200">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-200">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-200">
         {logoUrl ? (
           <img
             src={logoUrl}
             alt={storeName}
-            className="w-8 h-8 object-contain rounded"
+            className="w-12 h-12 object-contain rounded-lg flex-shrink-0"
           />
         ) : (
-          <Sparkles className="w-8 h-8 text-purple-600" />
+          <Sparkles className="w-10 h-10 text-purple-600 flex-shrink-0" />
         )}
-        <div>
-          <h1 className="text-xl font-bold text-purple-700">{storeName}</h1>
-          <p className="text-xs text-gray-500">{storeCaption}</p>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-purple-700 truncate">{storeName}</h1>
+          <p className="text-xs text-gray-500 truncate">{storeCaption}</p>
         </div>
       </div>
       {/* Navigation */}
