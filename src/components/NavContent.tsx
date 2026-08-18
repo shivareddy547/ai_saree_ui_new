@@ -35,6 +35,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     else if (path.includes('/social-post-video-config')) setActiveItem('social-post-video-config');
     else if (path.includes('/payment-providers-setup')) setActiveItem('payment-providers-setup');
     else if (path.includes('/setup-providers')) setActiveItem('setup-providers');
+    else if (path.includes('/store-settings')) setActiveItem('store-settings');
     else if (path.includes('/store')) setActiveItem('store');
     else setActiveItem('dashboard');
   }, [location.pathname]);
@@ -49,6 +50,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'social-post-video-config', label: 'Social Post Video Config', icon: Share2, path: '/social-post-video-config' },
     { id: 'payment-providers-setup', label: 'Payment Providers Setup', icon: CreditCard, path: '/payment-providers-setup' },
     { id: 'setup-providers', label: 'Setup SMTP or SMS Providers', icon: Settings, path: '/setup-providers' },
+    { id: 'store-settings', label: 'Store Settings', icon: Settings, path: '/store-settings' },
     { id: 'store', label: 'Store', icon: Store, path: '/store/home' },
   ];
   const handleNavigation = (id: string, path: string) => {

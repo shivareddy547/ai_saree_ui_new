@@ -24,6 +24,7 @@ import HelpUs from './pages/HelpUs';
 import SetupProviders from './pages/SetupProviders';
 import SocialPostVideoConfig from './pages/SocialPostVideoConfig';
 import PaymentProvidersSetup from './pages/PaymentProvidersSetup';
+import StoreSettingsAdmin from './pages/StoreSettingsAdmin';
 import StoreHome from './pages/Store/StoreHome';
 import StoreProducts from './pages/Store/StoreProducts';
 import StoreProductDetail from './pages/Store/StoreProductDetail';
@@ -126,6 +127,7 @@ const App: React.FC = () => {
                             <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
                             <Route path="payment-providers-setup" element={<PaymentProvidersSetup />} />
                             <Route path="setup-providers" element={<SetupProviders />} />
+                            <Route path="store-settings" element={<StoreSettingsAdmin />} />
                         </Route>
                         {/* Store routes - public (authentication handled inside components) */}
                         <Route path="/store" element={<StoreLayout />}>
