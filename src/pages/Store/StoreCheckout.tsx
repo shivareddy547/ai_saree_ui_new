@@ -13,6 +13,8 @@ import {
   X,
   Home,
   Banknote,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -105,9 +107,10 @@ const StoreCheckout: React.FC = () => {
   const [selectedShippingId, setSelectedShippingId] = useState<number | null>(null);
   const [selectedBillingId, setSelectedBillingId] = useState<number | null>(null);
   const [sameAsShipping, setSameAsShipping] = useState(true);
-  // Add address modal
+  // Add/Edit address modal
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressFormFor, setAddressFormFor] = useState<'shipping' | 'billing'>('shipping');
+  const [editingAddress, setEditingAddress] = useState<Address | null>(null);
   const [formData, setFormData] = useState<AddressFormData>(emptyAddressForm);
   const [submittingAddress, setSubmittingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
@@ -143,7 +146,6 @@ const StoreCheckout: React.FC = () => {
       const list: PaymentProvider[] = res.data?.data || [];
       setPaymentProviders(list);
       if (list.length > 0 && !selectedProviderId) {
-        // Prefer COD if available, else first
         const cod = list.find((p) => p.provider_key === 'cod');
         setSelectedProviderId(cod ? cod.id : list[0].id);
       }
@@ -395,7 +397,26 @@ const StoreCheckout: React.FC = () => {
   }, []);
   const openAddAddress = (forType: 'shipping' | 'billing') => {
     setAddressFormFor(forType);
+    setEditingAddress(null);
     setFormData(emptyAddressForm);
+    setAddressError(null);
+    setLocationError(null);
+    setLocationSuccess(false);
+    setShowAddressForm(true);
+  };
+  const openEditAddress = (addr: Address) => {
+    setEditingAddress(addr);
+    setFormData({
+      country: addr.country,
+      fullName: addr.fullName,
+      streetAddress: addr.streetAddress,
+      apartment: addr.apartment || '',
+      city: addr.city,
+      state: addr.state || '',
+      zipCode: addr.zipCode || '',
+      phone: addr.phone || '',
+      isDefault: addr.isDefault,
+    });
     setAddressError(null);
     setLocationError(null);
     setLocationSuccess(false);
@@ -403,6 +424,7 @@ const StoreCheckout: React.FC = () => {
   };
   const closeAddressForm = () => {
     setShowAddressForm(false);
+    setEditingAddress(null);
     setFormData(emptyAddressForm);
     setSuggestions([]);
     setShowSuggestions(false);
@@ -420,7 +442,7 @@ const StoreCheckout: React.FC = () => {
       [name]: type === 'checkbox' ? checked : value,
     }));
   };
-  const handleSaveAddress = async (e: React.FormEvent) => {
+  const handleSubmitAddress = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       !formData.fullName.trim() ||
@@ -434,16 +456,31 @@ const StoreCheckout: React.FC = () => {
     setSubmittingAddress(true);
     setAddressError(null);
     try {
-      const res = await apiClient.post('/addresses', formData);
-      const newAddr: Address = res.data?.data;
+      let newAddr: Address | undefined;
+      if (editingAddress) {
+        // Update existing address
+        const res = await apiClient.put(`/addresses/${editingAddress.id}`, formData);
+        newAddr = res.data?.data;
+      } else {
+        // Create new address
+        const res = await apiClient.post('/addresses', formData);
+        newAddr = res.data?.data;
+      }
       await fetchAddresses();
       if (newAddr?.id) {
-        if (addressFormFor === 'shipping') {
-          setSelectedShippingId(newAddr.id);
-          if (sameAsShipping) setSelectedBillingId(newAddr.id);
+        if (editingAddress) {
+          // If editing, we might want to keep the selection if this address was selected
+          // The selection IDs remain the same because the id doesn't change.
+          // But if we changed isDefault, the default might change; fetchAddresses already updates.
         } else {
-          setSelectedBillingId(newAddr.id);
-          setSameAsShipping(false);
+          // New address: select it if it matches the form type
+          if (addressFormFor === 'shipping') {
+            setSelectedShippingId(newAddr.id);
+            if (sameAsShipping) setSelectedBillingId(newAddr.id);
+          } else {
+            setSelectedBillingId(newAddr.id);
+            setSameAsShipping(false);
+          }
         }
       }
       closeAddressForm();
@@ -453,6 +490,24 @@ const StoreCheckout: React.FC = () => {
       );
     } finally {
       setSubmittingAddress(false);
+    }
+  };
+  const handleDeleteAddress = async (addr: Address) => {
+    if (!window.confirm(`Are you sure you want to delete the address for "${addr.fullName}"?`)) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/addresses/${addr.id}`);
+      await fetchAddresses();
+      // If deleted address was selected, clear selection
+      if (selectedShippingId === addr.id) {
+        setSelectedShippingId(null);
+      }
+      if (selectedBillingId === addr.id) {
+        setSelectedBillingId(null);
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to delete address');
     }
   };
   const handlePlaceOrder = async (e: React.FormEvent) => {
@@ -491,11 +546,9 @@ const StoreCheckout: React.FC = () => {
       });
       const data = response.data;
       if (data.paymentRequired && data.redirectUrl) {
-        // Redirect to PhonePe
         window.location.href = data.redirectUrl;
         return;
       }
-      // COD or immediate success
       setOrderId(data.data.id);
       setOrderPlaced(true);
       await clearCart();
@@ -517,49 +570,81 @@ const StoreCheckout: React.FC = () => {
     addr,
     selected,
     onSelect,
+    onEdit,
+    onDelete,
   }: {
     addr: Address;
     selected: boolean;
     onSelect: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
   }) => (
-    <label
-      className={`flex gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
+    <div
+      className={`flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
         selected
           ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-200'
           : 'border-gray-200 hover:border-purple-200 hover:bg-gray-50'
       }`}
+      onClick={onSelect}
     >
-      <input
-        type="radio"
-        checked={selected}
-        onChange={onSelect}
-        className="mt-1 w-4 h-4 text-purple-600"
-      />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-gray-900 text-sm">
-            {addr.fullName}
-          </span>
-          {addr.isDefault && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-              <Home className="w-3 h-3" />
-              Default
+      <div className="flex items-start gap-3 flex-1 min-w-0 w-full">
+        <input
+          type="radio"
+          checked={selected}
+          onChange={onSelect}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-1 w-4 h-4 text-purple-600 flex-shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-900 text-sm">
+              {addr.fullName}
             </span>
-          )}
+            {addr.isDefault && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                <Home className="w-3 h-3" />
+                Default
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
+            {addr.streetAddress}
+            {addr.apartment ? `, ${addr.apartment}` : ''}
+            <br />
+            {addr.city}
+            {addr.state ? `, ${addr.state}` : ''}
+            {addr.zipCode ? ` - ${addr.zipCode}` : ''}
+            <br />
+            {addr.country}
+            {addr.phone ? ` · ${addr.phone}` : ''}
+          </p>
         </div>
-        <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
-          {addr.streetAddress}
-          {addr.apartment ? `, ${addr.apartment}` : ''}
-          <br />
-          {addr.city}
-          {addr.state ? `, ${addr.state}` : ''}
-          {addr.zipCode ? ` - ${addr.zipCode}` : ''}
-          <br />
-          {addr.country}
-          {addr.phone ? ` · ${addr.phone}` : ''}
-        </p>
       </div>
-    </label>
+      <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center mt-2 sm:mt-0">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="p-1.5 text-gray-500 hover:text-purple-600 rounded-full hover:bg-purple-50 transition"
+          aria-label="Edit address"
+        >
+          <Pencil className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="p-1.5 text-gray-500 hover:text-red-600 rounded-full hover:bg-red-50 transition"
+          aria-label="Delete address"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
   );
   if (verifyingPayment) {
     return (
@@ -676,6 +761,8 @@ const StoreCheckout: React.FC = () => {
                         setSelectedShippingId(addr.id);
                         if (sameAsShipping) setSelectedBillingId(addr.id);
                       }}
+                      onEdit={() => openEditAddress(addr)}
+                      onDelete={() => handleDeleteAddress(addr)}
                     />
                   ))}
                 </div>
@@ -737,6 +824,8 @@ const StoreCheckout: React.FC = () => {
                         addr={addr}
                         selected={selectedBillingId === addr.id}
                         onSelect={() => setSelectedBillingId(addr.id)}
+                        onEdit={() => openEditAddress(addr)}
+                        onDelete={() => handleDeleteAddress(addr)}
                       />
                     ))}
                   </div>
@@ -856,19 +945,19 @@ const StoreCheckout: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Add Address Modal */}
+      {/* Add/Edit Address Modal */}
       {showAddressForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="font-semibold text-gray-900">
-                Add {addressFormFor === 'shipping' ? 'Shipping' : 'Billing'} Address
+                {editingAddress ? 'Edit Address' : `Add ${addressFormFor === 'shipping' ? 'Shipping' : 'Billing'} Address`}
               </h3>
               <button type="button" onClick={closeAddressForm} className="p-1 hover:bg-gray-100 rounded">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSaveAddress} className="p-4 space-y-4">
+            <form onSubmit={handleSubmitAddress} className="p-4 space-y-4">
               {addressError && (
                 <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{addressError}</div>
               )}
@@ -995,7 +1084,7 @@ const StoreCheckout: React.FC = () => {
                   disabled={submittingAddress}
                   className="btn-primary flex-1"
                 >
-                  {submittingAddress ? 'Saving...' : 'Save Address'}
+                  {submittingAddress ? 'Saving...' : editingAddress ? 'Update Address' : 'Save Address'}
                 </button>
                 <button
                   type="button"
