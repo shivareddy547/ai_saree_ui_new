@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  ShoppingBag, 
-  Search, 
-  User, 
+import {
+  ShoppingBag,
+  Search,
+  User,
   Heart,
   Menu,
   X,
@@ -23,6 +23,7 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const uploadsBase = API_BASE_URL.replace(/\/api$/, '');
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -32,6 +33,13 @@ interface Suggestion {
   name: string;
   image: string | null;
 }
+interface StoreSettings {
+  id: string;
+  name: string;
+  caption: string | null;
+  logo: string | null;
+  favicon: string | null;
+}
 const StoreLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -39,6 +47,10 @@ const StoreLayout: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { totalItems } = useCart();
   const { wishlistCount } = useWishlist();
+  // Dynamic store settings
+  const [storeName, setStoreName] = useState('SareeStore');
+  const [storeCaption, setStoreCaption] = useState('Your trusted destination for premium sarees. Quality guaranteed.');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -47,6 +59,30 @@ const StoreLayout: React.FC = () => {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionContainerRef = useRef<HTMLDivElement>(null);
+  const getImageUrl = (path: string | null | undefined) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    return `${uploadsBase}${path}`;
+  };
+  const fetchStoreSettings = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await apiClient.get('/store-settings', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data: StoreSettings = res.data.data;
+      if (data) {
+        setStoreName(data.name || 'SareeStore');
+        setStoreCaption(data.caption || 'Your trusted destination for premium sarees. Quality guaranteed.');
+        setLogoUrl(getImageUrl(data.logo));
+      }
+    } catch {
+      // Keep defaults on error
+    }
+  }, []);
+  useEffect(() => {
+    fetchStoreSettings();
+  }, [fetchStoreSettings]);
   const userStr = localStorage.getItem('user');
   let userName = 'User';
   let userEmail = 'user@example.com';
@@ -176,11 +212,19 @@ const StoreLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link to="/store/home" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                <Store className="w-5 h-5 text-white" />
-              </div>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={storeName}
+                  className="w-8 h-8 object-contain rounded-lg"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                  <Store className="w-5 h-5 text-white" />
+                </div>
+              )}
               <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                SareeStore
+                {storeName}
               </span>
             </Link>
             <nav className="hidden md:flex items-center gap-1">
@@ -450,8 +494,8 @@ const StoreLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
-              <h3 className="font-bold text-gray-900 mb-3">SareeStore</h3>
-              <p className="text-sm text-gray-600">Your trusted destination for premium sarees. Quality guaranteed.</p>
+              <h3 className="font-bold text-gray-900 mb-3">{storeName}</h3>
+              <p className="text-sm text-gray-600">{storeCaption}</p>
             </div>
             <div>
               <h4 className="font-semibold text-gray-900 mb-3">Quick Links</h4>
@@ -479,7 +523,7 @@ const StoreLayout: React.FC = () => {
             </div>
           </div>
           <div className="border-t border-gray-200 mt-8 pt-8 text-center text-sm text-gray-500">
-            &copy; 2026 SareeStore. All rights reserved.
+            &copy; 2026 {storeName}. All rights reserved.
           </div>
         </div>
       </footer>

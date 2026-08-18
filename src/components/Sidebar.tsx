@@ -1,20 +1,69 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import NavContent from './NavContent';
 import { LogOut, Sparkles } from 'lucide-react';
+import axios from 'axios';
 interface SidebarProps {
   isMobile?: boolean;
   onClose?: () => void;
   onLogout?: () => void;
 }
+interface StoreSettings {
+  id: string;
+  name: string;
+  caption: string | null;
+  logo: string | null;
+  favicon: string | null;
+}
 const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, onClose, onLogout }) => {
+  const [storeName, setStoreName] = useState('AI Saree');
+  const [storeCaption, setStoreCaption] = useState('Video Generator');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+  const uploadsBase = apiBase.replace(/\/api$/, '');
+  const getImageUrl = (path: string | null | undefined) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    return `${uploadsBase}${path}`;
+  };
+  const fetchStoreSettings = useCallback(async () => {
+    try {
+      const api = axios.create({
+        baseURL: apiBase,
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
+        },
+        withCredentials: true,
+      });
+      const res = await api.get('/store-settings');
+      const data: StoreSettings = res.data.data;
+      if (data) {
+        setStoreName(data.name || 'AI Saree');
+        setStoreCaption(data.caption || 'Video Generator');
+        setLogoUrl(getImageUrl(data.logo));
+      }
+    } catch {
+      // Keep defaults on error
+    }
+  }, [apiBase]);
+  useEffect(() => {
+    fetchStoreSettings();
+  }, [fetchStoreSettings]);
   return (
     <div className="flex flex-col h-full bg-white border-r border-gray-200">
       {/* Logo */}
       <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-200">
-        <Sparkles className="w-8 h-8 text-purple-600" />
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={storeName}
+            className="w-8 h-8 object-contain rounded"
+          />
+        ) : (
+          <Sparkles className="w-8 h-8 text-purple-600" />
+        )}
         <div>
-          <h1 className="text-xl font-bold text-purple-700">AI Saree</h1>
-          <p className="text-xs text-gray-500">Video Generator</p>
+          <h1 className="text-xl font-bold text-purple-700">{storeName}</h1>
+          <p className="text-xs text-gray-500">{storeCaption}</p>
         </div>
       </div>
       {/* Navigation */}

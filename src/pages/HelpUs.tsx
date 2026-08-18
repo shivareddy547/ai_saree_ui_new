@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-
 const HelpUs: React.FC = () => {
+  const [firstName, setFirstName] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/help-us`, { name, description });
+      await axios.post(`${process.env.REACT_APP_API_URL}/help-us`, {
+        firstName,
+        name,
+        description,
+      });
       setSubmitted(true);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
@@ -22,14 +24,13 @@ const HelpUs: React.FC = () => {
       setLoading(false);
     }
   };
-
   const resetForm = () => {
     setSubmitted(false);
+    setFirstName('');
     setName('');
     setDescription('');
     setError('');
   };
-
   return (
     <div className="max-w-2xl mx-auto">
       <div className="card-glass p-8">
@@ -50,6 +51,20 @@ const HelpUs: React.FC = () => {
               </div>
             )}
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                First Name
+              </label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="input-field"
+                placeholder="Your first name"
+                required
+                disabled={loading}
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
               <input
                 type="text"
@@ -62,7 +77,9 @@ const HelpUs: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -81,5 +98,4 @@ const HelpUs: React.FC = () => {
     </div>
   );
 };
-
 export default HelpUs;
