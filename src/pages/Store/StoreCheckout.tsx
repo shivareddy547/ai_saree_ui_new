@@ -5,6 +5,7 @@ import axios from 'axios';
 import {
   CheckCircle,
   ArrowRight,
+  ArrowLeft,
   CreditCard,
   ShoppingBag,
   MapPin,
@@ -15,6 +16,8 @@ import {
   Banknote,
   Pencil,
   Trash2,
+  Truck,
+  Package,
 } from 'lucide-react';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -68,6 +71,17 @@ interface PaymentProvider {
     extra_charge?: string | null;
   };
 }
+interface ShippingRate {
+  courierCompanyId: string;
+  courierName: string;
+  rate: number;
+  estimatedDays: number | null;
+  etd?: string | null;
+  freightCharge?: number;
+  codCharges?: number;
+  isSurface?: boolean;
+  rating?: number | null;
+}
 const emptyAddressForm: AddressFormData = {
   country: 'India',
   fullName: '',
@@ -89,10 +103,12 @@ const formatAddress = (addr: Address): string => {
   ].filter(Boolean);
   return lines.join('\n');
 };
+const STEPS = ['Address', 'Shipping', 'Payment'] as const;
 const StoreCheckout: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { items, totalPrice, clearCart, fetchCart, mergeGuestCart } = useCart();
+  const [step, setStep] = useState(0);
   const [paymentProviders, setPaymentProviders] = useState<PaymentProvider[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,6 +123,12 @@ const StoreCheckout: React.FC = () => {
   const [selectedShippingId, setSelectedShippingId] = useState<number | null>(null);
   const [selectedBillingId, setSelectedBillingId] = useState<number | null>(null);
   const [sameAsShipping, setSameAsShipping] = useState(true);
+  // Shipping rates
+  const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const [ratesError, setRatesError] = useState<string | null>(null);
+  const [selectedCourier, setSelectedCourier] = useState<ShippingRate | null>(null);
+  const [shipmentProviderId, setShipmentProviderId] = useState<string | null>(null);
   // Add/Edit address modal
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressFormFor, setAddressFormFor] = useState<'shipping' | 'billing'>('shipping');
@@ -153,6 +175,40 @@ const StoreCheckout: React.FC = () => {
       console.error('Failed to load payment providers', err);
     }
   }, [selectedProviderId]);
+  const fetchShippingRates = useCallback(async (addr: Address) => {
+    if (!addr?.zipCode) {
+      setRatesError('Selected address must have a valid ZIP / pincode');
+      setShippingRates([]);
+      return;
+    }
+    setRatesLoading(true);
+    setRatesError(null);
+    setSelectedCourier(null);
+    try {
+      const res = await apiClient.post('/orders/shipping-rates', {
+        deliveryPincode: addr.zipCode,
+        weight: 0.5,
+        cod: 0,
+        declaredValue: totalPrice || 0,
+      });
+      const data = res.data?.data;
+      const rates: ShippingRate[] = data?.rates || [];
+      setShippingRates(rates);
+      setShipmentProviderId(data?.providerId || null);
+      if (rates.length === 0) {
+        setRatesError('No shipping options available for this pincode.');
+      }
+    } catch (err: any) {
+      setShippingRates([]);
+      setRatesError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          'Failed to fetch shipping rates. Please try again.'
+      );
+    } finally {
+      setRatesLoading(false);
+    }
+  }, [totalPrice]);
   // Handle return from PhonePe
   useEffect(() => {
     const returnedOrderId = searchParams.get('orderId');
@@ -201,16 +257,18 @@ const StoreCheckout: React.FC = () => {
     };
     init();
   }, [fetchCart, mergeGuestCart, navigate, fetchAddresses, fetchPaymentProviders]);
-  const selectedProvider = paymentProviders.find((p) => p.id === selectedProviderId) || null;
+  const selectedProvider =
+    paymentProviders.find((p) => p.id === selectedProviderId) || null;
   const isCod = selectedProvider?.provider_key === 'cod';
   const extraCodCharge = isCod
     ? parseFloat(selectedProvider?.credentials?.extra_charge || '0') || 0
     : 0;
   const subtotal = totalPrice;
-  const shipping = subtotal > 999 ? 0 : 99;
+  const shipping = selectedCourier ? selectedCourier.rate : 0;
   const tax = Math.round(subtotal * 0.12);
   const total = subtotal + shipping + tax + extraCodCharge;
-  const selectedShipping = addresses.find((a) => a.id === selectedShippingId) || null;
+  const selectedShipping =
+    addresses.find((a) => a.id === selectedShippingId) || null;
   const selectedBilling = sameAsShipping
     ? selectedShipping
     : addresses.find((a) => a.id === selectedBillingId) || null;
@@ -458,22 +516,18 @@ const StoreCheckout: React.FC = () => {
     try {
       let newAddr: Address | undefined;
       if (editingAddress) {
-        // Update existing address
-        const res = await apiClient.put(`/addresses/${editingAddress.id}`, formData);
+        const res = await apiClient.put(
+          `/addresses/${editingAddress.id}`,
+          formData
+        );
         newAddr = res.data?.data;
       } else {
-        // Create new address
         const res = await apiClient.post('/addresses', formData);
         newAddr = res.data?.data;
       }
       await fetchAddresses();
       if (newAddr?.id) {
-        if (editingAddress) {
-          // If editing, we might want to keep the selection if this address was selected
-          // The selection IDs remain the same because the id doesn't change.
-          // But if we changed isDefault, the default might change; fetchAddresses already updates.
-        } else {
-          // New address: select it if it matches the form type
+        if (!editingAddress) {
           if (addressFormFor === 'shipping') {
             setSelectedShippingId(newAddr.id);
             if (sameAsShipping) setSelectedBillingId(newAddr.id);
@@ -493,13 +547,16 @@ const StoreCheckout: React.FC = () => {
     }
   };
   const handleDeleteAddress = async (addr: Address) => {
-    if (!window.confirm(`Are you sure you want to delete the address for "${addr.fullName}"?`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete the address for "${addr.fullName}"?`
+      )
+    ) {
       return;
     }
     try {
       await apiClient.delete(`/addresses/${addr.id}`);
       await fetchAddresses();
-      // If deleted address was selected, clear selection
       if (selectedShippingId === addr.id) {
         setSelectedShippingId(null);
       }
@@ -509,6 +566,25 @@ const StoreCheckout: React.FC = () => {
     } catch (err: any) {
       alert(err?.response?.data?.message || 'Failed to delete address');
     }
+  };
+  const goToShippingStep = () => {
+    if (!selectedShipping) {
+      alert('Please select or add a shipping address');
+      return;
+    }
+    if (!sameAsShipping && !selectedBilling) {
+      alert('Please select or add a billing address');
+      return;
+    }
+    setStep(1);
+    fetchShippingRates(selectedShipping);
+  };
+  const goToPaymentStep = () => {
+    if (!selectedCourier) {
+      alert('Please select a shipping option');
+      return;
+    }
+    setStep(2);
   };
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -528,6 +604,11 @@ const StoreCheckout: React.FC = () => {
       alert('Please select a payment method');
       return;
     }
+    if (!selectedCourier) {
+      alert('Please select a shipping option');
+      setStep(1);
+      return;
+    }
     setLoading(true);
     setPaymentError(null);
     try {
@@ -543,6 +624,21 @@ const StoreCheckout: React.FC = () => {
         paymentMethod: selectedProvider?.provider_key || 'COD',
         paymentProviderId: selectedProviderId,
         redirectBaseUrl,
+        shippingAmount: selectedCourier.rate,
+        estimatedDeliveryDays: selectedCourier.estimatedDays,
+        shipmentProviderId: shipmentProviderId,
+        courierCompanyId: selectedCourier.courierCompanyId,
+        courierName: selectedCourier.courierName,
+        shippingAddressObj: {
+          fullName: selectedShipping.fullName,
+          streetAddress: selectedShipping.streetAddress,
+          apartment: selectedShipping.apartment,
+          city: selectedShipping.city,
+          state: selectedShipping.state,
+          zipCode: selectedShipping.zipCode,
+          country: selectedShipping.country,
+          phone: selectedShipping.phone,
+        },
       });
       const data = response.data;
       if (data.paymentRequired && data.redirectUrl) {
@@ -651,7 +747,9 @@ const StoreCheckout: React.FC = () => {
       <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
         <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
         <h2 className="text-xl font-bold text-gray-900">Verifying payment...</h2>
-        <p className="text-gray-600 mt-2">Please wait while we confirm your PhonePe payment.</p>
+        <p className="text-gray-600 mt-2">
+          Please wait while we confirm your PhonePe payment.
+        </p>
       </div>
     );
   }
@@ -703,6 +801,46 @@ const StoreCheckout: React.FC = () => {
         <span className="text-gray-900 font-medium">Checkout</span>
       </nav>
       <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
+      {/* Step indicator - mobile friendly */}
+      <div className="flex items-center justify-between gap-1 sm:gap-2">
+        {STEPS.map((label, idx) => (
+          <React.Fragment key={label}>
+            <button
+              type="button"
+              onClick={() => {
+                if (idx < step) setStep(idx);
+              }}
+              className={`flex-1 flex flex-col items-center gap-1 py-2 px-1 rounded-lg transition ${
+                idx === step
+                  ? 'bg-purple-50 text-purple-700'
+                  : idx < step
+                  ? 'text-purple-600 cursor-pointer'
+                  : 'text-gray-400'
+              }`}
+            >
+              <span
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                  idx === step
+                    ? 'bg-purple-600 text-white'
+                    : idx < step
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {idx < step ? '✓' : idx + 1}
+              </span>
+              <span className="text-xs font-medium hidden sm:block">{label}</span>
+            </button>
+            {idx < STEPS.length - 1 && (
+              <div
+                className={`h-0.5 flex-1 max-w-[40px] ${
+                  idx < step ? 'bg-purple-400' : 'bg-gray-200'
+                }`}
+              />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
       {paymentError && (
         <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm border border-red-100">
           {paymentError}
@@ -710,221 +848,391 @@ const StoreCheckout: React.FC = () => {
       )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <form
-            onSubmit={handlePlaceOrder}
-            className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 space-y-6"
-          >
-            {/* Shipping Address */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-purple-600" />
-                  Shipping Address
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => openAddAddress('shipping')}
-                  className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add New
-                </button>
-              </div>
-              {addressesLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading addresses...
-                </div>
-              ) : addresses.length === 0 ? (
-                <div className="text-center py-6 border border-dashed border-gray-300 rounded-xl">
-                  <MapPin className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 mb-3">
-                    No saved addresses yet
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => openAddAddress('shipping')}
-                    className="inline-flex items-center gap-1 text-sm font-medium bg-purple-600 text-white px-4 py-2 rounded-full hover:bg-purple-700"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Shipping Address
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {addresses.map((addr) => (
-                    <AddressCard
-                      key={addr.id}
-                      addr={addr}
-                      selected={selectedShippingId === addr.id}
-                      onSelect={() => {
-                        setSelectedShippingId(addr.id);
-                        if (sameAsShipping) setSelectedBillingId(addr.id);
-                      }}
-                      onEdit={() => openEditAddress(addr)}
-                      onDelete={() => handleDeleteAddress(addr)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* Same as shipping */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sameAsShipping}
-                onChange={(e) => {
-                  setSameAsShipping(e.target.checked);
-                  if (e.target.checked && selectedShippingId) {
-                    setSelectedBillingId(selectedShippingId);
-                  }
-                }}
-                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-              />
-              <span className="text-sm text-gray-800">
-                Billing address same as shipping
-              </span>
-            </label>
-            {/* Billing Address */}
-            {!sameAsShipping && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-purple-600" />
-                    Billing Address
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => openAddAddress('billing')}
-                    className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add New
-                  </button>
-                </div>
-                {addresses.length === 0 ? (
-                  <div className="text-center py-6 border border-dashed border-gray-300 rounded-xl">
-                    <p className="text-sm text-gray-500 mb-3">
-                      No saved addresses
-                    </p>
+          <div className="bg-white/80 backdrop-blur-sm p-4 sm:p-6 rounded-xl shadow-sm border border-purple-100 space-y-6">
+            {/* STEP 0: Address */}
+            {step === 0 && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-purple-600" />
+                      Shipping Address
+                    </h2>
                     <button
                       type="button"
-                      onClick={() => openAddAddress('billing')}
-                      className="inline-flex items-center gap-1 text-sm font-medium bg-purple-600 text-white px-4 py-2 rounded-full hover:bg-purple-700"
+                      onClick={() => openAddAddress('shipping')}
+                      className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
                     >
                       <Plus className="w-4 h-4" />
-                      Add Billing Address
+                      Add New
                     </button>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {addresses.map((addr) => (
-                      <AddressCard
-                        key={`bill-${addr.id}`}
-                        addr={addr}
-                        selected={selectedBillingId === addr.id}
-                        onSelect={() => setSelectedBillingId(addr.id)}
-                        onEdit={() => openEditAddress(addr)}
-                        onDelete={() => handleDeleteAddress(addr)}
-                      />
-                    ))}
+                  {addressesLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading addresses...
+                    </div>
+                  ) : addresses.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-gray-300 rounded-xl">
+                      <MapPin className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500 mb-3">
+                        No saved addresses yet
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => openAddAddress('shipping')}
+                        className="inline-flex items-center gap-1 text-sm font-medium bg-purple-600 text-white px-4 py-2 rounded-full hover:bg-purple-700"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Shipping Address
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {addresses.map((addr) => (
+                        <AddressCard
+                          key={addr.id}
+                          addr={addr}
+                          selected={selectedShippingId === addr.id}
+                          onSelect={() => {
+                            setSelectedShippingId(addr.id);
+                            if (sameAsShipping) setSelectedBillingId(addr.id);
+                          }}
+                          onEdit={() => openEditAddress(addr)}
+                          onDelete={() => handleDeleteAddress(addr)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sameAsShipping}
+                    onChange={(e) => {
+                      setSameAsShipping(e.target.checked);
+                      if (e.target.checked && selectedShippingId) {
+                        setSelectedBillingId(selectedShippingId);
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm text-gray-800">
+                    Billing address same as shipping
+                  </span>
+                </label>
+                {!sameAsShipping && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-purple-600" />
+                        Billing Address
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => openAddAddress('billing')}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add New
+                      </button>
+                    </div>
+                    {addresses.length === 0 ? (
+                      <div className="text-center py-6 border border-dashed border-gray-300 rounded-xl">
+                        <p className="text-sm text-gray-500 mb-3">
+                          No saved addresses
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => openAddAddress('billing')}
+                          className="inline-flex items-center gap-1 text-sm font-medium bg-purple-600 text-white px-4 py-2 rounded-full hover:bg-purple-700"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Billing Address
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {addresses.map((addr) => (
+                          <AddressCard
+                            key={`bill-${addr.id}`}
+                            addr={addr}
+                            selected={selectedBillingId === addr.id}
+                            onSelect={() => setSelectedBillingId(addr.id)}
+                            onEdit={() => openEditAddress(addr)}
+                            onDelete={() => handleDeleteAddress(addr)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+                <button
+                  type="button"
+                  onClick={goToShippingStep}
+                  disabled={!selectedShipping}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  Continue to Shipping
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </>
             )}
-            {/* Payment Method - Dynamic from enabled providers */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Method
-              </label>
-              {paymentProviders.length === 0 ? (
-                <div className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
-                  No payment methods are currently enabled. Please contact the store administrator.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {paymentProviders.map((provider) => {
-                    const label =
-                      provider.credentials?.display_label || provider.name;
-                    const isSelected = selectedProviderId === provider.id;
-                    const isCodOption = provider.provider_key === 'cod';
-                    return (
-                      <label
-                        key={provider.id}
-                        className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
-                          isSelected
-                            ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-200'
-                            : 'border-gray-200 hover:bg-gray-50'
-                        }`}
+            {/* STEP 1: Shipping providers */}
+            {step === 1 && (
+              <>
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                    <Truck className="w-4 h-4 text-purple-600" />
+                    Select Shipping Option
+                  </h2>
+                  {selectedShipping && (
+                    <p className="text-sm text-gray-500 mb-4">
+                      Delivering to {selectedShipping.city}
+                      {selectedShipping.zipCode
+                        ? ` (${selectedShipping.zipCode})`
+                        : ''}
+                    </p>
+                  )}
+                  {ratesLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-10 text-gray-500">
+                      <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+                      Fetching available shipping options...
+                    </div>
+                  ) : ratesError ? (
+                    <div className="bg-amber-50 border border-amber-100 text-amber-800 text-sm rounded-lg p-4">
+                      {ratesError}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          selectedShipping && fetchShippingRates(selectedShipping)
+                        }
+                        className="block mt-2 text-purple-600 font-medium hover:underline"
                       >
-                        <input
-                          type="radio"
-                          name="paymentProvider"
-                          value={provider.id}
-                          checked={isSelected}
-                          onChange={() => setSelectedProviderId(provider.id)}
-                          className="mt-1 w-4 h-4 text-purple-600"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            {isCodOption ? (
-                              <Banknote className="w-5 h-5 text-gray-600" />
-                            ) : (
-                              <CreditCard className="w-5 h-5 text-gray-600" />
-                            )}
-                            <span className="font-medium">{label}</span>
-                            {provider.provider_key === 'phonepe' && (
-                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                                PhonePe
-                              </span>
-                            )}
-                          </div>
-                          {isCodOption && provider.credentials?.instructions && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              {provider.credentials.instructions}
-                            </p>
-                          )}
-                          {isCodOption && extraCodCharge > 0 && isSelected && (
-                            <p className="text-xs text-amber-700 mt-1">
-                              Extra COD charge: ₹{extraCodCharge}
-                            </p>
-                          )}
-                        </div>
-                      </label>
-                    );
-                  })}
+                        Retry
+                      </button>
+                    </div>
+                  ) : shippingRates.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 text-sm">
+                      No shipping options available for this location.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {shippingRates.map((rate) => {
+                        const isSelected =
+                          selectedCourier?.courierCompanyId ===
+                          rate.courierCompanyId;
+                        return (
+                          <label
+                            key={rate.courierCompanyId}
+                            className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-200'
+                                : 'border-gray-200 hover:border-purple-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="courier"
+                              checked={isSelected}
+                              onChange={() => setSelectedCourier(rate)}
+                              className="mt-1 w-4 h-4 text-purple-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="font-semibold text-gray-900 text-sm">
+                                  {rate.courierName}
+                                </span>
+                                <span className="font-bold text-purple-700">
+                                  ₹{rate.rate.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                {rate.estimatedDays != null && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Package className="w-3.5 h-3.5" />
+                                    {rate.estimatedDays} day
+                                    {rate.estimatedDays !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                                {rate.etd && !rate.estimatedDays && (
+                                  <span>ETD: {rate.etd}</span>
+                                )}
+                                {rate.isSurface && (
+                                  <span className="bg-gray-100 px-1.5 py-0.5 rounded">
+                                    Surface
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <button
-              type="submit"
-              disabled={loading || !selectedShipping || !selectedProviderId || paymentProviders.length === 0}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center gap-2"
-            >
-              {loading
-                ? isCod
-                  ? 'Placing Order...'
-                  : 'Redirecting to Payment...'
-                : isCod
-                ? 'Place Order (Cash on Delivery)'
-                : 'Pay & Place Order'}
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(0)}
+                    className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-50 flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToPaymentStep}
+                    disabled={!selectedCourier}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    Continue to Payment
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            )}
+            {/* STEP 2: Payment */}
+            {step === 2 && (
+              <form onSubmit={handlePlaceOrder} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Method
+                  </label>
+                  {paymentProviders.length === 0 ? (
+                    <div className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                      No payment methods are currently enabled. Please contact the
+                      store administrator.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {paymentProviders.map((provider) => {
+                        const label =
+                          provider.credentials?.display_label || provider.name;
+                        const isSelected = selectedProviderId === provider.id;
+                        const isCodOption = provider.provider_key === 'cod';
+                        return (
+                          <label
+                            key={provider.id}
+                            className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-200'
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="paymentProvider"
+                              value={provider.id}
+                              checked={isSelected}
+                              onChange={() => setSelectedProviderId(provider.id)}
+                              className="mt-1 w-4 h-4 text-purple-600"
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                {isCodOption ? (
+                                  <Banknote className="w-5 h-5 text-gray-600" />
+                                ) : (
+                                  <CreditCard className="w-5 h-5 text-gray-600" />
+                                )}
+                                <span className="font-medium">{label}</span>
+                                {provider.provider_key === 'phonepe' && (
+                                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                                    PhonePe
+                                  </span>
+                                )}
+                              </div>
+                              {isCodOption &&
+                                provider.credentials?.instructions && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {provider.credentials.instructions}
+                                  </p>
+                                )}
+                              {isCodOption &&
+                                extraCodCharge > 0 &&
+                                isSelected && (
+                                  <p className="text-xs text-amber-700 mt-1">
+                                    Extra COD charge: ₹{extraCodCharge}
+                                  </p>
+                                )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                {selectedCourier && (
+                  <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">
+                        {selectedCourier.courierName}
+                      </span>
+                      <span className="font-medium">
+                        ₹{selectedCourier.rate.toFixed(2)}
+                      </span>
+                    </div>
+                    {selectedCourier.estimatedDays != null && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Est. delivery: {selectedCourier.estimatedDays} day
+                        {selectedCourier.estimatedDays !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-50 flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={
+                      loading ||
+                      !selectedShipping ||
+                      !selectedProviderId ||
+                      !selectedCourier ||
+                      paymentProviders.length === 0
+                    }
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    {loading
+                      ? isCod
+                        ? 'Placing Order...'
+                        : 'Redirecting to Payment...'
+                      : isCod
+                      ? 'Place Order (COD)'
+                      : 'Pay & Place Order'}
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
         {/* Order Summary */}
         <div className="lg:col-span-1">
           <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-sm border border-purple-100 sticky top-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Order Summary
+            </h2>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal ({items.length} items)</span>
+                <span className="text-gray-600">
+                  Subtotal ({items.length} items)
+                </span>
                 <span className="font-medium">₹{subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Shipping</span>
                 <span className="font-medium">
-                  {shipping === 0 ? 'FREE' : `₹${shipping.toFixed(2)}`}
+                  {selectedCourier
+                    ? `₹${shipping.toFixed(2)}`
+                    : 'Select option'}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -934,7 +1242,9 @@ const StoreCheckout: React.FC = () => {
               {extraCodCharge > 0 && (
                 <div className="flex justify-between text-amber-700">
                   <span>COD Charge</span>
-                  <span className="font-medium">₹{extraCodCharge.toFixed(2)}</span>
+                  <span className="font-medium">
+                    ₹{extraCodCharge.toFixed(2)}
+                  </span>
                 </div>
               )}
               <div className="border-t border-gray-200 pt-3 flex justify-between text-base font-bold">
@@ -951,18 +1261,30 @@ const StoreCheckout: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="font-semibold text-gray-900">
-                {editingAddress ? 'Edit Address' : `Add ${addressFormFor === 'shipping' ? 'Shipping' : 'Billing'} Address`}
+                {editingAddress
+                  ? 'Edit Address'
+                  : `Add ${
+                      addressFormFor === 'shipping' ? 'Shipping' : 'Billing'
+                    } Address`}
               </h3>
-              <button type="button" onClick={closeAddressForm} className="p-1 hover:bg-gray-100 rounded">
+              <button
+                type="button"
+                onClick={closeAddressForm}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleSubmitAddress} className="p-4 space-y-4">
               {addressError && (
-                <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{addressError}</div>
+                <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                  {addressError}
+                </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name *
+                </label>
                 <input
                   name="fullName"
                   value={formData.fullName}
@@ -972,7 +1294,9 @@ const StoreCheckout: React.FC = () => {
                 />
               </div>
               <div ref={streetInputRef} className="relative">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Street Address *
+                </label>
                 <input
                   name="streetAddress"
                   value={formData.streetAddress}
@@ -999,7 +1323,9 @@ const StoreCheckout: React.FC = () => {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Apartment / Landmark</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Apartment / Landmark
+                </label>
                 <input
                   name="apartment"
                   value={formData.apartment}
@@ -1009,7 +1335,9 @@ const StoreCheckout: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    City *
+                  </label>
                   <input
                     name="city"
                     value={formData.city}
@@ -1019,7 +1347,9 @@ const StoreCheckout: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    State
+                  </label>
                   <input
                     name="state"
                     value={formData.state}
@@ -1030,7 +1360,9 @@ const StoreCheckout: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ZIP Code
+                  </label>
                   <input
                     name="zipCode"
                     value={formData.zipCode}
@@ -1039,7 +1371,9 @@ const StoreCheckout: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Country *
+                  </label>
                   <input
                     name="country"
                     value={formData.country}
@@ -1050,7 +1384,9 @@ const StoreCheckout: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone
+                </label>
                 <input
                   name="phone"
                   value={formData.phone}
@@ -1066,7 +1402,9 @@ const StoreCheckout: React.FC = () => {
                   onChange={handleAddressFormChange}
                   className="w-4 h-4 text-purple-600"
                 />
-                <span className="text-sm text-gray-700">Set as default address</span>
+                <span className="text-sm text-gray-700">
+                  Set as default address
+                </span>
               </div>
               <button
                 type="button"
@@ -1076,15 +1414,25 @@ const StoreCheckout: React.FC = () => {
               >
                 {isLocating ? 'Getting location...' : 'Use my current location'}
               </button>
-              {locationError && <p className="text-xs text-red-600">{locationError}</p>}
-              {locationSuccess && <p className="text-xs text-green-600">Location filled successfully</p>}
+              {locationError && (
+                <p className="text-xs text-red-600">{locationError}</p>
+              )}
+              {locationSuccess && (
+                <p className="text-xs text-green-600">
+                  Location filled successfully
+                </p>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
                   disabled={submittingAddress}
                   className="btn-primary flex-1"
                 >
-                  {submittingAddress ? 'Saving...' : editingAddress ? 'Update Address' : 'Save Address'}
+                  {submittingAddress
+                    ? 'Saving...'
+                    : editingAddress
+                    ? 'Update Address'
+                    : 'Save Address'}
                 </button>
                 <button
                   type="button"
