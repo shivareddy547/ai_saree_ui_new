@@ -27,6 +27,7 @@ import HelpUs from './pages/HelpUs';
 import SetupProviders from './pages/SetupProviders';
 import SocialPostVideoConfig from './pages/SocialPostVideoConfig';
 import PaymentProvidersSetup from './pages/PaymentProvidersSetup';
+import ShipmentProvidersSetup from './pages/ShipmentProvidersSetup';
 import StoreSettingsAdmin from './pages/StoreSettingsAdmin';
 import StoreHome from './pages/Store/StoreHome';
 import StoreProducts from './pages/Store/StoreProducts';
@@ -64,8 +65,7 @@ const ScrollToTop: React.FC = () => {
   return null;
 };
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
-    children,
-    allowedRoles,
+    children, allowedRoles,
 }) => {
     const token = localStorage.getItem('authToken');
     const userStr = localStorage.getItem('user');
@@ -132,6 +132,7 @@ const App: React.FC = () => {
                             <Route path="help-us" element={<HelpUs />} />
                             <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
                             <Route path="payment-providers-setup" element={<PaymentProvidersSetup />} />
+                            <Route path="shipment-providers-setup" element={<ShipmentProvidersSetup />} />
                             <Route path="setup-providers" element={<SetupProviders />} />
                             <Route path="store-settings" element={<StoreSettingsAdmin />} />
                         </Route>
