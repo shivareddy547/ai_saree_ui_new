@@ -16,6 +16,8 @@ import {
   CreditCard,
   Loader2,
   ExternalLink,
+  RefreshCw,
+  Plus,
 } from 'lucide-react';
 import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
@@ -74,6 +76,16 @@ interface Order {
   paymentDetails?: Record<string, any>;
   cancellationReason?: string | null;
   trackingUrl?: string | null;
+  shippingAmount?: number | null;
+  estimatedDeliveryDays?: number | null;
+  shipmentProviderId?: string | null;
+  courierCompanyId?: string | null;
+  courierName?: string | null;
+  shiprocketOrderId?: string | null;
+  shiprocketShipmentId?: string | null;
+  awbCode?: string | null;
+  shipmentStatus?: string | null;
+  shipmentDetails?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
   user?: OrderUser;
@@ -84,6 +96,12 @@ interface Pagination {
   limit: number;
   total: number;
   totalPages: number;
+}
+interface ShipmentProvider {
+  id: string;
+  name: string;
+  provider_key: string;
+  is_enabled: boolean;
 }
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -145,6 +163,13 @@ const getStatusConfig = (status: string) => {
     }
   );
 };
+const hasShipmentProvider = (order: Order) =>
+  !!(
+    order.shipmentProviderId ||
+    order.courierName ||
+    order.shiprocketOrderId ||
+    order.awbCode
+  );
 const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -163,7 +188,9 @@ const Orders: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'order' | 'user' | 'shipment' | 'payment'>('order');
+  const [activeTab, setActiveTab] = useState<
+    'order' | 'user' | 'shipment' | 'payment'
+  >('order');
   const [cancelModal, setCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -172,6 +199,22 @@ const Orders: React.FC = () => {
   const [trackingUrl, setTrackingUrl] = useState('');
   const [shipLoading, setShipLoading] = useState(false);
   const [shipError, setShipError] = useState<string | null>(null);
+  // Shipment management
+  const [shipmentActionLoading, setShipmentActionLoading] = useState(false);
+  const [shipmentActionError, setShipmentActionError] = useState<string | null>(
+    null
+  );
+  const [createShipmentModal, setCreateShipmentModal] = useState(false);
+  const [shipmentProviders, setShipmentProviders] = useState<ShipmentProvider[]>(
+    []
+  );
+  const [selectedShipmentProviderId, setSelectedShipmentProviderId] = useState<
+    string | null
+  >(null);
+  const [createShipmentLoading, setCreateShipmentLoading] = useState(false);
+  const [createShipmentError, setCreateShipmentError] = useState<string | null>(
+    null
+  );
   const fetchOrders = useCallback(
     async (page = 1) => {
       try {
@@ -224,6 +267,7 @@ const Orders: React.FC = () => {
     try {
       setDetailLoading(true);
       setActiveTab('order');
+      setShipmentActionError(null);
       const response = await apiClient.get(`/orders/admin/${orderId}`);
       setSelectedOrder(response.data.data);
     } catch (err: any) {
@@ -241,10 +285,13 @@ const Orders: React.FC = () => {
     setSelectedOrder(null);
     setCancelModal(false);
     setShipModal(false);
+    setCreateShipmentModal(false);
     setCancelReason('');
     setTrackingUrl('');
     setCancelError(null);
     setShipError(null);
+    setShipmentActionError(null);
+    setCreateShipmentError(null);
   };
   const handleCancelOrder = async () => {
     if (!selectedOrder) return;
@@ -255,9 +302,10 @@ const Orders: React.FC = () => {
     try {
       setCancelLoading(true);
       setCancelError(null);
-      const response = await apiClient.post(`/orders/admin/${selectedOrder.id}/cancel`, {
-        reason: cancelReason.trim(),
-      });
+      const response = await apiClient.post(
+        `/orders/admin/${selectedOrder.id}/cancel`,
+        { reason: cancelReason.trim() }
+      );
       setSelectedOrder(response.data.data);
       setCancelModal(false);
       setCancelReason('');
@@ -274,16 +322,19 @@ const Orders: React.FC = () => {
   };
   const handleShipOrder = async () => {
     if (!selectedOrder) return;
-    if (!trackingUrl.trim()) {
-      setShipError('Tracking URL is required');
+    if (!hasShipmentProvider(selectedOrder)) {
+      setShipError(
+        'Cannot mark as shipped: no shipment provider associated. Create a shipment first.'
+      );
       return;
     }
     try {
       setShipLoading(true);
       setShipError(null);
-      const response = await apiClient.post(`/orders/admin/${selectedOrder.id}/ship`, {
-        trackingUrl: trackingUrl.trim(),
-      });
+      const response = await apiClient.post(
+        `/orders/admin/${selectedOrder.id}/ship`,
+        { trackingUrl: trackingUrl.trim() || undefined }
+      );
       setSelectedOrder(response.data.data);
       setShipModal(false);
       setTrackingUrl('');
@@ -298,6 +349,91 @@ const Orders: React.FC = () => {
       setShipLoading(false);
     }
   };
+  const handleRefreshShipment = async () => {
+    if (!selectedOrder) return;
+    try {
+      setShipmentActionLoading(true);
+      setShipmentActionError(null);
+      const response = await apiClient.post(
+        `/orders/admin/${selectedOrder.id}/shipment/refresh`
+      );
+      setSelectedOrder(response.data.data);
+    } catch (err: any) {
+      setShipmentActionError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          'Failed to refresh shipment status'
+      );
+    } finally {
+      setShipmentActionLoading(false);
+    }
+  };
+  const handleCancelShipment = async () => {
+    if (!selectedOrder) return;
+    if (
+      !window.confirm(
+        'Cancel the existing shipment with the courier? This does not cancel the order itself.'
+      )
+    ) {
+      return;
+    }
+    try {
+      setShipmentActionLoading(true);
+      setShipmentActionError(null);
+      const response = await apiClient.post(
+        `/orders/admin/${selectedOrder.id}/shipment/cancel`
+      );
+      setSelectedOrder(response.data.data);
+      fetchOrders(pagination.page);
+    } catch (err: any) {
+      setShipmentActionError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          'Failed to cancel shipment'
+      );
+    } finally {
+      setShipmentActionLoading(false);
+    }
+  };
+  const openCreateShipmentModal = async () => {
+    setCreateShipmentError(null);
+    setSelectedShipmentProviderId(null);
+    try {
+      const res = await apiClient.get('/orders/shipment-providers');
+      const list: ShipmentProvider[] = res.data?.data || [];
+      setShipmentProviders(list);
+      if (list.length > 0) {
+        setSelectedShipmentProviderId(list[0].id);
+      }
+    } catch {
+      setShipmentProviders([]);
+    }
+    setCreateShipmentModal(true);
+  };
+  const handleCreateShipment = async () => {
+    if (!selectedOrder) return;
+    try {
+      setCreateShipmentLoading(true);
+      setCreateShipmentError(null);
+      const response = await apiClient.post(
+        `/orders/admin/${selectedOrder.id}/shipment/create`,
+        {
+          shipmentProviderId: selectedShipmentProviderId || undefined,
+        }
+      );
+      setSelectedOrder(response.data.data);
+      setCreateShipmentModal(false);
+      fetchOrders(pagination.page);
+    } catch (err: any) {
+      setCreateShipmentError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          'Failed to create shipment'
+      );
+    } finally {
+      setCreateShipmentLoading(false);
+    }
+  };
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-IN', {
       day: 'numeric',
@@ -309,7 +445,10 @@ const Orders: React.FC = () => {
   };
   const formatCurrency = (amount: number | string) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return `₹${(num || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `₹${(num || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   };
   if (selectedOrder || detailLoading) {
     return (
@@ -326,7 +465,9 @@ const Orders: React.FC = () => {
               Order #{selectedOrder?.id || '...'}
             </h1>
             {selectedOrder && (
-              <p className="text-sm text-gray-500">{formatDate(selectedOrder.createdAt)}</p>
+              <p className="text-sm text-gray-500">
+                {formatDate(selectedOrder.createdAt)}
+              </p>
             )}
           </div>
         </div>
@@ -350,40 +491,52 @@ const Orders: React.FC = () => {
                 );
               })()}
               <span className="text-sm text-gray-500">
-                Total: <span className="font-semibold text-gray-900">{formatCurrency(selectedOrder.total)}</span>
+                Total:{' '}
+                <span className="font-semibold text-gray-900">
+                  {formatCurrency(selectedOrder.total)}
+                </span>
               </span>
               {selectedOrder.merchantOrderId && (
-                <span className="text-xs text-gray-400 font-mono">{selectedOrder.merchantOrderId}</span>
+                <span className="text-xs text-gray-400 font-mono">
+                  {selectedOrder.merchantOrderId}
+                </span>
               )}
             </div>
-            {(selectedOrder.status !== 'cancelled' && selectedOrder.status !== 'delivered') && (
-              <div className="flex flex-wrap gap-2">
-                {selectedOrder.status !== 'shipped' && (
+            {selectedOrder.status !== 'cancelled' &&
+              selectedOrder.status !== 'delivered' && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedOrder.status !== 'shipped' && (
+                    <button
+                      onClick={() => {
+                        setShipModal(true);
+                        setShipError(null);
+                        setTrackingUrl(selectedOrder.trackingUrl || '');
+                      }}
+                      disabled={!hasShipmentProvider(selectedOrder)}
+                      title={
+                        !hasShipmentProvider(selectedOrder)
+                          ? 'Create a shipment first'
+                          : undefined
+                      }
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Truck className="w-4 h-4" />
+                      Mark as Shipped
+                    </button>
+                  )}
                   <button
                     onClick={() => {
-                      setShipModal(true);
-                      setShipError(null);
-                      setTrackingUrl(selectedOrder.trackingUrl || '');
+                      setCancelModal(true);
+                      setCancelError(null);
+                      setCancelReason('');
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 border border-red-200 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors"
                   >
-                    <Truck className="w-4 h-4" />
-                    Mark as Shipped
+                    <XCircle className="w-4 h-4" />
+                    Cancel Order
                   </button>
-                )}
-                <button
-                  onClick={() => {
-                    setCancelModal(true);
-                    setCancelError(null);
-                    setCancelReason('');
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 border border-red-200 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  <XCircle className="w-4 h-4" />
-                  Cancel Order
-                </button>
-              </div>
-            )}
+                </div>
+              )}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="flex border-b border-gray-100 overflow-x-auto">
                 {(
@@ -417,29 +570,43 @@ const Orders: React.FC = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                       <div>
                         <p className="text-gray-500">Order ID</p>
-                        <p className="font-semibold text-gray-900">#{selectedOrder.id}</p>
+                        <p className="font-semibold text-gray-900">
+                          #{selectedOrder.id}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Status</p>
-                        <p className="font-semibold text-gray-900 capitalize">{selectedOrder.status}</p>
+                        <p className="font-semibold text-gray-900 capitalize">
+                          {selectedOrder.status}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Items</p>
-                        <p className="font-semibold text-gray-900">{selectedOrder.items?.length || 0}</p>
+                        <p className="font-semibold text-gray-900">
+                          {selectedOrder.items?.length || 0}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Total</p>
-                        <p className="font-semibold text-gray-900">{formatCurrency(selectedOrder.total)}</p>
+                        <p className="font-semibold text-gray-900">
+                          {formatCurrency(selectedOrder.total)}
+                        </p>
                       </div>
                     </div>
                     {selectedOrder.cancellationReason && (
                       <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm">
-                        <p className="font-medium text-red-800">Cancellation Reason</p>
-                        <p className="text-red-700 mt-1">{selectedOrder.cancellationReason}</p>
+                        <p className="font-medium text-red-800">
+                          Cancellation Reason
+                        </p>
+                        <p className="text-red-700 mt-1">
+                          {selectedOrder.cancellationReason}
+                        </p>
                       </div>
                     )}
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Line Items</h3>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                        Line Items
+                      </h3>
                       <div className="space-y-3">
                         {(selectedOrder.items || []).map((item) => {
                           const imgUrl =
@@ -458,7 +625,8 @@ const Orders: React.FC = () => {
                                     alt={item.product?.name || 'Product'}
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
-                                      (e.target as HTMLImageElement).style.display = 'none';
+                                      (e.target as HTMLImageElement).style.display =
+                                        'none';
                                     }}
                                   />
                                 ) : (
@@ -475,12 +643,18 @@ const Orders: React.FC = () => {
                                   {[item.variant?.color, item.variant?.size]
                                     .filter(Boolean)
                                     .join(' · ') || 'Default'}
-                                  {item.variant?.sku ? ` · SKU: ${item.variant.sku}` : ''}
+                                  {item.variant?.sku
+                                    ? ` · SKU: ${item.variant.sku}`
+                                    : ''}
                                 </p>
                                 <div className="flex items-center justify-between mt-1.5 text-sm">
-                                  <span className="text-gray-600">Qty: {item.quantity}</span>
+                                  <span className="text-gray-600">
+                                    Qty: {item.quantity}
+                                  </span>
                                   <span className="font-medium text-gray-900">
-                                    {formatCurrency(Number(item.price) * item.quantity)}
+                                    {formatCurrency(
+                                      Number(item.price) * item.quantity
+                                    )}
                                   </span>
                                 </div>
                                 <p className="text-xs text-gray-400">
@@ -493,8 +667,11 @@ const Orders: React.FC = () => {
                             </div>
                           );
                         })}
-                        {(!selectedOrder.items || selectedOrder.items.length === 0) && (
-                          <p className="text-sm text-gray-500 text-center py-4">No items found</p>
+                        {(!selectedOrder.items ||
+                          selectedOrder.items.length === 0) && (
+                          <p className="text-sm text-gray-500 text-center py-4">
+                            No items found
+                          </p>
                         )}
                       </div>
                     </div>
@@ -506,11 +683,15 @@ const Orders: React.FC = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <div>
                           <p className="text-gray-500">Full Name</p>
-                          <p className="font-semibold text-gray-900">{selectedOrder.user.fullName}</p>
+                          <p className="font-semibold text-gray-900">
+                            {selectedOrder.user.fullName}
+                          </p>
                         </div>
                         <div>
                           <p className="text-gray-500">Email</p>
-                          <p className="font-semibold text-gray-900 break-all">{selectedOrder.user.email}</p>
+                          <p className="font-semibold text-gray-900 break-all">
+                            {selectedOrder.user.email}
+                          </p>
                         </div>
                         <div>
                           <p className="text-gray-500">Phone</p>
@@ -540,12 +721,14 @@ const Orders: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500">User details not available</p>
+                      <p className="text-sm text-gray-500">
+                        User details not available
+                      </p>
                     )}
                   </div>
                 )}
                 {activeTab === 'shipment' && (
-                  <div className="space-y-4 text-sm">
+                  <div className="space-y-5 text-sm">
                     <div>
                       <p className="text-gray-500 mb-1">Shipping Address</p>
                       <p className="font-medium text-gray-900 whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-100">
@@ -555,26 +738,182 @@ const Orders: React.FC = () => {
                     <div>
                       <p className="text-gray-500 mb-1">Billing Address</p>
                       <p className="font-medium text-gray-900 whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-100">
-                        {selectedOrder.billingAddress || selectedOrder.shippingAddress || '—'}
+                        {selectedOrder.billingAddress ||
+                          selectedOrder.shippingAddress ||
+                          '—'}
                       </p>
                     </div>
-                    {selectedOrder.trackingUrl && (
-                      <div>
-                        <p className="text-gray-500 mb-1">Tracking URL</p>
-                        <a
-                          href={selectedOrder.trackingUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-purple-600 hover:text-purple-700 font-medium break-all"
-                        >
-                          {selectedOrder.trackingUrl}
-                          <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
-                        </a>
+                    {/* Shipment provider details */}
+                    {hasShipmentProvider(selectedOrder) ? (
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
+                        <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
+                          <Truck className="w-4 h-4" />
+                          Shipment Details
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {selectedOrder.courierName && (
+                            <div>
+                              <p className="text-gray-500 text-xs">Courier</p>
+                              <p className="font-medium text-gray-900">
+                                {selectedOrder.courierName}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.courierCompanyId && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Courier Company ID
+                              </p>
+                              <p className="font-medium text-gray-900">
+                                {selectedOrder.courierCompanyId}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.shippingAmount != null && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Shipping Amount
+                              </p>
+                              <p className="font-medium text-gray-900">
+                                {formatCurrency(selectedOrder.shippingAmount)}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.estimatedDeliveryDays != null && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Est. Delivery
+                              </p>
+                              <p className="font-medium text-gray-900">
+                                {selectedOrder.estimatedDeliveryDays} day
+                                {selectedOrder.estimatedDeliveryDays !== 1
+                                  ? 's'
+                                  : ''}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.shipmentStatus && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Shipment Status
+                              </p>
+                              <p className="font-medium text-gray-900 capitalize">
+                                {selectedOrder.shipmentStatus}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.awbCode && (
+                            <div>
+                              <p className="text-gray-500 text-xs">AWB Code</p>
+                              <p className="font-medium text-gray-900 font-mono">
+                                {selectedOrder.awbCode}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.shiprocketOrderId && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Shiprocket Order ID
+                              </p>
+                              <p className="font-medium text-gray-900 font-mono">
+                                {selectedOrder.shiprocketOrderId}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.shiprocketShipmentId && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Shiprocket Shipment ID
+                              </p>
+                              <p className="font-medium text-gray-900 font-mono">
+                                {selectedOrder.shiprocketShipmentId}
+                              </p>
+                            </div>
+                          )}
+                          {selectedOrder.shipmentProviderId && (
+                            <div>
+                              <p className="text-gray-500 text-xs">
+                                Provider ID
+                              </p>
+                              <p className="font-mono text-xs text-gray-700 break-all">
+                                {selectedOrder.shipmentProviderId}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        {selectedOrder.trackingUrl && (
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Tracking URL
+                            </p>
+                            <a
+                              href={selectedOrder.trackingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-purple-600 hover:text-purple-700 font-medium break-all"
+                            >
+                              {selectedOrder.trackingUrl}
+                              <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-amber-800 text-sm">
+                        No shipment provider associated with this order yet.
                       </div>
                     )}
-                    {!selectedOrder.trackingUrl && selectedOrder.status === 'shipped' && (
-                      <p className="text-amber-600 text-sm">Tracking URL not set</p>
+                    {shipmentActionError && (
+                      <div className="bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2">
+                        {shipmentActionError}
+                      </div>
                     )}
+                    {/* Shipment actions */}
+                    {selectedOrder.status !== 'cancelled' &&
+                      selectedOrder.status !== 'delivered' && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {(selectedOrder.shiprocketShipmentId ||
+                            selectedOrder.awbCode) && (
+                            <button
+                              type="button"
+                              onClick={handleRefreshShipment}
+                              disabled={shipmentActionLoading}
+                              className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {shipmentActionLoading ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-4 h-4" />
+                              )}
+                              Refresh Status
+                            </button>
+                          )}
+                          {(selectedOrder.shiprocketOrderId ||
+                            selectedOrder.awbCode) &&
+                            selectedOrder.shipmentStatus !== 'cancelled' && (
+                              <button
+                                type="button"
+                                onClick={handleCancelShipment}
+                                disabled={shipmentActionLoading}
+                                className="inline-flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 disabled:opacity-50"
+                              >
+                                <XCircle className="w-4 h-4" />
+                                Cancel Shipment
+                              </button>
+                            )}
+                          <button
+                            type="button"
+                            onClick={openCreateShipmentModal}
+                            disabled={shipmentActionLoading}
+                            className="inline-flex items-center gap-2 px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                          >
+                            <Plus className="w-4 h-4" />
+                            {hasShipmentProvider(selectedOrder)
+                              ? 'Create New Shipment'
+                              : 'Create Shipment'}
+                          </button>
+                        </div>
+                      )}
                   </div>
                 )}
                 {activeTab === 'payment' && (
@@ -609,141 +948,217 @@ const Orders: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    {selectedOrder.paymentDetails &&
-                      Object.keys(selectedOrder.paymentDetails).length > 0 && (
-                        <div>
-                          <p className="text-gray-500 mb-1">Payment Details</p>
-                          <pre className="bg-gray-50 rounded-lg p-3 border border-gray-100 text-xs overflow-x-auto font-mono text-gray-700">
-                            {JSON.stringify(selectedOrder.paymentDetails, null, 2)}
-                          </pre>
-                        </div>
-                      )}
                   </div>
                 )}
               </div>
             </div>
+            {/* Cancel Order Modal */}
+            {cancelModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+                  <h3 className="font-semibold text-gray-900">Cancel Order</h3>
+                  {cancelError && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                      {cancelError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Reason *
+                    </label>
+                    <textarea
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      rows={3}
+                      placeholder="Enter cancellation reason"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCancelModal(false)}
+                      className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelOrder}
+                      disabled={cancelLoading}
+                      className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {cancelLoading ? 'Cancelling...' : 'Confirm Cancel'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Ship Modal */}
+            {shipModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+                  <h3 className="font-semibold text-gray-900">Mark as Shipped</h3>
+                  {!hasShipmentProvider(selectedOrder) && (
+                    <div className="text-sm text-amber-700 bg-amber-50 border border-amber-100 p-2 rounded">
+                      No shipment provider is associated. Create a shipment first
+                      from the Shipment tab.
+                    </div>
+                  )}
+                  {shipError && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                      {shipError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Tracking URL (optional)
+                    </label>
+                    <input
+                      type="url"
+                      value={trackingUrl}
+                      onChange={(e) => setTrackingUrl(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="https://..."
+                    />
+                    {selectedOrder.awbCode && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        AWB present — tracking URL will default to Shiprocket if
+                        left empty.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShipModal(false)}
+                      className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShipOrder}
+                      disabled={shipLoading || !hasShipmentProvider(selectedOrder)}
+                      className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {shipLoading ? 'Updating...' : 'Mark Shipped'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Create Shipment Modal */}
+            {createShipmentModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+                  <h3 className="font-semibold text-gray-900">Create Shipment</h3>
+                  <p className="text-sm text-gray-500">
+                    Create a new shipment in Shiprocket for this order. The
+                    cheapest available courier will be selected automatically if
+                    none is specified.
+                  </p>
+                  {createShipmentError && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                      {createShipmentError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Shipment Provider
+                    </label>
+                    {shipmentProviders.length === 0 ? (
+                      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+                        No enabled shipment providers. Configure one in Shipment
+                        Providers Setup.
+                      </p>
+                    ) : (
+                      <select
+                        value={selectedShipmentProviderId || ''}
+                        onChange={(e) =>
+                          setSelectedShipmentProviderId(e.target.value || null)
+                        }
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        {shipmentProviders.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                            {p.provider_key ? ` (${p.provider_key})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCreateShipmentModal(false)}
+                      className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateShipment}
+                      disabled={
+                        createShipmentLoading || shipmentProviders.length === 0
+                      }
+                      className="flex-1 bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {createShipmentLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        'Create Shipment'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         ) : null}
-        {cancelModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Cancel Order</h3>
-                <button
-                  onClick={() => setCancelModal(false)}
-                  className="p-1 rounded hover:bg-gray-100"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600">
-                Please provide a reason for cancelling order #{selectedOrder?.id}.
-              </p>
-              <textarea
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Cancellation reason..."
-              />
-              {cancelError && (
-                <p className="text-sm text-red-600">{cancelError}</p>
-              )}
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setCancelModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleCancelOrder}
-                  disabled={cancelLoading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-70 flex items-center gap-2"
-                >
-                  {cancelLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Confirm Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {shipModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Mark as Shipped</h3>
-                <button
-                  onClick={() => setShipModal(false)}
-                  className="p-1 rounded hover:bg-gray-100"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600">
-                Enter the tracking URL for order #{selectedOrder?.id}.
-              </p>
-              <input
-                type="url"
-                value={trackingUrl}
-                onChange={(e) => setTrackingUrl(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="https://tracking.example.com/..."
-              />
-              {shipError && <p className="text-sm text-red-600">{shipError}</p>}
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShipModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleShipOrder}
-                  disabled={shipLoading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-70 flex items-center gap-2"
-                >
-                  {shipLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Confirm Shipped
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
   return (
-    <div className="max-w-7xl mx-auto space-y-6 px-3 sm:px-0">
+    <div className="max-w-6xl mx-auto space-y-6 px-3 sm:px-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">All Orders</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {pagination.total} order{pagination.total !== 1 ? 's' : ''} total
+          <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Manage store orders and shipments
           </p>
         </div>
         <button
+          type="button"
           onClick={() => setShowFilters(!showFilters)}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 sm:hidden"
+          className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 sm:hidden"
         >
           <Filter className="w-4 h-4" />
           Filters
         </button>
       </div>
+      {/* Filters */}
       <div
-        className={`bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4 ${
+        className={`bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4 ${
           showFilters ? 'block' : 'hidden sm:block'
         }`}
       >
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
+        <form
+          onSubmit={handleSearch}
+          className="flex flex-col sm:flex-row gap-3"
+        >
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by Order ID or Merchant Order ID..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              placeholder="Search by order ID or merchant ID"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
           <button
@@ -754,160 +1169,143 @@ const Orders: React.FC = () => {
           </button>
         </form>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Payment Status</label>
-            <select
-              value={paymentStatusFilter}
-              onChange={(e) => setPaymentStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              {PAYMENT_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">To Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={paymentStatusFilter}
+            onChange={(e) => setPaymentStatusFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            {PAYMENT_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
         </div>
-        {(statusFilter || paymentStatusFilter || search || startDate || endDate) && (
+        {(statusFilter ||
+          paymentStatusFilter ||
+          search ||
+          startDate ||
+          endDate) && (
           <button
             type="button"
             onClick={clearFilters}
-            className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+            className="inline-flex items-center gap-1 text-sm text-purple-600 hover:underline"
           >
-            Clear all filters
+            <X className="w-3.5 h-3.5" />
+            Clear filters
           </button>
         )}
       </div>
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm border border-red-100">
           {error}
         </div>
       )}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="bg-white rounded-xl border border-gray-100 p-4 animate-pulse"
-            >
-              <div className="flex justify-between gap-4">
-                <div className="space-y-2 flex-1">
-                  <div className="h-4 w-32 bg-gray-200 rounded" />
-                  <div className="h-3 w-48 bg-gray-200 rounded" />
-                </div>
-                <div className="h-6 w-20 bg-gray-200 rounded-full" />
-              </div>
-            </div>
-          ))}
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
         </div>
       ) : orders.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 py-16 text-center">
-          <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-gray-700">No orders found</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Try adjusting your filters or check back later.
-          </p>
+        <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
+          <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500">No orders found</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {orders.map((order) => {
-            const statusConfig = getStatusConfig(order.status);
-            const StatusIcon = statusConfig.icon;
-            return (
-              <button
-                key={order.id}
-                onClick={() => openOrderDetail(order.id)}
-                className="w-full text-left bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md hover:border-purple-100 transition-all"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-gray-900">Order #{order.id}</span>
-                      {order.merchantOrderId && (
-                        <span className="text-xs text-gray-400 font-mono hidden sm:inline">
-                          {order.merchantOrderId}
+        <>
+          <div className="space-y-3">
+            {orders.map((order) => {
+              const cfg = getStatusConfig(order.status);
+              const Icon = cfg.icon;
+              return (
+                <button
+                  key={order.id}
+                  type="button"
+                  onClick={() => openOrderDetail(order.id)}
+                  className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-900">
+                          Order #{order.id}
                         </span>
-                      )}
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${cfg.bg} ${cfg.color}`}
+                        >
+                          <Icon className="w-3 h-3" />
+                          {cfg.label}
+                        </span>
+                        {hasShipmentProvider(order) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-medium">
+                            <Truck className="w-3 h-3" />
+                            {order.courierName || 'Shipment'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        {order.user?.fullName || 'Customer'} ·{' '}
+                        {formatDate(order.createdAt)}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {order.items?.length || 0} item
+                        {(order.items?.length || 0) !== 1 ? 's' : ''} ·{' '}
+                        {formatCurrency(order.total)} ·{' '}
+                        <span className="capitalize">{order.paymentStatus}</span>
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      {order.user?.fullName || 'Customer'} · {order.user?.email || '—'}
-                    </p>
-                    <p className="text-xs text-gray-400">{formatDate(order.createdAt)}</p>
-                    <p className="text-sm text-gray-500">
-                      {(order.items?.length || 0)} item{(order.items?.length || 0) !== 1 ? 's' : ''} ·{' '}
-                      <span className="font-medium text-gray-800">{formatCurrency(order.total)}</span>
-                    </p>
+                    <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${statusConfig.bg} ${statusConfig.color}`}
-                    >
-                      <StatusIcon className="w-3.5 h-3.5" />
-                      {statusConfig.label}
-                    </span>
-                    <span className="text-xs text-gray-400 capitalize">
-                      {order.paymentStatus} · {order.paymentMethod || '—'}
-                    </span>
-                  </div>
-                </div>
+                </button>
+              );
+            })}
+          </div>
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                disabled={pagination.page <= 1}
+                onClick={() => fetchOrders(pagination.page - 1)}
+                className="p-2 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
               </button>
-            );
-          })}
-        </div>
-      )}
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <button
-            onClick={() => fetchOrders(pagination.page - 1)}
-            disabled={pagination.page <= 1 || loading}
-            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm text-gray-600">
-            Page {pagination.page} of {pagination.totalPages}
-          </span>
-          <button
-            onClick={() => fetchOrders(pagination.page + 1)}
-            disabled={pagination.page >= pagination.totalPages || loading}
-            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+              <span className="text-sm text-gray-600">
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() => fetchOrders(pagination.page + 1)}
+                className="p-2 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
