@@ -14,7 +14,8 @@ import {
   Settings,
   Share2,
   CreditCard,
-  ClipboardList
+  ClipboardList,
+  Users
 } from 'lucide-react';
 interface NavContentProps {
   isMobile?: boolean;
@@ -32,6 +33,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     else if (path.includes('/all-videos')) setActiveItem('all-videos');
     else if (path.includes('/categories')) setActiveItem('categories');
     else if (path.includes('/orders')) setActiveItem('orders');
+    else if (path.includes('/users')) setActiveItem('users');
     else if (path.includes('/analytics')) setActiveItem('analytics');
     else if (path.includes('/help-us')) setActiveItem('help-us');
     else if (path.includes('/social-post-video-config')) setActiveItem('social-post-video-config');
@@ -48,6 +50,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'all-videos', label: 'All videos', icon: Grid3x3, path: '/all-videos' },
     { id: 'categories', label: 'Categories', icon: Grid3x3, path: '/categories' },
     { id: 'orders', label: 'Orders', icon: ClipboardList, path: '/orders' },
+    { id: 'users', label: 'Users', icon: Users, path: '/users' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
     { id: 'help-us', label: 'Help Us', icon: HelpCircle, path: '/help-us' },
     { id: 'social-post-video-config', label: 'Social Post Video Config', icon: Share2, path: '/social-post-video-config' },
