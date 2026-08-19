@@ -21,6 +21,7 @@ import AllVideos from './pages/AllVideos';
 import Categories from './pages/Categories';
 import Orders from './pages/Orders';
 import Users from './pages/Users';
+import UserDetail from './pages/UserDetail';
 import Analytics from './pages/Analytics';
 import HelpUs from './pages/HelpUs';
 import SetupProviders from './pages/SetupProviders';
@@ -126,6 +127,7 @@ const App: React.FC = () => {
                             <Route path="categories" element={<Categories />} />
                             <Route path="orders" element={<Orders />} />
                             <Route path="users" element={<Users />} />
+                            <Route path="users/:id" element={<UserDetail />} />
                             <Route path="analytics" element={<Analytics />} />
                             <Route path="help-us" element={<HelpUs />} />
                             <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
