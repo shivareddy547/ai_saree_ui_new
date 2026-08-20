@@ -323,6 +323,11 @@ const CreateProduct: React.FC = () => {
   const [showInBestSellers, setShowInBestSellers] = useState(false);
   const [showInNewArrivals, setShowInNewArrivals] = useState(false);
   const [showInPremiumProducts, setShowInPremiumProducts] = useState(false);
+  // Default shipping package dimensions
+  const [weight, setWeight] = useState("0.5");
+  const [length, setLength] = useState("30");
+  const [breadth, setBreadth] = useState("25");
+  const [height, setHeight] = useState("5");
   const [variants, setVariants] = useState<ProductVariant[]>([
     createEmptyVariant(),
   ]);
@@ -609,6 +614,11 @@ const CreateProduct: React.FC = () => {
         setShowInBestSellers(product.showInBestSellers || false);
         setShowInNewArrivals(product.showInNewArrivals || false);
         setShowInPremiumProducts(product.showInPremiumProducts || false);
+        // Load shipping dimensions
+        setWeight(product.weight?.toString() || "0.5");
+        setLength(product.length?.toString() || "30");
+        setBreadth(product.breadth?.toString() || "25");
+        setHeight(product.height?.toString() || "5");
         setAudioMode(product.audioMode || "text");
         setAudioScript(product.audioScript || "");
         setAudioLanguage((product.audioLanguage as "en" | "te" | "hi") || "en");
@@ -1105,6 +1115,10 @@ const CreateProduct: React.FC = () => {
         showInBestSellers,
         showInNewArrivals,
         showInPremiumProducts,
+        weight: parseFloat(weight) || 0.5,
+        length: parseFloat(length) || 30,
+        breadth: parseFloat(breadth) || 25,
+        height: parseFloat(height) || 5,
         variants: variantsPayload,
         images: uploadedImageItems.map((item, index) => ({
           url: item.url,
@@ -1223,6 +1237,10 @@ const CreateProduct: React.FC = () => {
     setShowInBestSellers(false);
     setShowInNewArrivals(false);
     setShowInPremiumProducts(false);
+    setWeight("0.5");
+    setLength("30");
+    setBreadth("25");
+    setHeight("5");
     setUnsplashQuery("");
     setUnsplashResults([]);
     setIsSearchingUnsplash(false);
@@ -1960,6 +1978,14 @@ const CreateProduct: React.FC = () => {
               setShowInNewArrivals={setShowInNewArrivals}
               showInPremiumProducts={showInPremiumProducts}
               setShowInPremiumProducts={setShowInPremiumProducts}
+              weight={weight}
+              setWeight={setWeight}
+              length={length}
+              setLength={setLength}
+              breadth={breadth}
+              setBreadth={setBreadth}
+              height={height}
+              setHeight={setHeight}
             />
           )}
           {currentStep === 2 && (

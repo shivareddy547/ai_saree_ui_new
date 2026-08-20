@@ -71,6 +71,15 @@ interface ProductDetailsProps {
   setCostPrice: (value: string) => void;
   stockQuantity: string;
   setStockQuantity: (value: string) => void;
+  // Default shipping package dimensions
+  weight: string;
+  setWeight: (value: string) => void;
+  length: string;
+  setLength: (value: string) => void;
+  breadth: string;
+  setBreadth: (value: string) => void;
+  height: string;
+  setHeight: (value: string) => void;
 }
 const createEmptyVariant = (): ProductVariant => ({
   id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -132,6 +141,14 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   setCostPrice,
   stockQuantity,
   setStockQuantity,
+  weight,
+  setWeight,
+  length,
+  setLength,
+  breadth,
+  setBreadth,
+  height,
+  setHeight,
 }) => {
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
   const renderVariantCard = (variant: ProductVariant, index: number) => (
@@ -454,6 +471,64 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
             Show in Premium Products
           </label>
         </div>
+      </div>
+      {/* Shipping Dimensions Section */}
+      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <h3 className="text-sm font-semibold text-blue-700 mb-3 flex items-center gap-2">
+          <Package size={18} className="text-blue-600" />
+          Default Shipping Package Dimensions
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-0.5">Weight (kg)</label>
+            <input
+              type="number"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              placeholder="0.5"
+              className="input-field text-sm"
+              min="0"
+              step="0.01"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-0.5">Length (cm)</label>
+            <input
+              type="number"
+              value={length}
+              onChange={(e) => setLength(e.target.value)}
+              placeholder="30"
+              className="input-field text-sm"
+              min="0"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-0.5">Breadth (cm)</label>
+            <input
+              type="number"
+              value={breadth}
+              onChange={(e) => setBreadth(e.target.value)}
+              placeholder="25"
+              className="input-field text-sm"
+              min="0"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-0.5">Height (cm)</label>
+            <input
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(e.target.value)}
+              placeholder="5"
+              className="input-field text-sm"
+              min="0"
+              step="0.1"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-blue-600 mt-2">These dimensions will be used as defaults for shipping calculations.</p>
       </div>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
