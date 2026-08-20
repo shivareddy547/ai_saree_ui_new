@@ -81,6 +81,11 @@ interface ShippingRate {
   codCharges?: number;
   isSurface?: boolean;
   rating?: number | null;
+  providerId?: string;
+  providerKey?: string;
+  providerName?: string;
+  shippingMode?: string;
+  rawCourierId?: string;
 }
 const emptyAddressForm: AddressFormData = {
   country: 'India',
@@ -184,6 +189,7 @@ const StoreCheckout: React.FC = () => {
     setRatesLoading(true);
     setRatesError(null);
     setSelectedCourier(null);
+    setShipmentProviderId(null);
     try {
       const res = await apiClient.post('/orders/shipping-rates', {
         deliveryPincode: addr.zipCode,
@@ -194,6 +200,7 @@ const StoreCheckout: React.FC = () => {
       const data = res.data?.data;
       const rates: ShippingRate[] = data?.rates || [];
       setShippingRates(rates);
+      // Keep primary providerId for backward compat; selection overrides per rate
       setShipmentProviderId(data?.providerId || null);
       if (rates.length === 0) {
         setRatesError('No shipping options available for this pincode.');
@@ -586,6 +593,12 @@ const StoreCheckout: React.FC = () => {
     }
     setStep(2);
   };
+  const handleSelectCourier = (rate: ShippingRate) => {
+    setSelectedCourier(rate);
+    if (rate.providerId) {
+      setShipmentProviderId(rate.providerId);
+    }
+  };
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedShipping) {
@@ -626,9 +639,12 @@ const StoreCheckout: React.FC = () => {
         redirectBaseUrl,
         shippingAmount: selectedCourier.rate,
         estimatedDeliveryDays: selectedCourier.estimatedDays,
-        shipmentProviderId: shipmentProviderId,
+        shipmentProviderId:
+          selectedCourier.providerId || shipmentProviderId,
         courierCompanyId: selectedCourier.courierCompanyId,
         courierName: selectedCourier.courierName,
+        shippingMode: selectedCourier.shippingMode,
+        rawCourierId: selectedCourier.rawCourierId,
         shippingAddressObj: {
           fullName: selectedShipping.fullName,
           streetAddress: selectedShipping.streetAddress,
@@ -1035,7 +1051,7 @@ const StoreCheckout: React.FC = () => {
                               type="radio"
                               name="courier"
                               checked={isSelected}
-                              onChange={() => setSelectedCourier(rate)}
+                              onChange={() => handleSelectCourier(rate)}
                               className="mt-1 w-4 h-4 text-purple-600"
                             />
                             <div className="flex-1 min-w-0">
@@ -1047,7 +1063,12 @@ const StoreCheckout: React.FC = () => {
                                   ₹{rate.rate.toFixed(2)}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+                                {rate.providerName && (
+                                  <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">
+                                    {rate.providerName}
+                                  </span>
+                                )}
                                 {rate.estimatedDays != null && (
                                   <span className="inline-flex items-center gap-1">
                                     <Package className="w-3.5 h-3.5" />
@@ -1167,6 +1188,9 @@ const StoreCheckout: React.FC = () => {
                     <div className="flex justify-between">
                       <span className="text-gray-700">
                         {selectedCourier.courierName}
+                        {selectedCourier.providerName
+                          ? ` · ${selectedCourier.providerName}`
+                          : ''}
                       </span>
                       <span className="font-medium">
                         ₹{selectedCourier.rate.toFixed(2)}
