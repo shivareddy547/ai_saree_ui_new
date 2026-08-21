@@ -93,6 +93,7 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [youtubeTitle, setYoutubeTitle] = useState('');
   const [privacyStatus, setPrivacyStatus] = useState<'public' | 'unlisted' | 'private'>('public');
+  const [manualStoreUrl, setManualStoreUrl] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const getProviderKey = (providerId?: string): string => {
     const idToUse = providerId || selectedProvider;
@@ -104,9 +105,16 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
     const base = `${STORE_BASE}/store/product/${productId}`;
     return `${base}?provider=${providerKey}`;
   };
+  // Returns manual URL if provided, otherwise falls back to auto-generated store link
+  const getEffectiveStoreLink = (providerKey: string): string => {
+    if (manualStoreUrl && manualStoreUrl.trim()) {
+      return manualStoreUrl.trim();
+    }
+    return buildStoreLink(providerKey);
+  };
   const generateDefaultCaption = (overrideProviderId?: string) => {
     const providerKey = getProviderKey(overrideProviderId);
-    const storeLink = buildStoreLink(providerKey);
+    const storeLink = getEffectiveStoreLink(providerKey);
     let captionText = '';
     if (productName) {
       captionText += `✨ ${productName}`;
@@ -762,6 +770,32 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
           <span>Video uploaded to Cloudinary: <strong>{cloudinaryPublicId}</strong></span>
         </div>
       )}
+      {/* Manual Store URL Override - placed just before Description/Caption */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b">
+          <h3 className="font-medium text-slate-700 flex items-center gap-2">
+            <ExternalLink size={18} className="text-purple-600" />
+            Store Link (Optional Override)
+          </h3>
+        </div>
+        <div className="p-4 space-y-2">
+          <input
+            type="url"
+            value={manualStoreUrl}
+            onChange={(e) => setManualStoreUrl(e.target.value)}
+            className="input-field w-full"
+            placeholder="https://example.com/store/product/..."
+          />
+          <p className="text-xs text-gray-400">
+            Enter a manual store URL to use in the caption. Leave empty to use the auto-generated link based on the current host and product ID.
+          </p>
+          {manualStoreUrl.trim() && (
+            <p className="text-xs text-green-600">
+              ✅ Manual URL will be used when you regenerate the caption.
+            </p>
+          )}
+        </div>
+      </div>
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="font-medium text-slate-700 flex items-center gap-2">
@@ -856,14 +890,15 @@ const PostToInstagram: React.FC<PostToInstagramProps> = ({
             <span className="text-gray-500">Product Saved:</span>
             <span className="ml-2 font-medium">{productId ? '✅ Yes' : '❌ No'}</span>
           </div>
-          {productId && (
-            <div className="sm:col-span-2">
-              <span className="text-gray-500">Store Link Preview:</span>
-              <p className="mt-1 text-xs text-purple-600 break-all">
-                {buildStoreLink(getProviderKey()) || 'Save product to generate link'}
-              </p>
-            </div>
-          )}
+          <div className="sm:col-span-2">
+            <span className="text-gray-500">Store Link Preview:</span>
+            <p className="mt-1 text-xs text-purple-600 break-all">
+              {getEffectiveStoreLink(getProviderKey()) || 'Save product to generate link (or enter manual URL above)'}
+            </p>
+            {manualStoreUrl.trim() && (
+              <p className="mt-1 text-xs text-green-600">Using manual URL override</p>
+            )}
+          </div>
         </div>
       </div>
       {createError && (
