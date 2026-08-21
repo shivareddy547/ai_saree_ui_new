@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle, AlertCircle, Loader2, ExternalLink, RefreshCw, X, Play, Pause, Edit2, Check, Send, FileText, Save, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
-const STORE_BASE = process.env.REACT_APP_STORE_URL || 'http://152.67.5.153:3001';
+// Use current host (window.location.origin) instead of hardcoded IP
+const STORE_BASE = process.env.REACT_APP_STORE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 // Move apiClient outside component to avoid recreation on each render
 const apiClient = axios.create({
   baseURL: API_BASE,
