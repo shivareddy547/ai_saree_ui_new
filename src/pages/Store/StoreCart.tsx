@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Trash2, Plus, Minus, ChevronRight, ArrowRight } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 const StoreCart: React.FC = () => {
-  const { items, fetchCart, updateQuantity, removeFromCart, totalPrice, mergeGuestCart } = useCart();
+  const { items, fetchCart, updateQuantity, removeFromCart, totalPrice, mergeGuestCart, clearCart } = useCart();
   const navigate = useNavigate();
   useEffect(() => {
     // On cart page load: if logged in, merge any guest items then refresh
@@ -26,6 +26,11 @@ const StoreCart: React.FC = () => {
     } else {
       // After login, user should return to cart so items can be merged
       navigate('/login', { state: { from: '/store/cart' } });
+    }
+  };
+  const handleClearCart = () => {
+    if (window.confirm('Are you sure you want to clear all items from your cart?')) {
+      clearCart();
     }
   };
   if (items.length === 0) {
@@ -61,7 +66,15 @@ const StoreCart: React.FC = () => {
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Shopping Cart</span>
       </nav>
-      <h1 className="text-2xl font-bold text-gray-900">Shopping Cart</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900">Shopping Cart</h1>
+        <button
+          onClick={handleClearCart}
+          className="text-red-500 hover:text-red-700 transition-colors flex items-center gap-1 text-sm font-medium"
+        >
+          <Trash2 className="w-4 h-4" /> Clear Cart
+        </button>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {items.map((item) => (

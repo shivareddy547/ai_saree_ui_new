@@ -1,10 +1,20 @@
 import React from 'react';
 import { useCart } from '../context/CartContext';
-import { Link } from 'react-router-dom';
-import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { X, Minus, Plus, Trash2, ShoppingBag, ShoppingCart } from 'lucide-react';
 const CartPopup: React.FC = () => {
-  const { items, removeFromCart, updateQuantity, totalPrice, totalItems, closePopup, isPopupOpen } = useCart();
+  const { items, removeFromCart, updateQuantity, totalPrice, totalItems, closePopup, isPopupOpen, clearCart } = useCart();
+  const navigate = useNavigate();
   if (!isPopupOpen) return null;
+  const handleContinueShopping = () => {
+    closePopup();
+    navigate('/store/products');
+  };
+  const handleEmptyCart = () => {
+    if (window.confirm('Are you sure you want to remove all items from your cart?')) {
+      clearCart();
+    }
+  };
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-black bg-opacity-50 transition-opacity" onClick={closePopup}></div>
@@ -66,6 +76,20 @@ const CartPopup: React.FC = () => {
             <div className="flex justify-between text-base font-medium">
               <span>Subtotal</span>
               <span className="text-purple-600">₹{totalPrice}</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleContinueShopping}
+                className="flex-1 text-center bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg font-medium transition-colors text-sm"
+              >
+                Continue Shopping
+              </button>
+              <button
+                onClick={handleEmptyCart}
+                className="flex-1 text-center bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-lg font-medium transition-colors text-sm flex items-center justify-center gap-1"
+              >
+                <Trash2 className="w-4 h-4" /> Empty Cart
+              </button>
             </div>
             <Link
               to="/store/cart"
