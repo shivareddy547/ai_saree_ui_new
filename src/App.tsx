@@ -29,6 +29,8 @@ import SocialPostVideoConfig from './pages/SocialPostVideoConfig';
 import PaymentProvidersSetup from './pages/PaymentProvidersSetup';
 import ShipmentProvidersSetup from './pages/ShipmentProvidersSetup';
 import StoreSettingsAdmin from './pages/StoreSettingsAdmin';
+// Import the new StorePageViews component
+import StorePageViews from './pages/StorePageViews';
 import StoreHome from './pages/Store/StoreHome';
 import StoreProducts from './pages/Store/StoreProducts';
 import StoreProductDetail from './pages/Store/StoreProductDetail';
@@ -129,6 +131,8 @@ const App: React.FC = () => {
                             <Route path="users" element={<Users />} />
                             <Route path="users/:id" element={<UserDetail />} />
                             <Route path="analytics" element={<Analytics />} />
+                            {/* New route for Store Page views */}
+                            <Route path="store-page-views" element={<StorePageViews />} />
                             <Route path="help-us" element={<HelpUs />} />
                             <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
                             <Route path="payment-providers-setup" element={<PaymentProvidersSetup />} />

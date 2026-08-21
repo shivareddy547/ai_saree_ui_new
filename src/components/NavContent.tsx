@@ -16,7 +16,8 @@ import {
   CreditCard,
   ClipboardList,
   Users,
-  Truck
+  Truck,
+  Eye // Added Eye icon for Store Page views
 } from 'lucide-react';
 interface NavContentProps {
   isMobile?: boolean;
@@ -36,6 +37,7 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     else if (path.includes('/orders')) setActiveItem('orders');
     else if (path.includes('/users')) setActiveItem('users');
     else if (path.includes('/analytics')) setActiveItem('analytics');
+    else if (path.includes('/store-page-views')) setActiveItem('store-page-views');
     else if (path.includes('/help-us')) setActiveItem('help-us');
     else if (path.includes('/social-post-video-config')) setActiveItem('social-post-video-config');
     else if (path.includes('/payment-providers-setup')) setActiveItem('payment-providers-setup');
@@ -54,6 +56,8 @@ const NavContent: React.FC<NavContentProps> = ({ isMobile = false, onClose }) =>
     { id: 'orders', label: 'Orders', icon: ClipboardList, path: '/orders' },
     { id: 'users', label: 'Users', icon: Users, path: '/users' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
+    // New menu item for Store Page views
+    { id: 'store-page-views', label: 'Store Page views', icon: Eye, path: '/store-page-views' },
     { id: 'help-us', label: 'Help Us', icon: HelpCircle, path: '/help-us' },
     { id: 'social-post-video-config', label: 'Social Post Video Config', icon: Share2, path: '/social-post-video-config' },
     { id: 'payment-providers-setup', label: 'Payment Providers Setup', icon: CreditCard, path: '/payment-providers-setup' },
