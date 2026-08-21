@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   Star,
   Heart,
@@ -90,6 +90,7 @@ const toPositivePrice = (...candidates: Array<number | string | null | undefined
 };
 const StoreProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { addToCart } = useCart();
   const { toggleWishlist, isWishlisted: checkWishlist } = useWishlist();
   const [product, setProduct] = useState<Product | null>(null);
@@ -112,10 +113,26 @@ const StoreProductDetail: React.FC = () => {
   const lightboxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lightboxVideoRef = useRef<HTMLVideoElement>(null);
+  const trackedRef = useRef<string | null>(null);
   const pauseAllVideos = useCallback(() => {
     if (videoRef.current) videoRef.current.pause();
     if (lightboxVideoRef.current) lightboxVideoRef.current.pause();
   }, []);
+  // Track page view once per product id (supports provider query param)
+  useEffect(() => {
+    if (!id) return;
+    const trackKey = id + '|' + (searchParams.get('provider') || '');
+    if (trackedRef.current === trackKey) return;
+    trackedRef.current = trackKey;
+    const path = `/store/product/${id}`;
+    const provider = searchParams.get('provider') || undefined;
+    apiClient
+      .post('/store/track-page-view', { path, provider })
+      .catch((err) => {
+        // Silent fail – tracking must never break the product page
+        console.error('Page view tracking failed:', err);
+      });
+  }, [id, searchParams]);
   useEffect(() => {
     if (id) fetchProduct(id);
   }, [id]);
