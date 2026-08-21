@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink } from 'lucide-react';
+import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2 } from 'lucide-react';
 import axios from 'axios';
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
@@ -36,6 +36,7 @@ interface Video {
   images: { url: string }[];
   variants: any[];
   cloudinaryVideoPublicId?: string | null;
+  isActive?: boolean;
 }
 const AllVideos: React.FC = () => {
   const navigate = useNavigate();
@@ -45,6 +46,8 @@ const AllVideos: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [videoLoadError, setVideoLoadError] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   // Authentication check - same as Dashboard
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -134,6 +137,38 @@ const AllVideos: React.FC = () => {
     setSelectedVideo(null);
     setVideoLoadError(false);
   };
+  const handleDeleteClick = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+  const cancelDelete = () => {
+    setDeleteConfirmId(null);
+  };
+  const confirmDelete = async (id: string) => {
+    setDeletingId(id);
+    setDeleteConfirmId(null);
+    try {
+      const response = await apiClient.delete(`/products/${id}`);
+      if (response.data.success) {
+        // Soft delete succeeded – remove from local list
+        setVideos((prev) => prev.filter((v) => v.id !== id));
+      } else {
+        setError(response.data.error || 'Failed to delete product');
+      }
+    } catch (err: any) {
+      console.error('Error deleting product:', err);
+      if (err.response?.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('sessionExpiry');
+        localStorage.removeItem('sessionId');
+        navigate('/login');
+        return;
+      }
+      setError(err.response?.data?.error || err.message || 'Failed to delete product');
+    } finally {
+      setDeletingId(null);
+    }
+  };
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -150,8 +185,11 @@ const AllVideos: React.FC = () => {
         </Link>
       </div>
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-          {error}
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+            <X size={16} />
+          </button>
         </div>
       )}
       {videos.length === 0 ? (
@@ -169,6 +207,7 @@ const AllVideos: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {videos.map((video) => {
             const hasVideo = getVideoUrl(video) !== null;
+            const isDeleting = deletingId === video.id;
             return (
               <div
                 key={video.id}
@@ -244,8 +283,45 @@ const AllVideos: React.FC = () => {
                     >
                       Preview
                     </button>
+                    <button
+                      onClick={() => handleDeleteClick(video.id)}
+                      disabled={isDeleting}
+                      className="flex items-center justify-center text-sm bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
+                      title="Delete product"
+                    >
+                      {isDeleting ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </button>
                   </div>
                 </div>
+                {/* Delete confirmation overlay */}
+                {deleteConfirmId === video.id && (
+                  <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-4 rounded-2xl">
+                    <p className="text-sm font-medium text-slate-800 text-center mb-1">
+                      Delete this product?
+                    </p>
+                    <p className="text-xs text-gray-500 text-center mb-4">
+                      This is a soft delete. The product will be hidden but can be restored later if needed.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={cancelDelete}
+                        className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => confirmDelete(video.id)}
+                        className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
