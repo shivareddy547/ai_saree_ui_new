@@ -323,6 +323,8 @@ const CreateProduct: React.FC = () => {
   const [showInBestSellers, setShowInBestSellers] = useState(false);
   const [showInNewArrivals, setShowInNewArrivals] = useState(false);
   const [showInPremiumProducts, setShowInPremiumProducts] = useState(false);
+  // NEW: isActive state
+  const [isActive, setIsActive] = useState(true);
   // Default shipping package dimensions
   const [weight, setWeight] = useState("0.5");
   const [length, setLength] = useState("30");
@@ -614,6 +616,8 @@ const CreateProduct: React.FC = () => {
         setShowInBestSellers(product.showInBestSellers || false);
         setShowInNewArrivals(product.showInNewArrivals || false);
         setShowInPremiumProducts(product.showInPremiumProducts || false);
+        // NEW: set isActive
+        setIsActive(product.isActive !== undefined ? product.isActive : true);
         // Load shipping dimensions
         setWeight(product.weight?.toString() || "0.5");
         setLength(product.length?.toString() || "30");
@@ -1115,6 +1119,7 @@ const CreateProduct: React.FC = () => {
         showInBestSellers,
         showInNewArrivals,
         showInPremiumProducts,
+        isActive, // NEW: include isActive
         weight: parseFloat(weight) || 0.5,
         length: parseFloat(length) || 30,
         breadth: parseFloat(breadth) || 25,
@@ -1237,6 +1242,7 @@ const CreateProduct: React.FC = () => {
     setShowInBestSellers(false);
     setShowInNewArrivals(false);
     setShowInPremiumProducts(false);
+    setIsActive(true); // reset to true
     setWeight("0.5");
     setLength("30");
     setBreadth("25");
@@ -1978,6 +1984,8 @@ const CreateProduct: React.FC = () => {
               setShowInNewArrivals={setShowInNewArrivals}
               showInPremiumProducts={showInPremiumProducts}
               setShowInPremiumProducts={setShowInPremiumProducts}
+              isActive={isActive}
+              setIsActive={setIsActive}
               weight={weight}
               setWeight={setWeight}
               length={length}

@@ -80,6 +80,9 @@ interface ProductDetailsProps {
   setBreadth: (value: string) => void;
   height: string;
   setHeight: (value: string) => void;
+  // NEW: Active flag
+  isActive: boolean;
+  setIsActive: (value: boolean) => void;
 }
 const createEmptyVariant = (): ProductVariant => ({
   id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -149,6 +152,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   setBreadth,
   height,
   setHeight,
+  isActive,
+  setIsActive,
 }) => {
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
   const renderVariantCard = (variant: ProductVariant, index: number) => (
@@ -423,6 +428,18 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
       </div>
       {/* New Flags Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            id="isActive"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+          />
+          <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
+            Active
+          </label>
+        </div>
         <div className="flex items-center space-x-3">
           <input
             type="checkbox"
