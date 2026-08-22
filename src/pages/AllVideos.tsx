@@ -1,15 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2 } from 'lucide-react';
+import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2, Search, Filter, ChevronDown } from 'lucide-react';
 import axios from 'axios';
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
-// Create axios instance with auth header
 const apiClient = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
 });
-// Add token to all requests
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
@@ -18,9 +16,7 @@ apiClient.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 interface Video {
   id: string;
@@ -38,6 +34,10 @@ interface Video {
   cloudinaryVideoPublicId?: string | null;
   isActive?: boolean;
 }
+interface Category {
+  id: string;
+  name: string;
+}
 const AllVideos: React.FC = () => {
   const navigate = useNavigate();
   const [videos, setVideos] = useState<Video[]>([]);
@@ -48,7 +48,18 @@ const AllVideos: React.FC = () => {
   const [videoLoadError, setVideoLoadError] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  // Authentication check - same as Dashboard
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'deleted' | 'all'>('active');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  // Authentication check
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const sessionExpiry = localStorage.getItem('sessionExpiry');
@@ -66,37 +77,56 @@ const AllVideos: React.FC = () => {
       return;
     }
   }, [navigate]);
+  // Debounce search
   useEffect(() => {
-    fetchVideos();
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [searchTerm]);
+  // Fetch categories
+  const fetchCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    try {
+      const response = await apiClient.get('/categories');
+      const cats = response.data.map((cat: any) => ({
+        id: String(cat.id),
+        name: cat.name,
+      }));
+      setCategories(cats);
+    } catch (err: any) {
+      console.error('Failed to fetch categories:', err);
+    } finally {
+      setCategoriesLoading(false);
+    }
   }, []);
-  // Helper function to get Cloudinary video URL
-  const getCloudinaryVideoUrl = (publicId: string | null | undefined): string | null => {
-    if (!publicId) return null;
-    const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'your-cloud-name';
-    return `https://res.cloudinary.com/${cloudName}/video/upload/${publicId}`;
-  };
-  // Get the best available video URL for a product
-  const getVideoUrl = (video: Video): string | null => {
-    // First priority: Cloudinary public ID
-    if (video.cloudinaryVideoPublicId) {
-      const cloudinaryUrl = getCloudinaryVideoUrl(video.cloudinaryVideoPublicId);
-      if (cloudinaryUrl) return cloudinaryUrl;
-    }
-    // Second priority: videoUrl if it's an HTTP URL (not blob)
-    if (video.videoUrl && video.videoUrl.startsWith('http')) {
-      return video.videoUrl;
-    }
-    // Third priority: videoKitUrl if it's an HTTP URL
-    if (video.videoKitUrl && video.videoKitUrl.startsWith('http')) {
-      return video.videoKitUrl;
-    }
-    return null;
-  };
-  const fetchVideos = async () => {
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+  // Fetch videos with filters
+  const fetchVideos = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/products');
+      const params = new URLSearchParams();
+      if (debouncedSearch) {
+        params.append('search', debouncedSearch);
+      }
+      if (statusFilter === 'active' || statusFilter === 'deleted') {
+        params.append('status', statusFilter);
+      }
+      if (categoryFilter) {
+        params.append('categoryId', categoryFilter);
+      }
+      const url = `/products${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await apiClient.get(url);
       if (response.data.success) {
         setVideos(response.data.data || []);
       } else {
@@ -115,7 +145,30 @@ const AllVideos: React.FC = () => {
       setError(err.message || 'Failed to load videos');
     } finally {
       setIsLoading(false);
+      setIsFiltering(false);
     }
+  }, [debouncedSearch, statusFilter, categoryFilter, navigate]);
+  useEffect(() => {
+    fetchVideos();
+  }, [fetchVideos]);
+  // Helper functions
+  const getCloudinaryVideoUrl = (publicId: string | null | undefined): string | null => {
+    if (!publicId) return null;
+    const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'your-cloud-name';
+    return `https://res.cloudinary.com/${cloudName}/video/upload/${publicId}`;
+  };
+  const getVideoUrl = (video: Video): string | null => {
+    if (video.cloudinaryVideoPublicId) {
+      const cloudinaryUrl = getCloudinaryVideoUrl(video.cloudinaryVideoPublicId);
+      if (cloudinaryUrl) return cloudinaryUrl;
+    }
+    if (video.videoUrl && video.videoUrl.startsWith('http')) {
+      return video.videoUrl;
+    }
+    if (video.videoKitUrl && video.videoKitUrl.startsWith('http')) {
+      return video.videoKitUrl;
+    }
+    return null;
   };
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -149,7 +202,6 @@ const AllVideos: React.FC = () => {
     try {
       const response = await apiClient.delete(`/products/${id}`);
       if (response.data.success) {
-        // Soft delete succeeded – remove from local list
         setVideos((prev) => prev.filter((v) => v.id !== id));
       } else {
         setError(response.data.error || 'Failed to delete product');
@@ -169,6 +221,29 @@ const AllVideos: React.FC = () => {
       setDeletingId(null);
     }
   };
+  const clearFilters = () => {
+    setSearchTerm('');
+    setDebouncedSearch('');
+    setStatusFilter('active');
+    setCategoryFilter('');
+    setIsFilterDrawerOpen(false);
+  };
+  const applyFilters = () => {
+    setIsFilterDrawerOpen(false);
+    setIsFiltering(true);
+    // fetchVideos will be triggered by dependency changes
+  };
+  const hasActiveFilters = searchTerm || statusFilter !== 'active' || categoryFilter;
+  // Detect if mobile (breakpoint md: 768px)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -177,8 +252,8 @@ const AllVideos: React.FC = () => {
     );
   }
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 pb-20 md:pb-0">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <h1 className="text-3xl font-bold text-slate-800">My Videos</h1>
         <Link to="/create-product" className="btn-primary flex items-center gap-2">
           <PlusCircle size={20} /> Create New Video
@@ -192,16 +267,199 @@ const AllVideos: React.FC = () => {
           </button>
         </div>
       )}
+      {/* Desktop Filter Bar - hidden on mobile */}
+      <div className="hidden md:block bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+        <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+          <div className="flex-1 w-full relative">
+            <input
+              type="text"
+              placeholder="Search by name or SKU..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setIsFiltering(true);
+              }}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
+            />
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            {searchTerm && (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setDebouncedSearch('');
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700 hidden sm:inline">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as any);
+                  setIsFiltering(true);
+                }}
+                className="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+              >
+                <option value="active">Active</option>
+                <option value="deleted">Deleted</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700 hidden sm:inline">Category:</span>
+              <select
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value);
+                  setIsFiltering(true);
+                }}
+                className="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+                disabled={categoriesLoading}
+              >
+                <option value="">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2.5 text-sm text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors whitespace-nowrap"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        {isFiltering && (
+          <div className="mt-2 text-xs text-gray-400 flex items-center gap-1">
+            <Loader2 size={12} className="animate-spin" />
+            <span>Filtering...</span>
+          </div>
+        )}
+      </div>
+      {/* Mobile: Floating Filter Button */}
+      {isMobile && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-xs px-4">
+          <button
+            ref={filterButtonRef}
+            onClick={() => setIsFilterDrawerOpen(true)}
+            className="w-full bg-purple-600 text-white py-3 px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
+          >
+            <Filter size={20} />
+            <span className="font-medium">Filters</span>
+            {hasActiveFilters && (
+              <span className="ml-1 bg-white text-purple-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                {[searchTerm ? 1 : 0, statusFilter !== 'active' ? 1 : 0, categoryFilter ? 1 : 0].reduce((a, b) => a + b, 0)}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+      {/* Mobile Filter Drawer */}
+      {isMobile && isFilterDrawerOpen && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => setIsFilterDrawerOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl max-h-[80vh] overflow-y-auto p-6 animate-slide-up">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">Filters</h2>
+              <button
+                onClick={() => setIsFilterDrawerOpen(false)}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="relative mb-4">
+              <input
+                type="text"
+                placeholder="Search by name or SKU..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
+              />
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+            {/* Status */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+              >
+                <option value="active">Active</option>
+                <option value="deleted">Deleted</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            {/* Category */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+                disabled={categoriesLoading}
+              >
+                <option value="">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={clearFilters}
+                className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              >
+                Clear All
+              </button>
+              <button
+                onClick={applyFilters}
+                className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       {videos.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
           <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Play size={32} className="text-purple-600" />
           </div>
-          <h3 className="text-xl font-semibold text-slate-700 mb-2">No Videos Yet</h3>
-          <p className="text-gray-500 mb-6">Create your first product video to get started</p>
-          <Link to="/create-product" className="btn-primary inline-flex items-center gap-2">
-            <PlusCircle size={20} /> Create Video
-          </Link>
+          <h3 className="text-xl font-semibold text-slate-700 mb-2">No Videos Found</h3>
+          <p className="text-gray-500 mb-6">
+            {searchTerm || statusFilter !== 'active' || categoryFilter
+              ? 'Try adjusting your filters'
+              : 'Create your first product video to get started'}
+          </p>
+          {!searchTerm && statusFilter === 'active' && !categoryFilter && (
+            <Link to="/create-product" className="btn-primary inline-flex items-center gap-2">
+              <PlusCircle size={20} /> Create Video
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -255,6 +513,11 @@ const AllVideos: React.FC = () => {
                       </span>
                     </div>
                   )}
+                  {!video.isActive && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="text-white font-bold text-sm bg-red-600/80 px-3 py-1 rounded-full">Deleted</span>
+                    </div>
+                  )}
                 </div>
                 <div className="p-4">
                   <div className="flex items-center justify-between">
@@ -285,9 +548,9 @@ const AllVideos: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleDeleteClick(video.id)}
-                      disabled={isDeleting}
+                      disabled={isDeleting || !video.isActive}
                       className="flex items-center justify-center text-sm bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
-                      title="Delete product"
+                      title={video.isActive ? 'Delete product' : 'Already deleted'}
                     >
                       {isDeleting ? (
                         <Loader2 size={16} className="animate-spin" />
@@ -337,7 +600,6 @@ const AllVideos: React.FC = () => {
             className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center gap-3 min-w-0">
                 <h3 className="text-lg font-semibold text-slate-800 truncate">
@@ -356,7 +618,6 @@ const AllVideos: React.FC = () => {
                 <X size={20} className="text-gray-500" />
               </button>
             </div>
-            {/* Video Player */}
             <div className="p-4 bg-black">
               <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
                 {videoLoadError ? (
@@ -411,7 +672,6 @@ const AllVideos: React.FC = () => {
                 )}
               </div>
             </div>
-            {/* Modal Footer - Video Info */}
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
