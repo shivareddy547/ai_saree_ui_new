@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2, Search, Filter, ChevronDown } from 'lucide-react';
+import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2, Search, Filter, Download } from 'lucide-react';
 import axios from 'axios';
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
@@ -48,6 +48,7 @@ const AllVideos: React.FC = () => {
   const [videoLoadError, setVideoLoadError] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -221,6 +222,57 @@ const AllVideos: React.FC = () => {
       setDeletingId(null);
     }
   };
+  const handleExport = async () => {
+    setIsExporting(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (debouncedSearch) {
+        params.append('search', debouncedSearch);
+      }
+      if (statusFilter === 'active' || statusFilter === 'deleted') {
+        params.append('status', statusFilter);
+      }
+      if (categoryFilter) {
+        params.append('categoryId', categoryFilter);
+      }
+      const url = `/products/export${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await apiClient.get(url, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.ms-excel',
+      });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute(
+        'download',
+        `products_export_${new Date().toISOString().slice(0, 10)}.xls`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      console.error('Error exporting products:', err);
+      if (err.response?.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('sessionExpiry');
+        localStorage.removeItem('sessionId');
+        navigate('/login');
+        return;
+      }
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          'Failed to export products to Excel'
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
   const clearFilters = () => {
     setSearchTerm('');
     setDebouncedSearch('');
@@ -255,9 +307,24 @@ const AllVideos: React.FC = () => {
     <div className="space-y-8 pb-20 md:pb-0">
       <div className="flex justify-between items-center flex-wrap gap-4">
         <h1 className="text-3xl font-bold text-slate-800">My Videos</h1>
-        <Link to="/create-product" className="btn-primary flex items-center gap-2">
-          <PlusCircle size={20} /> Create New Video
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExport}
+            disabled={isExporting || videos.length === 0}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export all products with images and videos to Excel"
+          >
+            {isExporting ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Download size={18} />
+            )}
+            {isExporting ? 'Exporting...' : 'Export to Excel'}
+          </button>
+          <Link to="/create-product" className="btn-primary flex items-center gap-2">
+            <PlusCircle size={20} /> Create New Video
+          </Link>
+        </div>
       </div>
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 flex items-center justify-between">
