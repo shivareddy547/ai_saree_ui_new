@@ -283,7 +283,6 @@ const AllVideos: React.FC = () => {
   const applyFilters = () => {
     setIsFilterDrawerOpen(false);
     setIsFiltering(true);
-    // fetchVideos will be triggered by dependency changes
   };
   const hasActiveFilters = searchTerm || statusFilter !== 'active' || categoryFilter;
   // Detect if mobile (breakpoint md: 768px)
@@ -307,12 +306,12 @@ const AllVideos: React.FC = () => {
     <div className="space-y-8 pb-20 md:pb-0">
       <div className="flex justify-between items-center flex-wrap gap-4">
         <h1 className="text-3xl font-bold text-slate-800">My Videos</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={handleExport}
             disabled={isExporting || videos.length === 0}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Export all products with images and videos to Excel"
+            title="Export all products with images, videos, variants and full details to Excel (.xls)"
           >
             {isExporting ? (
               <Loader2 size={18} className="animate-spin" />
@@ -430,12 +429,10 @@ const AllVideos: React.FC = () => {
       {/* Mobile Filter Drawer */}
       {isMobile && isFilterDrawerOpen && (
         <>
-          {/* Overlay */}
           <div
             className="fixed inset-0 bg-black/50 z-50"
             onClick={() => setIsFilterDrawerOpen(false)}
           />
-          {/* Drawer */}
           <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl max-h-[80vh] overflow-y-auto p-6 animate-slide-up">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-slate-800">Filters</h2>
@@ -446,7 +443,6 @@ const AllVideos: React.FC = () => {
                 <X size={20} className="text-gray-500" />
               </button>
             </div>
-            {/* Search */}
             <div className="relative mb-4">
               <input
                 type="text"
@@ -465,7 +461,6 @@ const AllVideos: React.FC = () => {
                 </button>
               )}
             </div>
-            {/* Status */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
@@ -478,7 +473,6 @@ const AllVideos: React.FC = () => {
                 <option value="all">All</option>
               </select>
             </div>
-            {/* Category */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <select
@@ -493,7 +487,6 @@ const AllVideos: React.FC = () => {
                 ))}
               </select>
             </div>
-            {/* Action Buttons */}
             <div className="flex gap-3">
               <button
                 onClick={clearFilters}
@@ -627,7 +620,6 @@ const AllVideos: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                {/* Delete confirmation overlay */}
                 {deleteConfirmId === video.id && (
                   <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-4 rounded-2xl">
                     <p className="text-sm font-medium text-slate-800 text-center mb-1">
