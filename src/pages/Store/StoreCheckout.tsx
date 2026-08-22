@@ -18,6 +18,8 @@ import {
   Trash2,
   Truck,
   Package,
+  Navigation,
+  LocateFixed,
 } from 'lucide-react';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -93,6 +95,23 @@ interface ShippingRate {
   pickupLocationAddress?: string | null;
   isDefaultPickup?: boolean;
 }
+interface PhotonFeature {
+  properties: {
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+    countrycode?: string;
+    district?: string;
+    locality?: string;
+  };
+  geometry?: {
+    coordinates?: [number, number];
+  };
+}
 const emptyAddressForm: AddressFormData = {
   country: 'India',
   fullName: '',
@@ -143,7 +162,7 @@ const StoreCheckout: React.FC = () => {
   const [ratesError, setRatesError] = useState<string | null>(null);
   const [selectedCourier, setSelectedCourier] = useState<ShippingRate | null>(null);
   const [shipmentProviderId, setShipmentProviderId] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -307,10 +326,26 @@ const StoreCheckout: React.FC = () => {
       }
     })();
   }, [searchParams, clearCart, navigate]);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        streetInputRef.current &&
+        !streetInputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const openAddAddressForm = () => {
     setEditingAddressId(null);
     setAddressForm(emptyAddressForm);
     setAddressError(null);
+    setLocationError(null);
+    setLocationSuccess(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
     setShowAddressForm(true);
   };
   const openEditAddressForm = (addr: Address) => {
@@ -327,6 +362,10 @@ const StoreCheckout: React.FC = () => {
       isDefault: !!addr.isDefault,
     });
     setAddressError(null);
+    setLocationError(null);
+    setLocationSuccess(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
     setShowAddressForm(true);
   };
   const closeAddressForm = () => {
@@ -334,6 +373,10 @@ const StoreCheckout: React.FC = () => {
     setEditingAddressId(null);
     setAddressForm(emptyAddressForm);
     setAddressError(null);
+    setLocationError(null);
+    setLocationSuccess(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
   };
   const handleAddressFormChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -344,6 +387,146 @@ const StoreCheckout: React.FC = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+    if (name === 'streetAddress') {
+      setLocationSuccess(false);
+      setLocationError(null);
+    }
+  };
+  const fetchPhotonSuggestions = useCallback(async (query: string) => {
+    if (!query || query.trim().length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    setIsLoadingSuggestions(true);
+    try {
+      const res = await fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(
+          query.trim()
+        )}&limit=6&lang=en`
+      );
+      const data = await res.json();
+      const features: PhotonFeature[] = data?.features || [];
+      setSuggestions(features);
+      setShowSuggestions(features.length > 0);
+    } catch {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  }, []);
+  const handleStreetAddressChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const value = e.target.value;
+    setAddressForm((prev) => ({ ...prev, streetAddress: value }));
+    setLocationSuccess(false);
+    setLocationError(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchPhotonSuggestions(value);
+    }, 350);
+  };
+  const applyPhotonFeature = (feature: PhotonFeature) => {
+    const p = feature.properties || {};
+    const streetParts = [
+      p.housenumber,
+      p.street || p.name,
+    ].filter(Boolean);
+    const street = streetParts.join(' ').trim() || p.name || '';
+    setAddressForm((prev) => ({
+      ...prev,
+      streetAddress: street || prev.streetAddress,
+      city: p.city || p.locality || p.district || prev.city,
+      state: p.state || prev.state,
+      zipCode: p.postcode || prev.zipCode,
+      country: p.country || prev.country || 'India',
+    }));
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser');
+      setLocationSuccess(false);
+      return;
+    }
+    setIsLocating(true);
+    setLocationError(null);
+    setLocationSuccess(false);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=jsonv2&addressdetails=1`,
+            {
+              headers: {
+                Accept: 'application/json',
+              },
+            }
+          );
+          if (!res.ok) throw new Error('Reverse geocode failed');
+          const data = await res.json();
+          const addr = data?.address || {};
+          const streetParts = [
+            addr.house_number,
+            addr.road || addr.pedestrian || addr.footway || addr.path,
+          ].filter(Boolean);
+          const street =
+            streetParts.join(' ').trim() ||
+            addr.suburb ||
+            addr.neighbourhood ||
+            data?.display_name?.split(',')[0] ||
+            '';
+          setAddressForm((prev) => ({
+            ...prev,
+            streetAddress: street || prev.streetAddress,
+            apartment: addr.suburb || addr.neighbourhood || prev.apartment,
+            city:
+              addr.city ||
+              addr.town ||
+              addr.village ||
+              addr.municipality ||
+              addr.county ||
+              prev.city,
+            state: addr.state || prev.state,
+            zipCode: addr.postcode || prev.zipCode,
+            country: addr.country || prev.country || 'India',
+          }));
+          setLocationSuccess(true);
+          setLocationError(null);
+          setSuggestions([]);
+          setShowSuggestions(false);
+        } catch {
+          setLocationError(
+            'Could not fetch address for your location. Please enter manually.'
+          );
+          setLocationSuccess(false);
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (err) => {
+        let msg = 'Unable to retrieve your location';
+        if (err.code === 1) {
+          msg = 'Location permission denied. Please allow location access.';
+        } else if (err.code === 2) {
+          msg = 'Location unavailable. Please try again.';
+        } else if (err.code === 3) {
+          msg = 'Location request timed out. Please try again.';
+        }
+        setLocationError(msg);
+        setLocationSuccess(false);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000,
+      }
+    );
   };
   const handleAddressSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,7 +535,7 @@ const StoreCheckout: React.FC = () => {
       !addressForm.streetAddress.trim() ||
       !addressForm.city.trim()
     ) {
-      setAddressError('Please fill in all required fields');
+      setAddressError('Please fill in all required fields (Full name, Street address, City)');
       return;
     }
     setAddressSubmitting(true);
@@ -1011,112 +1194,253 @@ const StoreCheckout: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* Address Form Modal – matched to StoreSettingsAdmin pickup form layout */}
       {showAddressForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">
-                {editingAddressId ? 'Edit Address' : 'Add Address'}
-              </h3>
-              <button type="button" onClick={closeAddressForm}>
-                <X className="w-5 h-5 text-gray-400" />
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={closeAddressForm}
+          />
+          <div className="relative w-full max-w-xl max-h-[95vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-xl">
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-bold text-gray-900">
+                {editingAddressId ? 'Edit address' : 'Add address'}
+              </h2>
+              <button
+                type="button"
+                onClick={closeAddressForm}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
-            {addressError && (
-              <div className="bg-red-50 text-red-600 text-sm rounded-lg px-3 py-2 mb-3">
-                {addressError}
-              </div>
-            )}
-            <form onSubmit={handleAddressSubmit} className="space-y-3">
-              <input
-                name="fullName"
-                value={addressForm.fullName}
-                onChange={handleAddressFormChange}
-                placeholder="Full name *"
-                className="input-field"
-                required
-              />
-              <input
-                name="streetAddress"
-                value={addressForm.streetAddress}
-                onChange={handleAddressFormChange}
-                placeholder="Street address *"
-                className="input-field"
-                required
-              />
-              <input
-                name="apartment"
-                value={addressForm.apartment}
-                onChange={handleAddressFormChange}
-                placeholder="Apartment, suite, etc."
-                className="input-field"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  name="city"
-                  value={addressForm.city}
-                  onChange={handleAddressFormChange}
-                  placeholder="City *"
-                  className="input-field"
-                  required
-                />
-                <input
-                  name="state"
-                  value={addressForm.state}
-                  onChange={handleAddressFormChange}
-                  placeholder="State"
-                  className="input-field"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  name="zipCode"
-                  value={addressForm.zipCode}
-                  onChange={handleAddressFormChange}
-                  placeholder="PIN code"
-                  className="input-field"
-                />
-                <input
-                  name="phone"
-                  value={addressForm.phone}
-                  onChange={handleAddressFormChange}
-                  placeholder="Phone"
-                  className="input-field"
-                />
-              </div>
-              <input
-                name="country"
-                value={addressForm.country}
-                onChange={handleAddressFormChange}
-                placeholder="Country"
-                className="input-field"
-              />
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="isDefault"
-                  checked={addressForm.isDefault}
-                  onChange={handleAddressFormChange}
-                />
-                Set as default address
-              </label>
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={addressSubmitting}
-                  className="btn-primary flex-1"
-                >
-                  {addressSubmitting ? 'Saving...' : 'Save Address'}
-                </button>
+            <div className="p-5 sm:p-6">
+              {addressError && (
+                <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+                  {addressError}
+                </div>
+              )}
+              {/* Use current location */}
+              <div className="mb-4">
                 <button
                   type="button"
-                  onClick={closeAddressForm}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  onClick={handleGetCurrentLocation}
+                  disabled={isLocating}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 hover:border-purple-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {isLocating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Detecting location...
+                    </>
+                  ) : (
+                    <>
+                      <LocateFixed className="w-4 h-4" />
+                      Use my current location
+                    </>
+                  )}
                 </button>
+                {locationError && (
+                  <p className="mt-2 text-xs text-red-600">{locationError}</p>
+                )}
+                {locationSuccess && !locationError && (
+                  <p className="mt-2 text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Location applied — please review the fields below
+                  </p>
+                )}
               </div>
-            </form>
+              <form onSubmit={handleAddressSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    Full name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="fullName"
+                    value={addressForm.fullName}
+                    onChange={handleAddressFormChange}
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                    placeholder="Full name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    Country/Region
+                  </label>
+                  <select
+                    name="country"
+                    value={addressForm.country}
+                    onChange={handleAddressFormChange}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                  >
+                    <option value="India">India</option>
+                    <option value="United States">United States</option>
+                    <option value="United Kingdom">United Kingdom</option>
+                    <option value="Canada">Canada</option>
+                    <option value="Australia">Australia</option>
+                    <option value="Germany">Germany</option>
+                    <option value="France">France</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    Street address <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative" ref={streetInputRef}>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        name="streetAddress"
+                        value={addressForm.streetAddress}
+                        onChange={handleStreetAddressChange}
+                        onFocus={() => {
+                          if (suggestions.length > 0) setShowSuggestions(true);
+                        }}
+                        required
+                        autoComplete="off"
+                        placeholder="Street address, P.O. box, company name"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50 pr-9"
+                      />
+                      {isLoadingSuggestions && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+                      )}
+                      {!isLoadingSuggestions && addressForm.streetAddress && (
+                        <Navigation className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 pointer-events-none" />
+                      )}
+                    </div>
+                    {showSuggestions && suggestions.length > 0 && (
+                      <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                        {suggestions.map((feat, idx) => {
+                          const p = feat.properties || {};
+                          const label = [
+                            p.housenumber,
+                            p.street || p.name,
+                            p.city || p.locality,
+                            p.state,
+                            p.postcode,
+                            p.country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ');
+                          return (
+                            <li key={idx}>
+                              <button
+                                type="button"
+                                className="w-full text-left px-3 py-2.5 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-800 transition flex items-start gap-2"
+                                onClick={() => applyPhotonFeature(feat)}
+                              >
+                                <MapPin className="w-3.5 h-3.5 mt-0.5 text-purple-400 shrink-0" />
+                                <span className="leading-snug">{label || p.name}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    name="apartment"
+                    value={addressForm.apartment}
+                    onChange={handleAddressFormChange}
+                    placeholder="Apartment, suite, unit, building, floor, etc."
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50 mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    City <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="city"
+                    value={addressForm.city}
+                    onChange={handleAddressFormChange}
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    State / Province / Region
+                  </label>
+                  <input
+                    type="text"
+                    name="state"
+                    value={addressForm.state}
+                    onChange={handleAddressFormChange}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    Zip Code / PIN
+                  </label>
+                  <input
+                    type="text"
+                    name="zipCode"
+                    value={addressForm.zipCode}
+                    onChange={handleAddressFormChange}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-1">
+                    Phone number
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={addressForm.phone}
+                    onChange={handleAddressFormChange}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+                <div className="flex flex-col gap-3 pt-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="isDefault"
+                      id="isDefaultAddress"
+                      checked={addressForm.isDefault}
+                      onChange={handleAddressFormChange}
+                      className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <label htmlFor="isDefaultAddress" className="text-sm text-gray-800">
+                      Set as default address
+                    </label>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeAddressForm}
+                    className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-full font-medium text-sm hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addressSubmitting}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2.5 rounded-full font-medium text-sm hover:shadow-lg transition disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    {addressSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : editingAddressId ? (
+                      'Update address'
+                    ) : (
+                      'Add address'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
