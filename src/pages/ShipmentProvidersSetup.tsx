@@ -19,6 +19,13 @@ interface Preset {
 }
 const SHIPMENT_PRESETS: Preset[] = [
   {
+    key: 'store_pickup',
+    name: 'Store Pickup',
+    notes: 'Allow customers to collect orders from your configured store pickup locations. Shipping cost is always ₹0. Manage pickup locations under Store Settings → Pickup Locations. No external credentials required.',
+    environments: ['production'],
+    fields: [],
+  },
+  {
     key: 'shiprocket',
     name: 'Shiprocket',
     notes: 'Shiprocket shipping platform. Get Email and Password (or API token) from Shiprocket Dashboard → Settings → API. Use sandbox credentials for testing.',
@@ -101,7 +108,7 @@ const ShipmentProvidersSetup: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedPresetKey, setSelectedPresetKey] = useState('shiprocket');
+  const [selectedPresetKey, setSelectedPresetKey] = useState('store_pickup');
   const [formName, setFormName] = useState('');
   const [formCredentials, setFormCredentials] = useState<Record<string, string>>({});
   const [formEnvironment, setFormEnvironment] = useState('production');
@@ -155,13 +162,13 @@ const ShipmentProvidersSetup: React.FC = () => {
     setFormEnvironment('production');
     setEditingId(null);
     setShowForm(false);
-    setSelectedPresetKey('shiprocket');
+    setSelectedPresetKey('store_pickup');
     setError('');
     setSuccess('');
   };
   const openAddForm = () => {
     resetForm();
-    applyPreset('shiprocket');
+    applyPreset('store_pickup');
     setShowForm(true);
   };
   const openEditForm = (provider: Provider) => {
@@ -259,7 +266,7 @@ const ShipmentProvidersSetup: React.FC = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Shipment Providers Setup</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Add and configure shipment / courier providers for your store. Credentials are stored securely and used when creating shipments and tracking.
+              Add and configure shipment / courier providers for your store. Credentials are stored securely and used when creating shipments and tracking. Use Store Pickup for free in-store collection.
             </p>
           </div>
           {!showForm && (
@@ -313,58 +320,73 @@ const ShipmentProvidersSetup: React.FC = () => {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="input-field"
-                  placeholder="e.g., Shiprocket Sandbox / Delhivery Live"
+                  placeholder="e.g., Store Pickup / Shiprocket Sandbox"
                   required
                   disabled={saving}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Environment
-                </label>
-                <select
-                  value={formEnvironment}
-                  onChange={(e) => setFormEnvironment(e.target.value)}
-                  className="input-field"
-                  disabled={saving}
-                >
-                  {selectedPreset.environments && selectedPreset.environments.length > 0 ? (
-                    selectedPreset.environments.map((env) => (
-                      <option key={env} value={env}>
-                        {env.charAt(0).toUpperCase() + env.slice(1)}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="production">Production</option>
-                      <option value="sandbox">Sandbox</option>
-                      <option value="testing">Testing</option>
-                    </>
-                  )}
-                </select>
-                <p className="text-xs text-gray-500 mt-1.5">
-                  Select the environment for this provider (sandbox for testing, production for live).
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {selectedPreset.fields.map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field.label}
-                      {field.required && <span className="text-red-500 ml-0.5">*</span>}
-                    </label>
-                    <input
-                      type={field.type}
-                      value={formCredentials[field.key] || ''}
-                      onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-                      className="input-field"
-                      placeholder={field.placeholder}
-                      required={field.required}
-                      disabled={saving}
-                    />
-                  </div>
-                ))}
-              </div>
+              {selectedPresetKey !== 'store_pickup' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Environment
+                  </label>
+                  <select
+                    value={formEnvironment}
+                    onChange={(e) => setFormEnvironment(e.target.value)}
+                    className="input-field"
+                    disabled={saving}
+                  >
+                    {selectedPreset.environments && selectedPreset.environments.length > 0 ? (
+                      selectedPreset.environments.map((env) => (
+                        <option key={env} value={env}>
+                          {env.charAt(0).toUpperCase() + env.slice(1)}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="production">Production</option>
+                        <option value="sandbox">Sandbox</option>
+                        <option value="testing">Testing</option>
+                      </>
+                    )}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Select the environment for this provider (sandbox for testing, production for live).
+                  </p>
+                </div>
+              )}
+              {selectedPreset.fields.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {selectedPreset.fields.map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                      </label>
+                      <input
+                        type={field.type}
+                        value={formCredentials[field.key] || ''}
+                        onChange={(e) => handleCredentialChange(field.key, e.target.value)}
+                        className="input-field"
+                        placeholder={field.placeholder}
+                        required={field.required}
+                        disabled={saving}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {selectedPresetKey === 'store_pickup' && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+                  <p className="font-medium mb-1">Store Pickup setup</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-xs">
+                    <li>Shipping cost is always ₹0 for this method.</li>
+                    <li>Customers will see active pickup locations from Store Settings during checkout.</li>
+                    <li>After saving, Enable the provider so it appears as a shipping option at checkout.</li>
+                    <li>No API credentials are required.</li>
+                  </ul>
+                </div>
+              )}
               {selectedPresetKey === 'shiprocket' && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                   <p className="font-medium mb-1">Shiprocket setup tips</p>
@@ -417,6 +439,7 @@ const ShipmentProvidersSetup: React.FC = () => {
             {providers.map((provider) => {
               const preset = SHIPMENT_PRESETS.find((p) => p.key === provider.provider_key);
               const environment = provider.credentials?.environment || 'production';
+              const isStorePickup = provider.provider_key === 'store_pickup';
               return (
                 <div
                   key={provider.id}
@@ -439,26 +462,34 @@ const ShipmentProvidersSetup: React.FC = () => {
                           {preset.name}
                         </span>
                       )}
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {environment.charAt(0).toUpperCase() + environment.slice(1)}
-                      </span>
+                      {isStorePickup ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                          Free (₹0)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                          {environment.charAt(0).toUpperCase() + environment.slice(1)}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-500 mt-1 truncate">
-                      {Object.entries(provider.credentials)
-                        .filter(
-                          ([k]) =>
-                            k !== 'environment' &&
-                            (k.includes('key') ||
-                              k.includes('id') ||
-                              k.includes('token') ||
-                              k.includes('email') ||
-                              k.includes('login') ||
-                              k.includes('customer') ||
-                              k.includes('account') ||
-                              k.includes('client'))
-                        )
-                        .map(([k, v]) => `${k}: ${v ? '••••' + String(v).slice(-4) : '—'}`)
-                        .join(' • ') || 'No credentials'}
+                      {isStorePickup
+                        ? 'Uses active pickup locations from Store Settings • Shipping ₹0'
+                        : Object.entries(provider.credentials)
+                            .filter(
+                              ([k]) =>
+                                k !== 'environment' &&
+                                (k.includes('key') ||
+                                  k.includes('id') ||
+                                  k.includes('token') ||
+                                  k.includes('email') ||
+                                  k.includes('login') ||
+                                  k.includes('customer') ||
+                                  k.includes('account') ||
+                                  k.includes('client'))
+                            )
+                            .map(([k, v]) => `${k}: ${v ? '••••' + String(v).slice(-4) : '—'}`)
+                            .join(' • ') || 'No credentials'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
