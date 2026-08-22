@@ -40,6 +40,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'scope', label: 'Scope', placeholder: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/youtube', type: 'text', required: true },
       { key: 'api_key', label: 'API Key (optional)', placeholder: 'your-api-key', type: 'text' },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -52,6 +53,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'user.info.basic,video.publish', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/tiktok', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -64,6 +66,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'instagram_business_basic,instagram_business_content_publish', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/instagram', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -76,6 +79,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'pages_manage_posts,pages_read_engagement', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/facebook', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -88,6 +92,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'r_liteprofile,w_member_social', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/linkedin', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -100,6 +105,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'tweet.read,tweet.write,users.read,offline.access', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/twitter', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -112,6 +118,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'app_secret', label: 'App Secret', placeholder: 'your-app-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'boards:read,pins:read,pins:write', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/pinterest', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -124,6 +131,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'https://auth.snapchat.com/oauth2/v1/authorize?client_id=...', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/snapchat', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -136,6 +144,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'threads_basic,threads_content_publish', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/threads', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -148,6 +157,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'submit,read', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/reddit', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -160,6 +170,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'public,private,upload', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/vimeo', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -172,6 +183,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'client_secret', label: 'Client Secret', placeholder: 'your-client-secret', type: 'password', required: true },
       { key: 'scope', label: 'Scope', placeholder: 'userinfo,manage_videos', type: 'text', required: true },
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/dailymotion', type: 'text', required: true },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
   {
@@ -186,6 +198,7 @@ const SOCIAL_PRESETS: Preset[] = [
       { key: 'redirect_uri', label: 'Redirect URI', placeholder: 'https://your-app.com/oauth/custom', type: 'text', required: true },
       { key: 'auth_url', label: 'Authorization URL (optional)', placeholder: 'https://provider.com/oauth/authorize', type: 'text' },
       { key: 'token_url', label: 'Token URL (optional)', placeholder: 'https://provider.com/oauth/token', type: 'text' },
+      { key: 'connecting_host', label: 'Connecting Host', placeholder: 'https://your-custom-host.com', type: 'text' },
     ],
   },
 ];
