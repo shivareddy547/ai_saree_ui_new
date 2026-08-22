@@ -26,6 +26,13 @@ const SHIPMENT_PRESETS: Preset[] = [
     fields: [],
   },
   {
+    key: 'free_shipping',
+    name: 'Free Shipping (Configurable)',
+    notes: 'Offer free shipping when one or more conditions match: minimum order total, customer email, and/or delivery pincode. Configure the rules below. When enabled and conditions are met at checkout, shipping cost is set to ₹0.',
+    environments: ['production'],
+    fields: [],
+  },
+  {
     key: 'shiprocket',
     name: 'Shiprocket',
     notes: 'Shiprocket shipping platform. Get Email and Password (or API token) from Shiprocket Dashboard → Settings → API. Use sandbox credentials for testing.',
@@ -112,6 +119,13 @@ const ShipmentProvidersSetup: React.FC = () => {
   const [formName, setFormName] = useState('');
   const [formCredentials, setFormCredentials] = useState<Record<string, string>>({});
   const [formEnvironment, setFormEnvironment] = useState('production');
+  // Free shipping specific state (stored inside credentials)
+  const [useOrderTotal, setUseOrderTotal] = useState(false);
+  const [minOrderTotal, setMinOrderTotal] = useState('');
+  const [useEmails, setUseEmails] = useState(false);
+  const [allowedEmails, setAllowedEmails] = useState('');
+  const [usePincodes, setUsePincodes] = useState(false);
+  const [allowedPincodes, setAllowedPincodes] = useState('');
   const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
   const api = axios.create({
     baseURL: apiBase,
@@ -155,6 +169,15 @@ const ShipmentProvidersSetup: React.FC = () => {
       setFormEnvironment(formCredentials.environment);
     }
     setFormCredentials(creds);
+    // Reset free-shipping specific fields when switching presets
+    if (key !== 'free_shipping') {
+      setUseOrderTotal(false);
+      setMinOrderTotal('');
+      setUseEmails(false);
+      setAllowedEmails('');
+      setUsePincodes(false);
+      setAllowedPincodes('');
+    }
   };
   const resetForm = () => {
     setFormName('');
@@ -165,6 +188,12 @@ const ShipmentProvidersSetup: React.FC = () => {
     setSelectedPresetKey('store_pickup');
     setError('');
     setSuccess('');
+    setUseOrderTotal(false);
+    setMinOrderTotal('');
+    setUseEmails(false);
+    setAllowedEmails('');
+    setUsePincodes(false);
+    setAllowedPincodes('');
   };
   const openAddForm = () => {
     resetForm();
@@ -191,6 +220,22 @@ const ShipmentProvidersSetup: React.FC = () => {
     } else {
       setSelectedPresetKey('custom_shipment');
     }
+    // Populate free shipping config from credentials
+    if (provider.provider_key === 'free_shipping') {
+      setUseOrderTotal(provider.credentials.use_order_total === 'true');
+      setMinOrderTotal(provider.credentials.min_order_total || '');
+      setUseEmails(provider.credentials.use_emails === 'true');
+      setAllowedEmails(provider.credentials.allowed_emails || '');
+      setUsePincodes(provider.credentials.use_pincodes === 'true');
+      setAllowedPincodes(provider.credentials.allowed_pincodes || '');
+    } else {
+      setUseOrderTotal(false);
+      setMinOrderTotal('');
+      setUseEmails(false);
+      setAllowedEmails('');
+      setUsePincodes(false);
+      setAllowedPincodes('');
+    }
     setShowForm(true);
     setError('');
     setSuccess('');
@@ -204,11 +249,32 @@ const ShipmentProvidersSetup: React.FC = () => {
       setError('Provider name is required');
       return;
     }
+    if (selectedPresetKey === 'free_shipping') {
+      if (!useOrderTotal && !useEmails && !usePincodes) {
+        setError('Enable at least one free-shipping condition (order total, emails, or pincodes)');
+        return;
+      }
+      if (useOrderTotal && (!minOrderTotal.trim() || isNaN(Number(minOrderTotal)) || Number(minOrderTotal) < 0)) {
+        setError('Minimum order total must be a valid non-negative number');
+        return;
+      }
+    }
     setSaving(true);
     setError('');
     setSuccess('');
     try {
-      const credentialsWithEnv = { ...formCredentials, environment: formEnvironment };
+      let credentialsWithEnv: Record<string, string> = { ...formCredentials, environment: formEnvironment };
+      if (selectedPresetKey === 'free_shipping') {
+        credentialsWithEnv = {
+          environment: formEnvironment,
+          use_order_total: useOrderTotal ? 'true' : 'false',
+          min_order_total: useOrderTotal ? String(minOrderTotal).trim() : '',
+          use_emails: useEmails ? 'true' : 'false',
+          allowed_emails: useEmails ? allowedEmails.trim() : '',
+          use_pincodes: usePincodes ? 'true' : 'false',
+          allowed_pincodes: usePincodes ? allowedPincodes.trim() : '',
+        };
+      }
       const payload: any = {
         provider_type: 'shipment',
         name: formName.trim(),
@@ -259,6 +325,21 @@ const ShipmentProvidersSetup: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to delete shipment provider');
     }
   };
+  const getFreeShippingSummary = (creds: Record<string, string>) => {
+    const parts: string[] = [];
+    if (creds.use_order_total === 'true' && creds.min_order_total) {
+      parts.push(`Min order ₹${creds.min_order_total}`);
+    }
+    if (creds.use_emails === 'true' && creds.allowed_emails) {
+      const count = creds.allowed_emails.split(/[,;\n]+/).filter(Boolean).length;
+      parts.push(`${count} email(s)`);
+    }
+    if (creds.use_pincodes === 'true' && creds.allowed_pincodes) {
+      const count = creds.allowed_pincodes.split(/[,;\n]+/).filter(Boolean).length;
+      parts.push(`${count} pincode(s)`);
+    }
+    return parts.length > 0 ? parts.join(' • ') : 'No conditions configured';
+  };
   return (
     <div className="max-w-4xl mx-auto">
       <div className="card-glass p-4 sm:p-8">
@@ -266,7 +347,7 @@ const ShipmentProvidersSetup: React.FC = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Shipment Providers Setup</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Add and configure shipment / courier providers for your store. Credentials are stored securely and used when creating shipments and tracking. Use Store Pickup for free in-store collection (₹0).
+              Add and configure shipment / courier providers for your store. Credentials are stored securely and used when creating shipments and tracking. Use Store Pickup or Free Shipping for ₹0 options.
             </p>
           </div>
           {!showForm && (
@@ -320,12 +401,12 @@ const ShipmentProvidersSetup: React.FC = () => {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="input-field"
-                  placeholder="e.g., Store Pickup / Shiprocket Sandbox"
+                  placeholder="e.g., Store Pickup / Free Shipping / Shiprocket Sandbox"
                   required
                   disabled={saving}
                 />
               </div>
-              {selectedPresetKey !== 'store_pickup' && (
+              {selectedPresetKey !== 'store_pickup' && selectedPresetKey !== 'free_shipping' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Environment
@@ -387,6 +468,101 @@ const ShipmentProvidersSetup: React.FC = () => {
                   </ul>
                 </div>
               )}
+              {selectedPresetKey === 'free_shipping' && (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+                    <p className="font-medium mb-1">Free Shipping rules</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-xs">
+                      <li>Enable one or more conditions. Free shipping is offered when <strong>any</strong> enabled condition matches.</li>
+                      <li>Order total: cart subtotal (before shipping) must be ≥ minimum amount.</li>
+                      <li>Emails: customer email must match one of the listed addresses (case-insensitive).</li>
+                      <li>Pincodes: delivery address pincode must match one of the listed codes.</li>
+                      <li>After saving, click <strong>Enable</strong> so the rule is evaluated at checkout.</li>
+                    </ul>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useOrderTotal}
+                        onChange={(e) => setUseOrderTotal(e.target.checked)}
+                        disabled={saving}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">By order total</span>
+                    </label>
+                    {useOrderTotal && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Minimum order total (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={minOrderTotal}
+                          onChange={(e) => setMinOrderTotal(e.target.value)}
+                          className="input-field"
+                          placeholder="e.g., 999"
+                          disabled={saving}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useEmails}
+                        onChange={(e) => setUseEmails(e.target.checked)}
+                        disabled={saving}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">By customer email</span>
+                    </label>
+                    {useEmails && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Allowed emails (comma or newline separated)
+                        </label>
+                        <textarea
+                          value={allowedEmails}
+                          onChange={(e) => setAllowedEmails(e.target.value)}
+                          className="input-field min-h-[80px]"
+                          placeholder="customer1@example.com, customer2@example.com"
+                          disabled={saving}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={usePincodes}
+                        onChange={(e) => setUsePincodes(e.target.checked)}
+                        disabled={saving}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">By pincode</span>
+                    </label>
+                    {usePincodes && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Allowed pincodes (comma or newline separated)
+                        </label>
+                        <textarea
+                          value={allowedPincodes}
+                          onChange={(e) => setAllowedPincodes(e.target.value)}
+                          className="input-field min-h-[80px]"
+                          placeholder="110001, 400001, 560001"
+                          disabled={saving}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {selectedPresetKey === 'shiprocket' && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                   <p className="font-medium mb-1">Shiprocket setup tips</p>
@@ -440,6 +616,7 @@ const ShipmentProvidersSetup: React.FC = () => {
               const preset = SHIPMENT_PRESETS.find((p) => p.key === provider.provider_key);
               const environment = provider.credentials?.environment || 'production';
               const isStorePickup = provider.provider_key === 'store_pickup';
+              const isFreeShipping = provider.provider_key === 'free_shipping';
               return (
                 <div
                   key={provider.id}
@@ -462,7 +639,7 @@ const ShipmentProvidersSetup: React.FC = () => {
                           {preset.name}
                         </span>
                       )}
-                      {isStorePickup ? (
+                      {isStorePickup || isFreeShipping ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
                           Free (₹0)
                         </span>
@@ -475,6 +652,8 @@ const ShipmentProvidersSetup: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-1 truncate">
                       {isStorePickup
                         ? 'Uses active pickup locations from Store Settings • Shipping ₹0'
+                        : isFreeShipping
+                        ? getFreeShippingSummary(provider.credentials || {})
                         : Object.entries(provider.credentials)
                             .filter(
                               ([k]) =>
