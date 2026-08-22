@@ -87,6 +87,7 @@ interface ShippingRate {
   shippingMode?: string;
   rawCourierId?: string;
   isStorePickup?: boolean;
+  isFreeShipping?: boolean;
   pickupLocationId?: number | null;
   pickupLocationName?: string | null;
   pickupLocationAddress?: string | null;
@@ -229,7 +230,6 @@ const StoreCheckout: React.FC = () => {
     };
     init();
   }, [fetchAddresses, fetchPaymentProviders, fetchCart]);
-  // After PhonePe / gateway return: verify payment then go to order details (or cart on failure)
   useEffect(() => {
     const status = searchParams.get('status');
     const payment = searchParams.get('payment');
@@ -461,6 +461,7 @@ const StoreCheckout: React.FC = () => {
         shippingMode: selectedCourier.shippingMode,
         rawCourierId: selectedCourier.rawCourierId,
         isStorePickup: !!selectedCourier.isStorePickup,
+        isFreeShipping: !!selectedCourier.isFreeShipping,
         pickupLocationId: selectedCourier.pickupLocationId || null,
         pickupLocationName: selectedCourier.pickupLocationName || null,
         pickupLocationAddress:
@@ -473,6 +474,11 @@ const StoreCheckout: React.FC = () => {
                 selectedCourier.pickupLocationName || null,
               pickupLocationAddress:
                 selectedCourier.pickupLocationAddress || null,
+            }
+          : selectedCourier.isFreeShipping
+          ? {
+              type: 'free_shipping',
+              message: 'Free shipping applied',
             }
           : undefined,
         shippingAddressObj: {
@@ -488,11 +494,9 @@ const StoreCheckout: React.FC = () => {
       });
       const data = response.data;
       if (data.paymentRequired && data.redirectUrl) {
-        // Gateway redirect (PhonePe etc.) – cart cleared only after successful verify
         window.location.href = data.redirectUrl;
         return;
       }
-      // COD / immediate success → order details
       const newOrderId = data?.data?.id;
       clearCart();
       if (newOrderId) {
@@ -507,7 +511,6 @@ const StoreCheckout: React.FC = () => {
       try {
         sessionStorage.setItem('checkoutError', msg);
       } catch (_) {}
-      // Requirement: on placement error, show cart with error
       navigate(`/store/cart?error=${encodeURIComponent(msg)}`, {
         replace: true,
       });
@@ -813,6 +816,11 @@ const StoreCheckout: React.FC = () => {
                               Free pickup
                             </span>
                           )}
+                          {rate.isFreeShipping && (
+                            <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                              Free shipping
+                            </span>
+                          )}
                         </div>
                         {rate.isStorePickup && rate.pickupLocationAddress && (
                           <div className="text-xs text-gray-600 mt-1 flex items-start gap-1">
@@ -820,11 +828,16 @@ const StoreCheckout: React.FC = () => {
                             <span>{rate.pickupLocationAddress}</span>
                           </div>
                         )}
-                        {!rate.isStorePickup && rate.estimatedDays != null && (
+                        {!rate.isStorePickup && !rate.isFreeShipping && rate.estimatedDays != null && (
                           <div className="text-xs text-gray-500 mt-0.5">
                             Est. {rate.estimatedDays} day
                             {rate.estimatedDays !== 1 ? 's' : ''}
                             {rate.etd ? ` · ${rate.etd}` : ''}
+                          </div>
+                        )}
+                        {rate.isFreeShipping && rate.etd && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {rate.etd}
                           </div>
                         )}
                       </div>
@@ -909,6 +922,11 @@ const StoreCheckout: React.FC = () => {
                   <div className="flex items-center gap-2 font-medium text-gray-800">
                     <Package className="w-4 h-4" />
                     {selectedCourier.courierName}
+                    {selectedCourier.isFreeShipping && (
+                      <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                        Free
+                      </span>
+                    )}
                   </div>
                   {selectedCourier.isStorePickup &&
                     selectedCourier.pickupLocationAddress && (
@@ -958,12 +976,12 @@ const StoreCheckout: React.FC = () => {
                   className="flex gap-2 text-sm"
                 >
                   <div className="flex-1 min-w-0 truncate text-gray-700">
-                    {item.product?.name || 'Item'} × {item.quantity}
+                    {item.product?.name || item.name || 'Item'} × {item.quantity}
                   </div>
                   <div className="text-gray-900 font-medium">
                     ₹
                     {(
-                      (item.variant?.price || item.product?.basePrice || 0) *
+                      (item.variant?.price || item.product?.basePrice || item.price || 0) *
                       item.quantity
                     ).toFixed(0)}
                   </div>
