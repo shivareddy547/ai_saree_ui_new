@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, ChevronRight, Clock, ShoppingBag, Truck, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Package, ChevronRight, Clock, ShoppingBag, Truck, CheckCircle, XCircle, AlertCircle, MapPin } from 'lucide-react';
 import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -41,6 +41,10 @@ interface Order {
   paymentMethod: string;
   createdAt: string;
   items: OrderItem[];
+  // Shipment fields
+  shipmentProviderId?: string | null;
+  courierName?: string | null;
+  shipmentDetails?: Record<string, any> | null;
 }
 const StoreOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -97,6 +101,31 @@ const StoreOrders: React.FC = () => {
       icon: Package,
       color: 'text-gray-700',
       bg: 'bg-gray-50 border-gray-200'
+    };
+  };
+  const isStorePickup = (order: Order): boolean => {
+    if (!order.courierName) return false;
+    return order.courierName.toLowerCase().includes('store pickup');
+  };
+  const getStorePickupLocation = (order: Order): { name: string; address: string } | null => {
+    if (!isStorePickup(order)) return null;
+    const details = order.shipmentDetails;
+    if (details) {
+      // Try to extract from shipmentDetails.store_pickup or any key
+      for (const key of Object.keys(details)) {
+        const entry = details[key];
+        if (entry && typeof entry === 'object' && entry.type === 'store_pickup') {
+          return {
+            name: entry.pickupLocationName || order.courierName || 'Store',
+            address: entry.pickupLocationAddress || ''
+          };
+        }
+      }
+    }
+    // Fallback: use courierName as location name
+    return {
+      name: order.courierName || 'Store Pickup',
+      address: ''
     };
   };
   if (loading) {
@@ -162,6 +191,7 @@ const StoreOrders: React.FC = () => {
           const StatusIcon = statusConfig.icon;
           const displayItems = order.items.slice(0, 4);
           const remainingCount = order.items.length - 4;
+          const pickup = getStorePickupLocation(order);
           return (
             <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
               {/* Order Header */}
@@ -236,6 +266,12 @@ const StoreOrders: React.FC = () => {
                   <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="text-sm text-gray-500">
                       <span>{order.items.length} item{order.items.length > 1 ? 's' : ''}</span>
+                      {pickup && (
+                        <div className="mt-1 flex items-center gap-1 text-xs text-green-700">
+                          <MapPin className="w-3 h-3" />
+                          <span>Pickup: {pickup.name}</span>
+                        </div>
+                      )}
                     </div>
                     <Link
                       to={`/store/order/${order.id}`}

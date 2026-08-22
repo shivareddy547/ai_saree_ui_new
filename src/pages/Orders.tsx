@@ -170,6 +170,29 @@ const hasShipmentProvider = (order: Order) =>
     order.shiprocketOrderId ||
     order.awbCode
   );
+const isStorePickup = (order: Order): boolean => {
+  if (!order.courierName) return false;
+  return order.courierName.toLowerCase().includes('store pickup');
+};
+const getStorePickupLocation = (order: Order): { name: string; address: string } | null => {
+  if (!isStorePickup(order)) return null;
+  const details = order.shipmentDetails;
+  if (details) {
+    for (const key of Object.keys(details)) {
+      const entry = details[key];
+      if (entry && typeof entry === 'object' && entry.type === 'store_pickup') {
+        return {
+          name: entry.pickupLocationName || order.courierName || 'Store',
+          address: entry.pickupLocationAddress || ''
+        };
+      }
+    }
+  }
+  return {
+    name: order.courierName || 'Store Pickup',
+    address: ''
+  };
+};
 const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -857,6 +880,31 @@ const Orders: React.FC = () => {
                             </a>
                           </div>
                         )}
+                        {/* Store Pickup Location */}
+                        {isStorePickup(selectedOrder) && (() => {
+                          const pickup = getStorePickupLocation(selectedOrder);
+                          if (!pickup) return null;
+                          return (
+                            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 text-green-600 mt-0.5" />
+                                <div>
+                                  <p className="font-medium text-green-800">
+                                    Pickup Location
+                                  </p>
+                                  <p className="text-green-700">
+                                    {pickup.name}
+                                  </p>
+                                  {pickup.address && (
+                                    <p className="text-xs text-green-600 mt-1 whitespace-pre-wrap">
+                                      {pickup.address}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-amber-800 text-sm">
