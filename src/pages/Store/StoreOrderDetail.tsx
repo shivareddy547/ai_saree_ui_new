@@ -1,6 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Package, ChevronRight, Clock, MapPin, CreditCard, Truck, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import {
+  Package,
+  ChevronRight,
+  Clock,
+  MapPin,
+  CreditCard,
+  Truck,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Home,
+  Store,
+} from 'lucide-react';
 import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -33,31 +45,181 @@ interface OrderItem {
     size?: string;
   };
 }
+interface ShipmentDetails {
+  type?: string;
+  pickupLocationId?: number | null;
+  pickupLocationName?: string | null;
+  pickupLocationAddress?: string | null;
+  message?: string | null;
+  store_pickup?: {
+    pickupLocation?: {
+      id?: number;
+      name?: string;
+      streetAddress?: string;
+      street_address?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      zip_code?: string;
+      phone?: string;
+    };
+    pickupLocationId?: number;
+    pickupLocationName?: string;
+    pickupLocationAddress?: string;
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
 interface Order {
   id: number;
   total: number;
   status: string;
   shippingAddress: string;
+  billingAddress?: string | null;
   paymentMethod: string;
+  paymentStatus?: string;
   createdAt: string;
   items: OrderItem[];
+  shippingAmount?: number | null;
+  estimatedDeliveryDays?: number | null;
+  shipmentProviderId?: string | null;
+  courierCompanyId?: string | null;
+  courierName?: string | null;
+  shiprocketOrderId?: string | null;
+  shiprocketShipmentId?: string | null;
+  awbCode?: string | null;
+  shipmentStatus?: string | null;
+  shipmentDetails?: ShipmentDetails | null;
+  trackingUrl?: string | null;
 }
+interface PickupLocation {
+  id: number;
+  name: string;
+  streetAddress?: string;
+  street_address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  zip_code?: string;
+  phone?: string;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+const buildAddressFromLoc = (loc: {
+  streetAddress?: string;
+  street_address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  zip_code?: string;
+  phone?: string;
+} | null | undefined): string | null => {
+  if (!loc) return null;
+  const parts = [
+    loc.streetAddress || loc.street_address,
+    loc.city,
+    loc.state,
+    loc.zipCode || loc.zip_code,
+    loc.phone ? `Phone: ${loc.phone}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : null;
+};
+const isStorePickupOrder = (order: Order): boolean => {
+  if (order.shipmentDetails?.type === 'store_pickup') return true;
+  if (order.shipmentStatus === 'ready_for_pickup') return true;
+  const cid = String(order.courierCompanyId || '');
+  if (cid.startsWith('store-pickup')) return true;
+  const name = String(order.courierName || '').toLowerCase();
+  if (
+    (name.includes('store pickup') || name.includes('pickup')) &&
+    (order.shippingAmount === 0 || order.shippingAmount == null)
+  ) {
+    return true;
+  }
+  return false;
+};
+const extractPickupFromOrder = (
+  order: Order
+): { name: string | null; address: string | null; id: number | null } => {
+  const d = order.shipmentDetails || {};
+  const nested = d.store_pickup || {};
+  const nestedLoc = nested.pickupLocation || nested.raw?.pickupLocation || null;
+  const name =
+    d.pickupLocationName ||
+    nested.pickupLocationName ||
+    nestedLoc?.name ||
+    (isStorePickupOrder(order) ? order.courierName : null) ||
+    null;
+  const address =
+    d.pickupLocationAddress ||
+    nested.pickupLocationAddress ||
+    buildAddressFromLoc(nestedLoc) ||
+    null;
+  const id =
+    d.pickupLocationId ||
+    nested.pickupLocationId ||
+    nestedLoc?.id ||
+    null;
+  return { name, address, id };
+};
 const StoreOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedPickupAddress, setResolvedPickupAddress] = useState<string | null>(null);
+  const [resolvedPickupName, setResolvedPickupName] = useState<string | null>(null);
   useEffect(() => {
     if (id) {
       fetchOrder(id);
     }
   }, [id]);
+  const resolvePickupAddress = useCallback(async (ord: Order) => {
+    const extracted = extractPickupFromOrder(ord);
+    if (extracted.name) setResolvedPickupName(extracted.name);
+    if (extracted.address) {
+      setResolvedPickupAddress(extracted.address);
+      return;
+    }
+    if (!isStorePickupOrder(ord)) return;
+    try {
+      const res = await apiClient.get('/pickup-locations');
+      const list: PickupLocation[] = res.data?.data || res.data || [];
+      if (!Array.isArray(list) || list.length === 0) return;
+      let match: PickupLocation | undefined;
+      if (extracted.id) {
+        match = list.find((l) => l.id === extracted.id);
+      }
+      if (!match && extracted.name) {
+        const nameLower = extracted.name.toLowerCase();
+        match = list.find(
+          (l) =>
+            nameLower.includes((l.name || '').toLowerCase()) ||
+            (l.name || '').toLowerCase().includes(nameLower.replace(/^store pickup\s*[–-]\s*/i, ''))
+        );
+      }
+      if (!match) {
+        match = list.find((l) => l.isDefault) || list.find((l) => l.isActive !== false) || list[0];
+      }
+      if (match) {
+        if (!extracted.name && match.name) setResolvedPickupName(match.name);
+        const addr = buildAddressFromLoc(match);
+        if (addr) setResolvedPickupAddress(addr);
+      }
+    } catch (_) {
+      // ignore – address remains unavailable
+    }
+  }, []);
   const fetchOrder = async (orderId: string) => {
     try {
       setLoading(true);
       setError(null);
+      setResolvedPickupAddress(null);
+      setResolvedPickupName(null);
       const response = await apiClient.get(`/orders/${orderId}`);
-      setOrder(response.data.data);
+      const data = response.data.data as Order;
+      setOrder(data);
+      await resolvePickupAddress(data);
     } catch (err: any) {
       console.error('Failed to fetch order:', err);
       setError(err.response?.data?.message || 'Failed to load order');
@@ -66,44 +228,55 @@ const StoreOrderDetail: React.FC = () => {
     }
   };
   const getStatusConfig = (status: string) => {
-    const statusMap: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
+    const statusMap: Record<
+      string,
+      { label: string; icon: React.ElementType; color: string; bg: string }
+    > = {
       pending: {
         label: 'Pending',
         icon: Clock,
         color: 'text-yellow-700',
-        bg: 'bg-yellow-50 border-yellow-200'
+        bg: 'bg-yellow-50 border-yellow-200',
       },
       processing: {
         label: 'Processing',
         icon: AlertCircle,
         color: 'text-blue-700',
-        bg: 'bg-blue-50 border-blue-200'
+        bg: 'bg-blue-50 border-blue-200',
+      },
+      ready_for_pickup: {
+        label: 'Ready for Pickup',
+        icon: Store,
+        color: 'text-green-700',
+        bg: 'bg-green-50 border-green-200',
       },
       shipped: {
         label: 'Shipped',
         icon: Truck,
         color: 'text-indigo-700',
-        bg: 'bg-indigo-50 border-indigo-200'
+        bg: 'bg-indigo-50 border-indigo-200',
       },
       delivered: {
         label: 'Delivered',
         icon: CheckCircle,
         color: 'text-green-700',
-        bg: 'bg-green-50 border-green-200'
+        bg: 'bg-green-50 border-green-200',
       },
       cancelled: {
         label: 'Cancelled',
         icon: XCircle,
         color: 'text-red-700',
-        bg: 'bg-red-50 border-red-200'
+        bg: 'bg-red-50 border-red-200',
+      },
+    };
+    return (
+      statusMap[status] || {
+        label: status.charAt(0).toUpperCase() + status.slice(1),
+        icon: Package,
+        color: 'text-gray-700',
+        bg: 'bg-gray-50 border-gray-200',
       }
-    };
-    return statusMap[status] || {
-      label: status.charAt(0).toUpperCase() + status.slice(1),
-      icon: Package,
-      color: 'text-gray-700',
-      bg: 'bg-gray-50 border-gray-200'
-    };
+    );
   };
   if (loading) {
     return (
@@ -118,7 +291,12 @@ const StoreOrderDetail: React.FC = () => {
         <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
         <h2 className="text-xl font-medium text-gray-600">Error loading order</h2>
         <p className="text-red-600 mt-2">{error}</p>
-        <Link to="/store/orders" className="text-purple-600 hover:underline mt-4 inline-block">Back to Orders</Link>
+        <Link
+          to="/store/orders"
+          className="text-purple-600 hover:underline mt-4 inline-block"
+        >
+          Back to Orders
+        </Link>
       </div>
     );
   }
@@ -127,78 +305,240 @@ const StoreOrderDetail: React.FC = () => {
       <div className="text-center py-12">
         <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
         <h2 className="text-xl font-medium text-gray-600">Order not found</h2>
-        <Link to="/store/orders" className="text-purple-600 hover:underline mt-2 inline-block">Back to Orders</Link>
+        <Link
+          to="/store/orders"
+          className="text-purple-600 hover:underline mt-2 inline-block"
+        >
+          Back to Orders
+        </Link>
       </div>
     );
   }
-  const statusConfig = getStatusConfig(order.status);
+  const displayStatus =
+    order.shipmentStatus === 'ready_for_pickup' && order.status !== 'cancelled'
+      ? 'ready_for_pickup'
+      : order.status;
+  const statusConfig = getStatusConfig(displayStatus);
   const StatusIcon = statusConfig.icon;
+  const storePickup = isStorePickupOrder(order);
+  const extracted = extractPickupFromOrder(order);
+  const pickupName = resolvedPickupName || extracted.name;
+  const pickupAddress = resolvedPickupAddress || extracted.address;
+  const shippingFee =
+    order.shippingAmount != null ? Number(order.shippingAmount) : null;
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm">
-        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">Store</Link>
+        <Link to="/store/home" className="text-gray-500 hover:text-purple-600">
+          Store
+        </Link>
         <span className="text-gray-300">/</span>
-        <Link to="/store/orders" className="text-gray-500 hover:text-purple-600">Orders</Link>
+        <Link to="/store/orders" className="text-gray-500 hover:text-purple-600">
+          Orders
+        </Link>
         <span className="text-gray-300">/</span>
         <span className="text-gray-900 font-medium">Order #{order.id}</span>
       </nav>
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Order #{order.id}</h1>
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${statusConfig.bg} ${statusConfig.color}`}>
+        <div
+          className={`flex items-center gap-2 px-4 py-2 rounded-full border ${statusConfig.bg} ${statusConfig.color}`}
+        >
           <StatusIcon className="w-4 h-4" />
           <span className="font-medium">{statusConfig.label}</span>
         </div>
       </div>
-      {/* Order Summary Card */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 p-4 sm:p-6 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Date + Payment */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 p-4 sm:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex items-center gap-3 text-sm">
             <Clock className="w-5 h-5 text-purple-600 flex-shrink-0" />
             <div>
               <div className="text-gray-500">Order Date</div>
-              <div className="font-medium text-gray-900">{new Date(order.createdAt).toLocaleString()}</div>
-            </div>
-          </div>
-          {order.shippingAddress && (
-            <div className="flex items-center gap-3 text-sm">
-              <MapPin className="w-5 h-5 text-purple-600 flex-shrink-0" />
-              <div>
-                <div className="text-gray-500">Shipping Address</div>
-                <div className="font-medium text-gray-900">{order.shippingAddress}</div>
+              <div className="font-medium text-gray-900">
+                {new Date(order.createdAt).toLocaleString()}
               </div>
             </div>
-          )}
+          </div>
           {order.paymentMethod && (
             <div className="flex items-center gap-3 text-sm">
               <CreditCard className="w-5 h-5 text-purple-600 flex-shrink-0" />
               <div>
                 <div className="text-gray-500">Payment Method</div>
                 <div className="font-medium text-gray-900">{order.paymentMethod}</div>
+                {order.paymentStatus && (
+                  <div className="text-xs text-gray-500 mt-0.5 capitalize">
+                    Status: {order.paymentStatus}
+                  </div>
+                )}
               </div>
             </div>
           )}
         </div>
       </div>
-      {/* Items Section */}
+      {/* Shipping + Billing addresses */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {order.shippingAddress && (
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <MapPin className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-500 mb-1">
+                  Shipping Address
+                </div>
+                <div className="text-sm font-medium text-gray-900 whitespace-pre-line leading-relaxed">
+                  {order.shippingAddress}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {order.billingAddress && (
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <Home className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-500 mb-1">
+                  Billing Address
+                </div>
+                <div className="text-sm font-medium text-gray-900 whitespace-pre-line leading-relaxed">
+                  {order.billingAddress}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Store Pickup – location name + full address */}
+      {storePickup && (
+        <div className="bg-green-50/80 backdrop-blur-sm rounded-xl shadow-sm border border-green-200 p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+              <Store className="w-5 h-5 text-green-700" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-green-900">Store Pickup</h2>
+              <p className="text-sm text-green-700">
+                Collect your order from the store — shipping is free
+              </p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {pickupName && (
+              <div className="flex items-start gap-3 text-sm">
+                <Home className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-green-700/80">Pickup Location</div>
+                  <div className="font-semibold text-green-900">{pickupName}</div>
+                </div>
+              </div>
+            )}
+            {pickupAddress && (
+              <div className="flex items-start gap-3 text-sm">
+                <MapPin className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-green-700/80">Store Pickup Address</div>
+                  <div className="font-medium text-green-900 leading-relaxed whitespace-pre-line">
+                    {pickupAddress}
+                  </div>
+                </div>
+              </div>
+            )}
+            {order.shipmentDetails?.message && (
+              <p className="text-sm text-green-800 bg-green-100/60 rounded-lg px-3 py-2">
+                {order.shipmentDetails.message}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-100 text-green-800 px-2.5 py-1 rounded-full">
+                Shipping: FREE
+              </span>
+              {(order.shipmentStatus === 'ready_for_pickup' ||
+                displayStatus === 'ready_for_pickup') && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-600 text-white px-2.5 py-1 rounded-full">
+                  <CheckCircle className="w-3 h-3" />
+                  Ready for pickup
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Courier details for non-pickup */}
+      {!storePickup && (order.courierName || order.awbCode || order.trackingUrl) && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Truck className="w-5 h-5 text-purple-600" />
+            Shipping Details
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {order.courierName && (
+              <div>
+                <div className="text-gray-500">Courier</div>
+                <div className="font-medium text-gray-900">{order.courierName}</div>
+              </div>
+            )}
+            {shippingFee != null && (
+              <div>
+                <div className="text-gray-500">Shipping Fee</div>
+                <div className="font-medium text-gray-900">
+                  {shippingFee === 0 ? 'FREE' : `₹${shippingFee.toFixed(2)}`}
+                </div>
+              </div>
+            )}
+            {order.awbCode && (
+              <div>
+                <div className="text-gray-500">AWB / Tracking No.</div>
+                <div className="font-medium text-gray-900">{order.awbCode}</div>
+              </div>
+            )}
+            {order.estimatedDeliveryDays != null && (
+              <div>
+                <div className="text-gray-500">Est. Delivery</div>
+                <div className="font-medium text-gray-900">
+                  {order.estimatedDeliveryDays} day
+                  {order.estimatedDeliveryDays !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
+            {order.trackingUrl && (
+              <div className="sm:col-span-2">
+                <a
+                  href={order.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-600 hover:underline font-medium"
+                >
+                  Track shipment →
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Items */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Items</h2>
         <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 overflow-hidden">
           <div className="divide-y divide-gray-200">
             {order.items.map((item) => {
-              const imageUrl = item.product.images && item.product.images.length > 0
-                ? item.product.images[0].url
-                : 'https://via.placeholder.com/80x100?text=No+Image';
+              const imageUrl =
+                item.product.images && item.product.images.length > 0
+                  ? item.product.images[0].url
+                  : 'https://via.placeholder.com/80x100?text=No+Image';
               return (
-                <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 hover:bg-purple-50/50 transition-colors">
+                <div
+                  key={item.id}
+                  className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 hover:bg-purple-50/50 transition-colors"
+                >
                   <div className="w-20 h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                     <img
                       src={imageUrl}
                       alt={item.product.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80x100?text=No+Image';
+                        (e.target as HTMLImageElement).src =
+                          'https://via.placeholder.com/80x100?text=No+Image';
                       }}
                     />
                   </div>
@@ -227,11 +567,21 @@ const StoreOrderDetail: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Order Total */}
+      {/* Total */}
       <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100 p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="text-sm text-gray-500">
-            <span className="block">Total items: {order.items.reduce((sum, i) => sum + i.quantity, 0)}</span>
+          <div className="text-sm text-gray-500 space-y-1">
+            <span className="block">
+              Total items: {order.items.reduce((sum, i) => sum + i.quantity, 0)}
+            </span>
+            {shippingFee != null && (
+              <span className="block">
+                Shipping:{' '}
+                {storePickup || shippingFee === 0
+                  ? 'FREE'
+                  : `₹${shippingFee.toFixed(2)}`}
+              </span>
+            )}
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-500">Total Amount</div>
@@ -239,7 +589,10 @@ const StoreOrderDetail: React.FC = () => {
           </div>
         </div>
       </div>
-      <Link to="/store/orders" className="inline-flex items-center gap-2 text-purple-600 hover:text-purple-700 transition-colors">
+      <Link
+        to="/store/orders"
+        className="inline-flex items-center gap-2 text-purple-600 hover:text-purple-700 transition-colors"
+      >
         <ChevronRight className="w-4 h-4 rotate-180" />
         <span>Back to Orders</span>
       </Link>

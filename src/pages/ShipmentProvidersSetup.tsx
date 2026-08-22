@@ -21,7 +21,7 @@ const SHIPMENT_PRESETS: Preset[] = [
   {
     key: 'store_pickup',
     name: 'Store Pickup',
-    notes: 'Allow customers to collect orders from your configured store pickup locations. Shipping cost is always ₹0. Manage pickup locations under Store Settings → Pickup Locations. No external credentials required.',
+    notes: 'Allow customers to collect orders from your configured store pickup locations. Shipping cost is always ₹0. Manage pickup locations under Store Settings → Pickup Locations. No external credentials required. When enabled, Store Pickup appears as a free shipping option at checkout (one option per active location).',
     environments: ['production'],
     fields: [],
   },
@@ -266,7 +266,7 @@ const ShipmentProvidersSetup: React.FC = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Shipment Providers Setup</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Add and configure shipment / courier providers for your store. Credentials are stored securely and used when creating shipments and tracking. Use Store Pickup for free in-store collection.
+              Add and configure shipment / courier providers for your store. Credentials are stored securely and used when creating shipments and tracking. Use Store Pickup for free in-store collection (₹0).
             </p>
           </div>
           {!showForm && (
@@ -381,9 +381,9 @@ const ShipmentProvidersSetup: React.FC = () => {
                   <p className="font-medium mb-1">Store Pickup setup</p>
                   <ul className="list-disc list-inside space-y-0.5 text-xs">
                     <li>Shipping cost is always ₹0 for this method.</li>
-                    <li>Customers will see active pickup locations from Store Settings during checkout.</li>
-                    <li>After saving, Enable the provider so it appears as a shipping option at checkout.</li>
-                    <li>No API credentials are required.</li>
+                    <li>Customers will see one free option per <strong>active</strong> pickup location from Store Settings during checkout.</li>
+                    <li>After saving, click <strong>Enable</strong> so it appears as a shipping option at checkout.</li>
+                    <li>No API credentials are required. Manage locations under Store Settings → Pickup Locations.</li>
                   </ul>
                 </div>
               )}
