@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2, Search, Filter, Download } from 'lucide-react';
+import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2, Search, Filter, Download, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 const API_BASE =
   process.env.REACT_APP_API_URL || "http://localhost:3000/api";
@@ -43,6 +43,7 @@ const AllVideos: React.FC = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [videoLoadError, setVideoLoadError] = useState(false);
@@ -60,6 +61,7 @@ const AllVideos: React.FC = () => {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const successTimer = useRef<NodeJS.Timeout | null>(null);
   // Authentication check
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -78,6 +80,22 @@ const AllVideos: React.FC = () => {
       return;
     }
   }, [navigate]);
+  // Auto-dismiss success message
+  useEffect(() => {
+    if (successMessage) {
+      if (successTimer.current) {
+        clearTimeout(successTimer.current);
+      }
+      successTimer.current = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 5000);
+      return () => {
+        if (successTimer.current) {
+          clearTimeout(successTimer.current);
+        }
+      };
+    }
+  }, [successMessage]);
   // Debounce search
   useEffect(() => {
     if (debounceTimer.current) {
@@ -222,9 +240,26 @@ const AllVideos: React.FC = () => {
       setDeletingId(null);
     }
   };
+  const parseBlobError = async (err: any): Promise<string> => {
+    try {
+      if (err.response?.data instanceof Blob) {
+        const text = await err.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          return errorData.message || errorData.error || 'Failed to export products to Excel';
+        } catch {
+          return 'Failed to export products to Excel';
+        }
+      }
+      return err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to export products to Excel';
+    } catch {
+      return 'Failed to export products to Excel';
+    }
+  };
   const handleExport = async () => {
     setIsExporting(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       const params = new URLSearchParams();
       if (debouncedSearch) {
@@ -241,19 +276,22 @@ const AllVideos: React.FC = () => {
         responseType: 'blob',
       });
       const blob = new Blob([response.data], {
-        type: 'application/vnd.ms-excel',
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.setAttribute(
         'download',
-        `products_export_${new Date().toISOString().slice(0, 10)}.xls`
+        `products_export_${new Date().toISOString().slice(0, 10)}.xlsx`
       );
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      setSuccessMessage(
+        `Successfully exported ${videos.length} product${videos.length !== 1 ? 's' : ''} to Excel.`
+      );
     } catch (err: any) {
       console.error('Error exporting products:', err);
       if (err.response?.status === 401) {
@@ -264,11 +302,8 @@ const AllVideos: React.FC = () => {
         navigate('/login');
         return;
       }
-      setError(
-        err.response?.data?.message ||
-          err.message ||
-          'Failed to export products to Excel'
-      );
+      const message = await parseBlobError(err);
+      setError(message);
     } finally {
       setIsExporting(false);
     }
@@ -305,20 +340,30 @@ const AllVideos: React.FC = () => {
   return (
     <div className="space-y-8 pb-20 md:pb-0">
       <div className="flex justify-between items-center flex-wrap gap-4">
-        <h1 className="text-3xl font-bold text-slate-800">My Videos</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">My Videos</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {videos.length} product{videos.length !== 1 ? 's' : ''} found
+          </p>
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={handleExport}
             disabled={isExporting || videos.length === 0}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Export all products with images, videos, variants and full details to Excel (.xls)"
+            className="group flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+            title="Export all products to Excel with full details (ID, Name, SKU, Price, Category, Dimensions, Video URL, etc.)"
           >
             {isExporting ? (
-              <Loader2 size={18} className="animate-spin" />
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Exporting...
+              </>
             ) : (
-              <Download size={18} />
+              <>
+                <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                Export to Excel
+              </>
             )}
-            {isExporting ? 'Exporting...' : 'Export to Excel'}
           </button>
           <Link to="/create-product" className="btn-primary flex items-center gap-2">
             <PlusCircle size={20} /> Create New Video
@@ -326,9 +371,23 @@ const AllVideos: React.FC = () => {
         </div>
       </div>
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 flex items-center justify-between">
-          <span>{error}</span>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300">
+          <span className="text-sm">{error}</span>
           <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {successMessage && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={18} className="text-green-600" />
+            <span className="text-sm font-medium">{successMessage}</span>
+          </div>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="text-green-500 hover:text-green-700"
+          >
             <X size={16} />
           </button>
         </div>
