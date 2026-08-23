@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2, Search, Filter, Download, CheckCircle } from 'lucide-react';
+import {
+  Play, Eye, Calendar, PlusCircle, Loader2, X, ExternalLink, Trash2,
+  Search, Filter, Download, CheckCircle, Upload
+} from 'lucide-react';
 import axios from 'axios';
-const API_BASE =
-  process.env.REACT_APP_API_URL || "http://localhost:3000/api";
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3000/api";
 const apiClient = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
@@ -55,6 +57,12 @@ const AllVideos: React.FC = () => {
   const [includeImages, setIncludeImages] = useState(true);
   const [includeVideos, setIncludeVideos] = useState(true);
   const [includeExcel, setIncludeExcel] = useState(true);
+  // Import state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importType, setImportType] = useState<'excel' | 'excel_images' | 'excel_videos' | 'excel_images_videos'>('excel');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -88,31 +96,21 @@ const AllVideos: React.FC = () => {
   // Auto-dismiss success message
   useEffect(() => {
     if (successMessage) {
-      if (successTimer.current) {
-        clearTimeout(successTimer.current);
-      }
-      successTimer.current = setTimeout(() => {
-        setSuccessMessage(null);
-      }, 5000);
+      if (successTimer.current) clearTimeout(successTimer.current);
+      successTimer.current = setTimeout(() => setSuccessMessage(null), 5000);
       return () => {
-        if (successTimer.current) {
-          clearTimeout(successTimer.current);
-        }
+        if (successTimer.current) clearTimeout(successTimer.current);
       };
     }
   }, [successMessage]);
   // Debounce search
   useEffect(() => {
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       setDebouncedSearch(searchTerm);
     }, 400);
     return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, [searchTerm]);
   // Fetch categories
@@ -131,24 +129,16 @@ const AllVideos: React.FC = () => {
       setCategoriesLoading(false);
     }
   }, []);
-  useEffect(() => {
-    fetchCategories();
-  }, [fetchCategories]);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
   // Fetch videos with filters
   const fetchVideos = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (debouncedSearch) {
-        params.append('search', debouncedSearch);
-      }
-      if (statusFilter === 'active' || statusFilter === 'deleted') {
-        params.append('status', statusFilter);
-      }
-      if (categoryFilter) {
-        params.append('categoryId', categoryFilter);
-      }
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (statusFilter === 'active' || statusFilter === 'deleted') params.append('status', statusFilter);
+      if (categoryFilter) params.append('categoryId', categoryFilter);
       const url = `/products${params.toString() ? `?${params.toString()}` : ''}`;
       const response = await apiClient.get(url);
       if (response.data.success) {
@@ -172,9 +162,7 @@ const AllVideos: React.FC = () => {
       setIsFiltering(false);
     }
   }, [debouncedSearch, statusFilter, categoryFilter, navigate]);
-  useEffect(() => {
-    fetchVideos();
-  }, [fetchVideos]);
+  useEffect(() => { fetchVideos(); }, [fetchVideos]);
   // Helper functions
   const getCloudinaryVideoUrl = (publicId: string | null | undefined): string | null => {
     if (!publicId) return null;
@@ -186,12 +174,8 @@ const AllVideos: React.FC = () => {
       const cloudinaryUrl = getCloudinaryVideoUrl(video.cloudinaryVideoPublicId);
       if (cloudinaryUrl) return cloudinaryUrl;
     }
-    if (video.videoUrl && video.videoUrl.startsWith('http')) {
-      return video.videoUrl;
-    }
-    if (video.videoKitUrl && video.videoKitUrl.startsWith('http')) {
-      return video.videoKitUrl;
-    }
+    if (video.videoUrl && video.videoUrl.startsWith('http')) return video.videoUrl;
+    if (video.videoKitUrl && video.videoKitUrl.startsWith('http')) return video.videoKitUrl;
     return null;
   };
   const formatDate = (dateString: string) => {
@@ -214,12 +198,8 @@ const AllVideos: React.FC = () => {
     setSelectedVideo(null);
     setVideoLoadError(false);
   };
-  const handleDeleteClick = (id: string) => {
-    setDeleteConfirmId(id);
-  };
-  const cancelDelete = () => {
-    setDeleteConfirmId(null);
-  };
+  const handleDeleteClick = (id: string) => setDeleteConfirmId(id);
+  const cancelDelete = () => setDeleteConfirmId(null);
   const confirmDelete = async (id: string) => {
     setDeletingId(id);
     setDeleteConfirmId(null);
@@ -252,56 +232,36 @@ const AllVideos: React.FC = () => {
         try {
           const errorData = JSON.parse(text);
           return errorData.message || errorData.error || 'Failed to export products';
-        } catch {
-          return 'Failed to export products';
-        }
+        } catch { return 'Failed to export products'; }
       }
       return err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to export products';
-    } catch {
-      return 'Failed to export products';
-    }
+    } catch { return 'Failed to export products'; }
   };
-  // Actual export function that makes API call with options
+  // Export logic
   const performExport = async (options: { includeImages: boolean; includeVideos: boolean; includeExcel: boolean }) => {
     setIsExporting(true);
     setError(null);
     setSuccessMessage(null);
     try {
       const params = new URLSearchParams();
-      if (debouncedSearch) {
-        params.append('search', debouncedSearch);
-      }
-      if (statusFilter === 'active' || statusFilter === 'deleted') {
-        params.append('status', statusFilter);
-      }
-      if (categoryFilter) {
-        params.append('categoryId', categoryFilter);
-      }
-      // Append export options
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (statusFilter === 'active' || statusFilter === 'deleted') params.append('status', statusFilter);
+      if (categoryFilter) params.append('categoryId', categoryFilter);
       params.append('includeImages', String(options.includeImages));
       params.append('includeVideos', String(options.includeVideos));
       params.append('includeExcel', String(options.includeExcel));
       const url = `/products/export${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await apiClient.get(url, {
-        responseType: 'blob',
-      });
-      const blob = new Blob([response.data], {
-        type: 'application/zip',
-      });
+      const response = await apiClient.get(url, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/zip' });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.setAttribute(
-        'download',
-        `products_export_${new Date().toISOString().slice(0, 10)}.zip`
-      );
+      link.setAttribute('download', `products_export_${new Date().toISOString().slice(0, 10)}.zip`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
-      setSuccessMessage(
-        `Successfully exported ${videos.length} product${videos.length !== 1 ? 's' : ''} as ZIP archive.`
-      );
+      setSuccessMessage(`Successfully exported ${videos.length} product${videos.length !== 1 ? 's' : ''} as ZIP archive.`);
       setIsExportModalOpen(false);
     } catch (err: any) {
       console.error('Error exporting products:', err);
@@ -319,18 +279,72 @@ const AllVideos: React.FC = () => {
       setIsExporting(false);
     }
   };
-  const handleExportClick = () => {
-    setIsExportModalOpen(true);
-  };
-  const handleExportConfirm = () => {
-    performExport({ includeImages, includeVideos, includeExcel });
-  };
+  const handleExportClick = () => setIsExportModalOpen(true);
+  const handleExportConfirm = () => performExport({ includeImages, includeVideos, includeExcel });
   const handleExportCancel = () => {
     setIsExportModalOpen(false);
-    // Reset to defaults if needed
     setIncludeImages(true);
     setIncludeVideos(true);
     setIncludeExcel(true);
+  };
+  // Import logic
+  const handleImportClick = () => {
+    setIsImportModalOpen(true);
+    setImportType('excel');
+    setImportFile(null);
+    setImportResult(null);
+  };
+  const handleImportCancel = () => {
+    setIsImportModalOpen(false);
+    setImportFile(null);
+    setImportResult(null);
+  };
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setImportFile(e.target.files[0]);
+    } else {
+      setImportFile(null);
+    }
+  };
+  const handleImportConfirm = async () => {
+    if (!importFile) return;
+    setIsImporting(true);
+    setError(null);
+    setSuccessMessage(null);
+    setImportResult(null);
+    const formData = new FormData();
+    formData.append('file', importFile);
+    formData.append('importType', importType);
+    try {
+      const response = await apiClient.post('/products/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportResult(response.data);
+      setSuccessMessage('Products imported successfully.');
+      fetchVideos();
+      // Close modal after a delay so user can see result
+      setTimeout(() => {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportResult(null);
+      }, 5000);
+    } catch (err: any) {
+      console.error('Error importing products:', err);
+      setError(err.response?.data?.message || err.message || 'Failed to import products');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+  // Determine file accept based on importType
+  const getFileAccept = () => {
+    if (importType === 'excel') return '.xls,.xlsx';
+    return '.zip';
+  };
+  const getFileHelpText = () => {
+    if (importType === 'excel') {
+      return 'Upload Products Excel file (.xls or .xlsx)';
+    }
+    return 'Upload ZIP file containing products.xls(x) and media folders';
   };
   const clearFilters = () => {
     setSearchTerm('');
@@ -344,12 +358,9 @@ const AllVideos: React.FC = () => {
     setIsFiltering(true);
   };
   const hasActiveFilters = searchTerm || statusFilter !== 'active' || categoryFilter;
-  // Detect if mobile (breakpoint md: 768px)
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -372,21 +383,20 @@ const AllVideos: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button
+            onClick={handleImportClick}
+            className="group flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-sm hover:shadow-md"
+          >
+            <Upload size={18} /> Import Products
+          </button>
+          <button
             onClick={handleExportClick}
             disabled={isExporting || videos.length === 0}
             className="group flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-            title="Export products with options"
           >
             {isExporting ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Exporting...
-              </>
+              <><Loader2 size={18} className="animate-spin" /> Exporting...</>
             ) : (
-              <>
-                <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />
-                Export to ZIP
-              </>
+              <><Download size={18} className="group-hover:translate-y-0.5 transition-transform" /> Export to ZIP</>
             )}
           </button>
           <Link to="/create-product" className="btn-primary flex items-center gap-2">
@@ -397,9 +407,7 @@ const AllVideos: React.FC = () => {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300">
           <span className="text-sm">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
-            <X size={16} />
-          </button>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700"><X size={16} /></button>
         </div>
       )}
       {successMessage && (
@@ -408,12 +416,7 @@ const AllVideos: React.FC = () => {
             <CheckCircle size={18} className="text-green-600" />
             <span className="text-sm font-medium">{successMessage}</span>
           </div>
-          <button
-            onClick={() => setSuccessMessage(null)}
-            className="text-green-500 hover:text-green-700"
-          >
-            <X size={16} />
-          </button>
+          <button onClick={() => setSuccessMessage(null)} className="text-green-500 hover:text-green-700"><X size={16} /></button>
         </div>
       )}
       {/* Export Options Modal */}
@@ -422,61 +425,109 @@ const AllVideos: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-slate-800">Export Options</h3>
-              <button
-                onClick={handleExportCancel}
-                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-              >
+              <button onClick={handleExportCancel} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
                 <X size={20} className="text-gray-500" />
               </button>
             </div>
             <div className="space-y-4">
               <label className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  checked={includeImages}
-                  onChange={(e) => setIncludeImages(e.target.checked)}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                />
+                <input type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} className="h-4 w-4 text-purple-600" />
                 <span className="text-sm text-gray-700">Include Images</span>
               </label>
               <label className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  checked={includeVideos}
-                  onChange={(e) => setIncludeVideos(e.target.checked)}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                />
+                <input type="checkbox" checked={includeVideos} onChange={(e) => setIncludeVideos(e.target.checked)} className="h-4 w-4 text-purple-600" />
                 <span className="text-sm text-gray-700">Include Videos</span>
               </label>
               <label className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  checked={includeExcel}
-                  onChange={(e) => setIncludeExcel(e.target.checked)}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                />
+                <input type="checkbox" checked={includeExcel} onChange={(e) => setIncludeExcel(e.target.checked)} className="h-4 w-4 text-purple-600" />
                 <span className="text-sm text-gray-700">Include Products.xls</span>
               </label>
             </div>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-              <button
-                onClick={handleExportCancel}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExportConfirm}
-                disabled={isExporting}
-                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-              >
+              <button onClick={handleExportCancel} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleExportConfirm} disabled={isExporting} className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50">
                 {isExporting ? <Loader2 size={16} className="animate-spin" /> : 'Export'}
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* Desktop Filter Bar - hidden on mobile */}
+      {/* Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Import Products</h3>
+              <button onClick={handleImportCancel} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">What do you want to import?</label>
+                <div className="space-y-1">
+                  <label className="flex items-center space-x-3">
+                    <input type="radio" checked={importType === 'excel'} onChange={() => setImportType('excel')} className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm text-gray-700">Products Excel only</span>
+                  </label>
+                  <label className="flex items-center space-x-3">
+                    <input type="radio" checked={importType === 'excel_images'} onChange={() => setImportType('excel_images')} className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm text-gray-700">Products Excel + Images</span>
+                  </label>
+                  <label className="flex items-center space-x-3">
+                    <input type="radio" checked={importType === 'excel_videos'} onChange={() => setImportType('excel_videos')} className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm text-gray-700">Products Excel + Videos</span>
+                  </label>
+                  <label className="flex items-center space-x-3">
+                    <input type="radio" checked={importType === 'excel_images_videos'} onChange={() => setImportType('excel_images_videos')} className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm text-gray-700">Products Excel + Images + Videos</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{getFileHelpText()}</label>
+                <input
+                  type="file"
+                  accept={getFileAccept()}
+                  onChange={handleImportFileChange}
+                  className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                />
+                {importFile && <p className="text-xs text-green-600 mt-1">Selected: {importFile.name}</p>}
+              </div>
+              {importResult && (
+                <div className="bg-green-50 p-3 rounded-lg text-sm">
+                  <p><strong>Import Completed</strong></p>
+                  <p>Products imported: {importResult.importedProducts}</p>
+                  <p>Products updated: {importResult.updatedProducts}</p>
+                  <p>Variants imported: {importResult.importedVariants}</p>
+                  <p>Variants updated: {importResult.updatedVariants}</p>
+                  <p>Images imported: {importResult.importedImages}</p>
+                  <p>Videos imported: {importResult.importedVideos}</p>
+                  {importResult.warnings && importResult.warnings.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-yellow-600 cursor-pointer">Warnings ({importResult.warnings.length})</summary>
+                      <ul className="list-disc pl-4 text-xs text-gray-600 max-h-32 overflow-y-auto">
+                        {importResult.warnings.map((w: string, i: number) => <li key={i}>{w}</li>)}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+              <button onClick={handleImportCancel} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+              <button
+                onClick={handleImportConfirm}
+                disabled={!importFile || isImporting}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                {isImporting ? <Loader2 size={16} className="animate-spin" /> : 'Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Desktop Filter Bar */}
       <div className="hidden md:block bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
         <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
           <div className="flex-1 w-full relative">
@@ -484,21 +535,12 @@ const AllVideos: React.FC = () => {
               type="text"
               placeholder="Search by name or SKU..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setIsFiltering(true);
-              }}
+              onChange={(e) => { setSearchTerm(e.target.value); setIsFiltering(true); }}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
             />
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             {searchTerm && (
-              <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setDebouncedSearch('');
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => { setSearchTerm(''); setDebouncedSearch(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X size={16} />
               </button>
             )}
@@ -506,14 +548,7 @@ const AllVideos: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700 hidden sm:inline">Status:</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value as any);
-                  setIsFiltering(true);
-                }}
-                className="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
-              >
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as any); setIsFiltering(true); }} className="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm">
                 <option value="active">Active</option>
                 <option value="deleted">Deleted</option>
                 <option value="all">All</option>
@@ -521,27 +556,12 @@ const AllVideos: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700 hidden sm:inline">Category:</span>
-              <select
-                value={categoryFilter}
-                onChange={(e) => {
-                  setCategoryFilter(e.target.value);
-                  setIsFiltering(true);
-                }}
-                className="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
-                disabled={categoriesLoading}
-              >
+              <select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setIsFiltering(true); }} className="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm" disabled={categoriesLoading}>
                 <option value="">All Categories</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
+                {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
               </select>
             </div>
-            <button
-              onClick={clearFilters}
-              className="px-4 py-2.5 text-sm text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors whitespace-nowrap"
-            >
-              Clear
-            </button>
+            <button onClick={clearFilters} className="px-4 py-2.5 text-sm text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors whitespace-nowrap">Clear</button>
           </div>
         </div>
         {isFiltering && (
@@ -551,66 +571,33 @@ const AllVideos: React.FC = () => {
           </div>
         )}
       </div>
-      {/* Mobile: Floating Filter Button */}
+      {/* Mobile Filter Button */}
       {isMobile && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-xs px-4">
-          <button
-            ref={filterButtonRef}
-            onClick={() => setIsFilterDrawerOpen(true)}
-            className="w-full bg-purple-600 text-white py-3 px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
-          >
+          <button ref={filterButtonRef} onClick={() => setIsFilterDrawerOpen(true)} className="w-full bg-purple-600 text-white py-3 px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors">
             <Filter size={20} />
             <span className="font-medium">Filters</span>
-            {hasActiveFilters && (
-              <span className="ml-1 bg-white text-purple-600 text-xs font-bold px-2 py-0.5 rounded-full">
-                {[searchTerm ? 1 : 0, statusFilter !== 'active' ? 1 : 0, categoryFilter ? 1 : 0].reduce((a, b) => a + b, 0)}
-              </span>
-            )}
+            {hasActiveFilters && <span className="ml-1 bg-white text-purple-600 text-xs font-bold px-2 py-0.5 rounded-full">{ [searchTerm ? 1 : 0, statusFilter !== 'active' ? 1 : 0, categoryFilter ? 1 : 0].reduce((a, b) => a + b, 0)}</span>}
           </button>
         </div>
       )}
       {/* Mobile Filter Drawer */}
       {isMobile && isFilterDrawerOpen && (
         <>
-          <div
-            className="fixed inset-0 bg-black/50 z-50"
-            onClick={() => setIsFilterDrawerOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setIsFilterDrawerOpen(false)} />
           <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl max-h-[80vh] overflow-y-auto p-6 animate-slide-up">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-slate-800">Filters</h2>
-              <button
-                onClick={() => setIsFilterDrawerOpen(false)}
-                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-              >
-                <X size={20} className="text-gray-500" />
-              </button>
+              <button onClick={() => setIsFilterDrawerOpen(false)} className="p-2 rounded-full hover:bg-gray-100 transition-colors"><X size={20} className="text-gray-500" /></button>
             </div>
             <div className="relative mb-4">
-              <input
-                type="text"
-                placeholder="Search by name or SKU..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
-              />
+              <input type="text" placeholder="Search by name or SKU..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm" />
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X size={16} />
-                </button>
-              )}
+              {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={16} /></button>}
             </div>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
-              >
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm">
                 <option value="active">Active</option>
                 <option value="deleted">Deleted</option>
                 <option value="all">All</option>
@@ -618,31 +605,14 @@ const AllVideos: React.FC = () => {
             </div>
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm"
-                disabled={categoriesLoading}
-              >
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white text-sm" disabled={categoriesLoading}>
                 <option value="">All Categories</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
+                {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
               </select>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={clearFilters}
-                className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-              >
-                Clear All
-              </button>
-              <button
-                onClick={applyFilters}
-                className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
-              >
-                Apply Filters
-              </button>
+              <button onClick={clearFilters} className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors">Clear All</button>
+              <button onClick={applyFilters} className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors">Apply Filters</button>
             </div>
           </div>
         </>
@@ -654,14 +624,10 @@ const AllVideos: React.FC = () => {
           </div>
           <h3 className="text-xl font-semibold text-slate-700 mb-2">No Videos Found</h3>
           <p className="text-gray-500 mb-6">
-            {searchTerm || statusFilter !== 'active' || categoryFilter
-              ? 'Try adjusting your filters'
-              : 'Create your first product video to get started'}
+            {searchTerm || statusFilter !== 'active' || categoryFilter ? 'Try adjusting your filters' : 'Create your first product video to get started'}
           </p>
           {!searchTerm && statusFilter === 'active' && !categoryFilter && (
-            <Link to="/create-product" className="btn-primary inline-flex items-center gap-2">
-              <PlusCircle size={20} /> Create Video
-            </Link>
+            <Link to="/create-product" className="btn-primary inline-flex items-center gap-2"><PlusCircle size={20} /> Create Video</Link>
           )}
         </div>
       ) : (
@@ -670,17 +636,10 @@ const AllVideos: React.FC = () => {
             const hasVideo = getVideoUrl(video) !== null;
             const isDeleting = deletingId === video.id;
             return (
-              <div
-                key={video.id}
-                className="group relative rounded-2xl overflow-hidden border border-gray-100 hover:shadow-md transition-all bg-white"
-              >
+              <div key={video.id} className="group relative rounded-2xl overflow-hidden border border-gray-100 hover:shadow-md transition-all bg-white">
                 <div className="aspect-video bg-gray-100 relative overflow-hidden">
                   {video.images && video.images.length > 0 ? (
-                    <img
-                      src={video.images[0].url}
-                      alt={video.name}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={video.images[0].url} alt={video.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-100 to-purple-200">
                       <Play size={48} className="text-purple-400" />
@@ -690,30 +649,18 @@ const AllVideos: React.FC = () => {
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     <h4 className="font-bold text-sm truncate">{video.name}</h4>
                     <div className="flex items-center justify-between text-xs opacity-90">
-                      <span className="flex items-center gap-1">
-                        <Eye size={12} />
-                        {video.views || 0} views
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar size={12} />
-                        {formatDate(video.createdAt)}
-                      </span>
+                      <span className="flex items-center gap-1"><Eye size={12} /> {video.views || 0} views</span>
+                      <span className="flex items-center gap-1"><Calendar size={12} /> {formatDate(video.createdAt)}</span>
                     </div>
                   </div>
                   <div className="absolute top-3 right-3">
-                    <span className={`text-[10px] font-medium px-2 py-1 rounded-md backdrop-blur-md ${
-                      video.status === 'published'
-                        ? 'bg-green-500/80 text-white'
-                        : 'bg-yellow-500/80 text-white'
-                    }`}>
+                    <span className={`text-[10px] font-medium px-2 py-1 rounded-md backdrop-blur-md ${video.status === 'published' ? 'bg-green-500/80 text-white' : 'bg-yellow-500/80 text-white'}`}>
                       {video.status || 'draft'}
                     </span>
                   </div>
                   {video.cloudinaryVideoPublicId && (
                     <div className="absolute top-3 left-3">
-                      <span className="text-[10px] font-medium px-2 py-1 rounded-md bg-blue-500/80 text-white backdrop-blur-md">
-                        Cloudinary
-                      </span>
+                      <span className="text-[10px] font-medium px-2 py-1 rounded-md bg-blue-500/80 text-white backdrop-blur-md">Cloudinary</span>
                     </div>
                   )}
                   {!video.isActive && (
@@ -732,58 +679,20 @@ const AllVideos: React.FC = () => {
                     <span className="text-sm text-gray-700">{video.defaultSku || 'N/A'}</span>
                   </div>
                   <div className="flex gap-2 mt-3 pt-3 border-t">
-                    <Link
-                      to={`/create-product?edit=${video.id}`}
-                      className="flex-1 text-center text-sm bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors"
-                    >
-                      Edit
-                    </Link>
-                    <button
-                      onClick={() => handlePreview(video)}
-                      disabled={!hasVideo}
-                      className={`flex-1 text-center text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                        hasVideo
-                          ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      Preview
-                    </button>
-                    <button
-                      onClick={() => handleDeleteClick(video.id)}
-                      disabled={isDeleting || !video.isActive}
-                      className="flex items-center justify-center text-sm bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
-                      title={video.isActive ? 'Delete product' : 'Already deleted'}
-                    >
-                      {isDeleting ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={16} />
-                      )}
+                    <Link to={`/create-product?edit=${video.id}`} className="flex-1 text-center text-sm bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">Edit</Link>
+                    <button onClick={() => handlePreview(video)} disabled={!hasVideo} className={`flex-1 text-center text-sm px-3 py-1.5 rounded-lg transition-colors ${hasVideo ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Preview</button>
+                    <button onClick={() => handleDeleteClick(video.id)} disabled={isDeleting || !video.isActive} className="flex items-center justify-center text-sm bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50" title={video.isActive ? 'Delete product' : 'Already deleted'}>
+                      {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                     </button>
                   </div>
                 </div>
                 {deleteConfirmId === video.id && (
                   <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-4 rounded-2xl">
-                    <p className="text-sm font-medium text-slate-800 text-center mb-1">
-                      Delete this product?
-                    </p>
-                    <p className="text-xs text-gray-500 text-center mb-4">
-                      This is a soft delete. The product will be hidden but can be restored later if needed.
-                    </p>
+                    <p className="text-sm font-medium text-slate-800 text-center mb-1">Delete this product?</p>
+                    <p className="text-xs text-gray-500 text-center mb-4">This is a soft delete. The product will be hidden but can be restored later if needed.</p>
                     <div className="flex gap-2">
-                      <button
-                        onClick={cancelDelete}
-                        className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => confirmDelete(video.id)}
-                        className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                        Delete
-                      </button>
+                      <button onClick={cancelDelete} className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+                      <button onClick={() => confirmDelete(video.id)} className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Delete</button>
                     </div>
                   </div>
                 )}
@@ -794,81 +703,29 @@ const AllVideos: React.FC = () => {
       )}
       {/* Video Preview Modal */}
       {isModalOpen && selectedVideo && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={closeModal}
-        >
-          <div 
-            className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={closeModal}>
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center gap-3 min-w-0">
-                <h3 className="text-lg font-semibold text-slate-800 truncate">
-                  {selectedVideo.name}
-                </h3>
-                {selectedVideo.cloudinaryVideoPublicId && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                    Cloudinary
-                  </span>
-                )}
+                <h3 className="text-lg font-semibold text-slate-800 truncate">{selectedVideo.name}</h3>
+                {selectedVideo.cloudinaryVideoPublicId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex-shrink-0">Cloudinary</span>}
               </div>
-              <button
-                onClick={closeModal}
-                className="p-2 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0"
-              >
-                <X size={20} className="text-gray-500" />
-              </button>
+              <button onClick={closeModal} className="p-2 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0"><X size={20} className="text-gray-500" /></button>
             </div>
             <div className="p-4 bg-black">
               <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
                 {videoLoadError ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6">
-                    <div className="bg-yellow-500/20 rounded-full p-4 mb-4">
-                      <ExternalLink size={32} className="text-yellow-400" />
-                    </div>
+                    <div className="bg-yellow-500/20 rounded-full p-4 mb-4"><ExternalLink size={32} className="text-yellow-400" /></div>
                     <p className="text-sm text-yellow-400 mb-2">Unable to load video</p>
-                    <p className="text-xs text-gray-400 mb-4">
-                      {selectedVideo.cloudinaryVideoPublicId 
-                        ? `Public ID: ${selectedVideo.cloudinaryVideoPublicId}`
-                        : 'Video URL may be invalid'}
-                    </p>
+                    <p className="text-xs text-gray-400 mb-4">{selectedVideo.cloudinaryVideoPublicId ? `Public ID: ${selectedVideo.cloudinaryVideoPublicId}` : 'Video URL may be invalid'}</p>
                     <div className="flex gap-3">
-                      {getVideoUrl(selectedVideo) && (
-                        <a
-                          href={getVideoUrl(selectedVideo)!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          <ExternalLink size={16} />
-                          Open in Browser
-                        </a>
-                      )}
-                      <button
-                        onClick={() => setVideoLoadError(false)}
-                        className="text-sm bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-                      >
-                        Retry
-                      </button>
+                      {getVideoUrl(selectedVideo) && <a href={getVideoUrl(selectedVideo)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"><ExternalLink size={16} /> Open in Browser</a>}
+                      <button onClick={() => setVideoLoadError(false)} className="text-sm bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">Retry</button>
                     </div>
                   </div>
                 ) : (
-                  <video
-                    key={getVideoUrl(selectedVideo) || selectedVideo.id}
-                    src={getVideoUrl(selectedVideo) || undefined}
-                    controls
-                    autoPlay
-                    className="w-full h-full object-contain"
-                    controlsList="nodownload"
-                    onError={() => {
-                      console.error('Video failed to load in modal');
-                      setVideoLoadError(true);
-                    }}
-                    onLoadedData={() => {
-                      setVideoLoadError(false);
-                    }}
-                  >
+                  <video key={getVideoUrl(selectedVideo) || selectedVideo.id} src={getVideoUrl(selectedVideo) || undefined} controls autoPlay className="w-full h-full object-contain" controlsList="nodownload" onError={() => { console.error('Video failed to load'); setVideoLoadError(true); }} onLoadedData={() => setVideoLoadError(false)}>
                     Your browser does not support the video tag.
                   </video>
                 )}
@@ -876,29 +733,11 @@ const AllVideos: React.FC = () => {
             </div>
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Price</span>
-                  <span className="ml-2 font-semibold text-purple-700">₹{selectedVideo.basePrice || 0}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">SKU</span>
-                  <span className="ml-2 font-medium">{selectedVideo.defaultSku || 'N/A'}</span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-gray-500">Status</span>
-                  <span className={`ml-2 font-medium ${
-                    selectedVideo.status === 'published' ? 'text-green-600' : 'text-yellow-600'
-                  }`}>
-                    {selectedVideo.status || 'draft'}
-                  </span>
-                </div>
+                <div><span className="text-gray-500">Price</span> <span className="ml-2 font-semibold text-purple-700">₹{selectedVideo.basePrice || 0}</span></div>
+                <div><span className="text-gray-500">SKU</span> <span className="ml-2 font-medium">{selectedVideo.defaultSku || 'N/A'}</span></div>
+                <div className="col-span-2"><span className="text-gray-500">Status</span> <span className={`ml-2 font-medium ${selectedVideo.status === 'published' ? 'text-green-600' : 'text-yellow-600'}`}>{selectedVideo.status || 'draft'}</span></div>
                 {selectedVideo.cloudinaryVideoPublicId && (
-                  <div className="col-span-2">
-                    <span className="text-gray-500 text-xs">Cloudinary Public ID</span>
-                    <span className="ml-2 text-xs text-gray-600 font-mono break-all">
-                      {selectedVideo.cloudinaryVideoPublicId}
-                    </span>
-                  </div>
+                  <div className="col-span-2"><span className="text-gray-500 text-xs">Cloudinary Public ID</span> <span className="ml-2 text-xs text-gray-600 font-mono break-all">{selectedVideo.cloudinaryVideoPublicId}</span></div>
                 )}
               </div>
             </div>
