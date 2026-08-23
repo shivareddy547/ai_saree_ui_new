@@ -50,6 +50,11 @@ const AllVideos: React.FC = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  // Export options modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [includeImages, setIncludeImages] = useState(true);
+  const [includeVideos, setIncludeVideos] = useState(true);
+  const [includeExcel, setIncludeExcel] = useState(true);
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -256,7 +261,8 @@ const AllVideos: React.FC = () => {
       return 'Failed to export products';
     }
   };
-  const handleExport = async () => {
+  // Actual export function that makes API call with options
+  const performExport = async (options: { includeImages: boolean; includeVideos: boolean; includeExcel: boolean }) => {
     setIsExporting(true);
     setError(null);
     setSuccessMessage(null);
@@ -271,11 +277,14 @@ const AllVideos: React.FC = () => {
       if (categoryFilter) {
         params.append('categoryId', categoryFilter);
       }
+      // Append export options
+      params.append('includeImages', String(options.includeImages));
+      params.append('includeVideos', String(options.includeVideos));
+      params.append('includeExcel', String(options.includeExcel));
       const url = `/products/export${params.toString() ? `?${params.toString()}` : ''}`;
       const response = await apiClient.get(url, {
         responseType: 'blob',
       });
-      // The backend now returns a ZIP archive
       const blob = new Blob([response.data], {
         type: 'application/zip',
       });
@@ -293,6 +302,7 @@ const AllVideos: React.FC = () => {
       setSuccessMessage(
         `Successfully exported ${videos.length} product${videos.length !== 1 ? 's' : ''} as ZIP archive.`
       );
+      setIsExportModalOpen(false);
     } catch (err: any) {
       console.error('Error exporting products:', err);
       if (err.response?.status === 401) {
@@ -308,6 +318,19 @@ const AllVideos: React.FC = () => {
     } finally {
       setIsExporting(false);
     }
+  };
+  const handleExportClick = () => {
+    setIsExportModalOpen(true);
+  };
+  const handleExportConfirm = () => {
+    performExport({ includeImages, includeVideos, includeExcel });
+  };
+  const handleExportCancel = () => {
+    setIsExportModalOpen(false);
+    // Reset to defaults if needed
+    setIncludeImages(true);
+    setIncludeVideos(true);
+    setIncludeExcel(true);
   };
   const clearFilters = () => {
     setSearchTerm('');
@@ -349,10 +372,10 @@ const AllVideos: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={handleExport}
+            onClick={handleExportClick}
             disabled={isExporting || videos.length === 0}
             className="group flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-            title="Export all products as ZIP with images and Excel file"
+            title="Export products with options"
           >
             {isExporting ? (
               <>
@@ -391,6 +414,66 @@ const AllVideos: React.FC = () => {
           >
             <X size={16} />
           </button>
+        </div>
+      )}
+      {/* Export Options Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Export Options</h3>
+              <button
+                onClick={handleExportCancel}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  checked={includeImages}
+                  onChange={(e) => setIncludeImages(e.target.checked)}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-700">Include Images</span>
+              </label>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  checked={includeVideos}
+                  onChange={(e) => setIncludeVideos(e.target.checked)}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-700">Include Videos</span>
+              </label>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  checked={includeExcel}
+                  onChange={(e) => setIncludeExcel(e.target.checked)}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-700">Include Products.xls</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+              <button
+                onClick={handleExportCancel}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportConfirm}
+                disabled={isExporting}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                {isExporting ? <Loader2 size={16} className="animate-spin" /> : 'Export'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {/* Desktop Filter Bar - hidden on mobile */}
