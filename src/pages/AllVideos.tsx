@@ -246,14 +246,14 @@ const AllVideos: React.FC = () => {
         const text = await err.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          return errorData.message || errorData.error || 'Failed to export products to Excel';
+          return errorData.message || errorData.error || 'Failed to export products';
         } catch {
-          return 'Failed to export products to Excel';
+          return 'Failed to export products';
         }
       }
-      return err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to export products to Excel';
+      return err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to export products';
     } catch {
-      return 'Failed to export products to Excel';
+      return 'Failed to export products';
     }
   };
   const handleExport = async () => {
@@ -275,22 +275,23 @@ const AllVideos: React.FC = () => {
       const response = await apiClient.get(url, {
         responseType: 'blob',
       });
+      // The backend now returns a ZIP archive
       const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        type: 'application/zip',
       });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.setAttribute(
         'download',
-        `products_export_${new Date().toISOString().slice(0, 10)}.xlsx`
+        `products_export_${new Date().toISOString().slice(0, 10)}.zip`
       );
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
       setSuccessMessage(
-        `Successfully exported ${videos.length} product${videos.length !== 1 ? 's' : ''} to Excel.`
+        `Successfully exported ${videos.length} product${videos.length !== 1 ? 's' : ''} as ZIP archive.`
       );
     } catch (err: any) {
       console.error('Error exporting products:', err);
@@ -351,7 +352,7 @@ const AllVideos: React.FC = () => {
             onClick={handleExport}
             disabled={isExporting || videos.length === 0}
             className="group flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-            title="Export all products to Excel with full details (ID, Name, SKU, Price, Category, Dimensions, Video URL, etc.)"
+            title="Export all products as ZIP with images and Excel file"
           >
             {isExporting ? (
               <>
@@ -361,7 +362,7 @@ const AllVideos: React.FC = () => {
             ) : (
               <>
                 <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />
-                Export to Excel
+                Export to ZIP
               </>
             )}
           </button>
