@@ -322,12 +322,7 @@ const AllVideos: React.FC = () => {
       setImportResult(response.data);
       setSuccessMessage('Products imported successfully.');
       fetchVideos();
-      // Close modal after a delay so user can see result
-      setTimeout(() => {
-        setIsImportModalOpen(false);
-        setImportFile(null);
-        setImportResult(null);
-      }, 5000);
+      // Removed auto-close timeout: popup now stays open until user manually closes it.
     } catch (err: any) {
       console.error('Error importing products:', err);
       setError(err.response?.data?.message || err.message || 'Failed to import products');
