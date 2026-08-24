@@ -29,7 +29,6 @@ import SocialPostVideoConfig from './pages/SocialPostVideoConfig';
 import PaymentProvidersSetup from './pages/PaymentProvidersSetup';
 import ShipmentProvidersSetup from './pages/ShipmentProvidersSetup';
 import StoreSettingsAdmin from './pages/StoreSettingsAdmin';
-// Import the new StorePageViews component
 import StorePageViews from './pages/StorePageViews';
 import StoreHome from './pages/Store/StoreHome';
 import StoreProducts from './pages/Store/StoreProducts';
@@ -42,7 +41,6 @@ import StoreWishlist from './pages/Store/StoreWishlist';
 import StoreSettings from './pages/Store/StoreSettings';
 import StoreReturnPolicy from './pages/Store/StoreReturnPolicy';
 import StoreManageAddresses from './pages/Store/StoreManageAddresses';
-// OAuth callback handler component
 const OAuthCallbackHandler: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -51,14 +49,11 @@ const OAuthCallbackHandler: React.FC = () => {
     const code = params.get('code');
     const state = params.get('state');
     if (code && state) {
-      // Redirect to social config page with the code and state
-      // so that the SocialPostVideoConfig component can process it
       navigate(`/social-post-video-config?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`, { replace: true });
     }
   }, [location, navigate]);
   return null;
 };
-// Scroll to top on route change
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
   React.useEffect(() => {
@@ -109,38 +104,30 @@ const App: React.FC = () => {
                         <Route path="/forgot-password" element={<ForgotPasswordEmail />} />
                         <Route path="/forgot-password-otp" element={<ForgotPasswordOTP />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
-                        {/* Admin routes - protected */}
-                        <Route
-                            path="/"
-                            element={
-                                <ProtectedRoute allowedRoles={['admin']}>
-                                    <Layout />
-                                </ProtectedRoute>
-                            }
-                        >
-                            <Route index element={<Navigate to="/dashboard" />} />
-                            <Route path="dashboard" element={<Dashboard />} />
-                            <Route path="create-product" element={<CreateProduct />} />
-                            <Route path="ai-generation" element={<AIVideoGeneration />} />
-                            <Route path="video-preview" element={<VideoPreview />} />
-                            <Route path="insta-preview" element={<InstagramPreview />} />
-                            <Route path="post-success" element={<PostSuccess />} />
-                            <Route path="all-videos" element={<AllVideos />} />
-                            <Route path="categories" element={<Categories />} />
-                            <Route path="orders" element={<Orders />} />
-                            <Route path="users" element={<Users />} />
-                            <Route path="users/:id" element={<UserDetail />} />
-                            <Route path="analytics" element={<Analytics />} />
-                            {/* New route for Store Page views */}
-                            <Route path="store-page-views" element={<StorePageViews />} />
-                            <Route path="help-us" element={<HelpUs />} />
-                            <Route path="social-post-video-config" element={<SocialPostVideoConfig />} />
-                            <Route path="payment-providers-setup" element={<PaymentProvidersSetup />} />
-                            <Route path="shipment-providers-setup" element={<ShipmentProvidersSetup />} />
-                            <Route path="setup-providers" element={<SetupProviders />} />
-                            <Route path="store-settings" element={<StoreSettingsAdmin />} />
+                        <Route path="/" element={<StoreLayout />}>
+                            <Route index element={<StoreHome />} />
                         </Route>
-                        {/* Store routes - public (authentication handled inside components) */}
+                        <Route element={<ProtectedRoute allowedRoles={['admin']}><Layout /></ProtectedRoute>}>
+                            <Route path="/dashboard" element={<Dashboard />} />
+                            <Route path="/create-product" element={<CreateProduct />} />
+                            <Route path="/ai-generation" element={<AIVideoGeneration />} />
+                            <Route path="/video-preview" element={<VideoPreview />} />
+                            <Route path="/insta-preview" element={<InstagramPreview />} />
+                            <Route path="/post-success" element={<PostSuccess />} />
+                            <Route path="/all-videos" element={<AllVideos />} />
+                            <Route path="/categories" element={<Categories />} />
+                            <Route path="/orders" element={<Orders />} />
+                            <Route path="/users" element={<Users />} />
+                            <Route path="/users/:id" element={<UserDetail />} />
+                            <Route path="/analytics" element={<Analytics />} />
+                            <Route path="/store-page-views" element={<StorePageViews />} />
+                            <Route path="/help-us" element={<HelpUs />} />
+                            <Route path="/social-post-video-config" element={<SocialPostVideoConfig />} />
+                            <Route path="/payment-providers-setup" element={<PaymentProvidersSetup />} />
+                            <Route path="/shipment-providers-setup" element={<ShipmentProvidersSetup />} />
+                            <Route path="/setup-providers" element={<SetupProviders />} />
+                            <Route path="/store-settings" element={<StoreSettingsAdmin />} />
+                        </Route>
                         <Route path="/store" element={<StoreLayout />}>
                             <Route index element={<Navigate to="/store/home" />} />
                             <Route path="home" element={<StoreHome />} />
