@@ -10,6 +10,8 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  MapPin,
+  Globe,
 } from 'lucide-react';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -34,11 +36,32 @@ interface PageViewRow {
   registeredViews: number;
   providerViews: Record<string, number>;
   providerTotal: number;
+  lastIpAddress?: string | null;
+  lastCity?: string | null;
+  lastRegion?: string | null;
+  lastCountry?: string | null;
+  lastCountryCode?: string | null;
+  lastLocation?: string | null;
+  lastViewedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 const formatNumber = (n: number) =>
   n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const formatDate = (iso?: string | null) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+};
 const StorePageViews: React.FC = () => {
   const [rows, setRows] = useState<PageViewRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,7 +139,7 @@ const StorePageViews: React.FC = () => {
             Store Page Views
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Track guest, registered and provider traffic for every store page
+            Track guest, registered and provider traffic for every store page — including visitor IP and location
           </p>
         </div>
         <button
@@ -205,7 +228,7 @@ const StorePageViews: React.FC = () => {
             Views by Page
           </h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Each row shows guest, registered-user and provider traffic for that URL
+            Each row shows guest, registered-user and provider traffic, plus the last visitor IP and location
           </p>
         </div>
         {rows.length === 0 && !error ? (
@@ -234,6 +257,7 @@ const StorePageViews: React.FC = () => {
                   <th className="px-4 sm:px-6 py-3 font-medium text-right">
                     Providers
                   </th>
+                  <th className="px-4 sm:px-6 py-3 font-medium">Last IP / Location</th>
                   <th className="px-4 sm:px-6 py-3 font-medium w-10"></th>
                 </tr>
               </thead>
@@ -269,6 +293,31 @@ const StorePageViews: React.FC = () => {
                             {formatNumber(row.providerTotal)}
                           </span>
                         </td>
+                        <td className="px-4 sm:px-6 py-3.5">
+                          {row.lastIpAddress || row.lastLocation ? (
+                            <div className="space-y-0.5 min-w-[140px]">
+                              {row.lastIpAddress && (
+                                <div className="flex items-center gap-1.5 text-sm text-slate-700 font-mono">
+                                  <Globe className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                                  {row.lastIpAddress}
+                                </div>
+                              )}
+                              {row.lastLocation && (
+                                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                  <MapPin className="w-3.5 h-3.5 text-pink-500 flex-shrink-0" />
+                                  {row.lastLocation}
+                                </div>
+                              )}
+                              {row.lastViewedAt && (
+                                <p className="text-[11px] text-slate-400 pl-5">
+                                  {formatDate(row.lastViewedAt)}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-400">—</span>
+                          )}
+                        </td>
                         <td className="px-4 sm:px-6 py-3.5 text-right">
                           {hasProviders && (
                             <button
@@ -287,7 +336,7 @@ const StorePageViews: React.FC = () => {
                       </tr>
                       {isExpanded && hasProviders && (
                         <tr className="bg-blue-50/40">
-                          <td colSpan={6} className="px-4 sm:px-6 py-3">
+                          <td colSpan={7} className="px-4 sm:px-6 py-3">
                             <div className="flex flex-wrap gap-2">
                               {Object.entries(row.providerViews)
                                 .sort(([, a], [, b]) => (b as number) - (a as number))
@@ -332,6 +381,11 @@ const StorePageViews: React.FC = () => {
             that arrived with a <code className="bg-gray-100 px-1 rounded">?provider=…</code>{' '}
             query parameter (e.g. facebook, instagram). Expand a row to see the
             breakdown per provider.
+          </li>
+          <li>
+            <span className="font-medium text-pink-700">IP / Location</span> – last
+            visitor IP address and geolocation (city, region, country) resolved
+            from that IP for the page.
           </li>
         </ul>
       </div>
