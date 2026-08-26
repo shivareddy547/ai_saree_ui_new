@@ -16,6 +16,7 @@ import {
   Link2,
   CloudUpload,
 } from 'lucide-react';
+
 interface Provider {
   id: string;
   provider_type: string;
@@ -24,6 +25,7 @@ interface Provider {
   is_enabled: boolean;
   credentials: Record<string, string>;
 }
+
 interface SocialConnection {
   id: string;
   providerId: string;
@@ -34,6 +36,7 @@ interface SocialConnection {
   error?: string;
   tokenExpiresAt?: string;
 }
+
 interface GeneratedVideo {
   id: string;
   title?: string;
@@ -51,8 +54,10 @@ interface GeneratedVideo {
     frameCount?: number;
     cloudinaryError?: string;
     localPath?: string;
+    audioSource?: string;
   };
 }
+
 const MEDIA_TYPES: Record<string, { label: string; value: string }[]> = {
   youtube: [
     { label: 'Video', value: 'VIDEO' },
@@ -75,13 +80,223 @@ const MEDIA_TYPES: Record<string, { label: string; value: string }[]> = {
     { label: 'Post', value: 'FEED' },
   ],
 };
+
+const CLOUD_NAME =
+  process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'lovecart';
+const UPLOAD_PRESET =
+  process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET || 'product_videos';
+
+const OUT_W = 1080;
+const OUT_H = 1920;
+
 const isPlayableVideoUrl = (url?: string | null) => {
   if (!url) return false;
-  if (url.includes('res.cloudinary.com') && /\/video\//.test(url)) return true;
+  if (url.includes('res.cloudinary.com')) return true;
   if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) return true;
   if (url.includes('/uploads/videos/')) return true;
   return false;
 };
+
+/** Draw image COVER — fills entire canvas, no bars on any side */
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const scale = Math.max(width / img.naturalWidth, height / img.naturalHeight);
+  const w = img.naturalWidth * scale;
+  const h = img.naturalHeight * scale;
+  const x = (width - w) / 2;
+  const y = (height - h) / 2;
+  ctx.drawImage(img, x, y, w, h);
+}
+
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = src;
+  });
+}
+
+/**
+ * Client-side video builder (same approach as CreateProduct reference):
+ * canvas COVER frames + real audio track via MediaRecorder.
+ */
+async function buildVideoBlob(
+  imageSrcs: string[],
+  audioBlob: Blob | null,
+  secondsPerImage: number,
+  onProgress?: (p: number, msg: string) => void
+): Promise<Blob> {
+  onProgress?.(5, 'Loading images...');
+  const images = await Promise.all(imageSrcs.map((s) => loadImage(s)));
+  if (images.length === 0) throw new Error('No images to encode');
+
+  let audioDuration = secondsPerImage * images.length;
+  let audioEl: HTMLAudioElement | null = null;
+  let audioObjectUrl: string | null = null;
+
+  if (audioBlob) {
+    audioObjectUrl = URL.createObjectURL(audioBlob);
+    audioEl = new Audio(audioObjectUrl);
+    await new Promise<void>((resolve, reject) => {
+      audioEl!.onloadedmetadata = () => resolve();
+      audioEl!.onerror = () => reject(new Error('Failed to load audio'));
+      audioEl!.load();
+    });
+    if (audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0) {
+      audioDuration = audioEl.duration;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = OUT_W;
+  canvas.height = OUT_H;
+  const ctx = canvas.getContext('2d')!;
+  const canvasStream = canvas.captureStream(30);
+
+  const combinedStream = new MediaStream();
+  canvasStream.getVideoTracks().forEach((t) => combinedStream.addTrack(t));
+
+  let audioContext: AudioContext | null = null;
+  if (audioEl) {
+    audioContext = new AudioContext();
+    const source = audioContext.createMediaElementSource(audioEl);
+    const dest = audioContext.createMediaStreamDestination();
+    source.connect(dest);
+    dest.stream.getAudioTracks().forEach((t) => combinedStream.addTrack(t));
+  }
+
+  const mimeCandidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4',
+  ];
+  let mimeType = '';
+  for (const m of mimeCandidates) {
+    if (MediaRecorder.isTypeSupported(m)) {
+      mimeType = m;
+      break;
+    }
+  }
+  if (!mimeType) mimeType = 'video/webm';
+
+  const recorder = new MediaRecorder(combinedStream, {
+    mimeType,
+    videoBitsPerSecond: 4_000_000,
+    audioBitsPerSecond: 128_000,
+  });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+
+  const fps = 30;
+  const totalFrames = Math.ceil(audioDuration * fps);
+  const perImageSec = Math.max(0.5, secondsPerImage);
+  const framesPerImage = Math.max(1, Math.round(perImageSec * fps));
+
+  onProgress?.(15, 'Recording video...');
+  recorder.start(500);
+
+  if (audioContext) await audioContext.resume();
+  if (audioEl) {
+    try {
+      await audioEl.play();
+    } catch (_) {}
+  }
+
+  await new Promise<void>((resolve) => {
+    let frame = 0;
+    const tick = () => {
+      if (frame >= totalFrames) {
+        resolve();
+        return;
+      }
+      const imgIndex = Math.floor(frame / framesPerImage) % images.length;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, OUT_W, OUT_H);
+      drawImageCover(ctx, images[imgIndex], OUT_W, OUT_H);
+
+      const pct = 15 + (frame / totalFrames) * 70;
+      if (frame % 15 === 0) onProgress?.(Math.min(85, pct), 'Encoding frames...');
+
+      frame++;
+      setTimeout(tick, 1000 / fps);
+    };
+    tick();
+  });
+
+  if (audioEl) {
+    audioEl.pause();
+    audioEl.currentTime = 0;
+  }
+  if (audioContext) {
+    try {
+      await audioContext.close();
+    } catch (_) {}
+  }
+  if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
+
+  onProgress?.(90, 'Finalizing...');
+  const blob = await new Promise<Blob>((resolve) => {
+    recorder.onstop = () => {
+      resolve(new Blob(chunks, { type: mimeType }));
+    };
+    recorder.stop();
+    setTimeout(() => {
+      if (chunks.length > 0) resolve(new Blob(chunks, { type: mimeType }));
+    }, 4000);
+  });
+
+  onProgress?.(95, 'Video ready');
+  return blob;
+}
+
+async function uploadBlobToCloudinary(
+  blob: Blob,
+  onProgress?: (p: number) => void
+): Promise<{ url: string; publicId: string }> {
+  const form = new FormData();
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  form.append('file', blob, `ai_video.${ext}`);
+  form.append('upload_preset', UPLOAD_PRESET);
+  form.append('folder', 'ai_videos');
+
+  const xhr = new XMLHttpRequest();
+  const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;
+
+  const result = await new Promise<any>((resolve, reject) => {
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      try {
+        const json = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) resolve(json);
+        else reject(new Error(json.error?.message || `Cloudinary ${xhr.status}`));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.onerror = () => reject(new Error('Cloudinary upload network error'));
+    xhr.open('POST', url);
+    xhr.send(form);
+  });
+
+  return {
+    url: result.secure_url || result.url,
+    publicId: result.public_id,
+  };
+}
+
 const AIVideoGeneration: React.FC = () => {
   const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
   const api = axios.create({
@@ -91,6 +306,7 @@ const AIVideoGeneration: React.FC = () => {
     },
     withCredentials: true,
   });
+
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   const [title, setTitle] = useState('');
   const [audioMode, setAudioMode] = useState<'none' | 'upload' | 'ai'>('none');
@@ -101,12 +317,14 @@ const AIVideoGeneration: React.FC = () => {
   const [voiceGender, setVoiceGender] = useState<'male' | 'female' | 'neutral'>('female');
   const [durationSeconds, setDurationSeconds] = useState(5);
   const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
+  const [genMessage, setGenMessage] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [resultVideo, setResultVideo] = useState<GeneratedVideo | null>(null);
   const [history, setHistory] = useState<GeneratedVideo[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [reuploading, setReuploading] = useState(false);
+
   const [providers, setProviders] = useState<Provider[]>([]);
   const [connections, setConnections] = useState<{ [id: string]: SocialConnection }>({});
   const [selectedProviderId, setSelectedProviderId] = useState('');
@@ -114,8 +332,10 @@ const AIVideoGeneration: React.FC = () => {
   const [caption, setCaption] = useState('');
   const [sharing, setSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
+
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
@@ -126,6 +346,7 @@ const AIVideoGeneration: React.FC = () => {
       setLoadingHistory(false);
     }
   }, []);
+
   const fetchProvidersAndConnections = useCallback(async () => {
     try {
       const [provRes, connRes] = await Promise.all([
@@ -133,11 +354,9 @@ const AIVideoGeneration: React.FC = () => {
         api.get('/social/status'),
       ]);
       const all = provRes.data.data || [];
-      const social = all.filter((p: any) => p.provider_type === 'social' && p.is_enabled);
-      setProviders(social);
-      const conns = connRes.data.data || [];
+      setProviders(all.filter((p: any) => p.provider_type === 'social' && p.is_enabled));
       const map: { [id: string]: SocialConnection } = {};
-      conns.forEach((c: any) => {
+      (connRes.data.data || []).forEach((c: any) => {
         map[c.providerId] = {
           id: c.id,
           providerId: c.providerId,
@@ -152,10 +371,12 @@ const AIVideoGeneration: React.FC = () => {
       setConnections(map);
     } catch (_) {}
   }, []);
+
   useEffect(() => {
     fetchHistory();
     fetchProvidersAndConnections();
   }, [fetchHistory, fetchProvidersAndConnections]);
+
   useEffect(() => {
     const handleOAuthCallback = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -187,6 +408,7 @@ const AIVideoGeneration: React.FC = () => {
     };
     handleOAuthCallback();
   }, []);
+
   const openAuthPopup = async (providerId: string) => {
     setError('');
     setIsConnecting(providerId);
@@ -225,18 +447,17 @@ const AIVideoGeneration: React.FC = () => {
       setIsConnecting(null);
     }
   };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const newItems = files
       .filter((f) => f.type.startsWith('image/'))
       .slice(0, 15 - images.length)
-      .map((file) => ({
-        file,
-        preview: URL.createObjectURL(file),
-      }));
+      .map((file) => ({ file, preview: URL.createObjectURL(file) }));
     setImages((prev) => [...prev, ...newItems].slice(0, 15));
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
+
   const removeImage = (index: number) => {
     setImages((prev) => {
       const next = [...prev];
@@ -245,6 +466,7 @@ const AIVideoGeneration: React.FC = () => {
       return next;
     });
   };
+
   const handleAudioSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -253,16 +475,21 @@ const AIVideoGeneration: React.FC = () => {
     setAudioPreview(URL.createObjectURL(file));
     setAudioMode('upload');
   };
+
   const clearAudio = () => {
     if (audioPreview) URL.revokeObjectURL(audioPreview);
     setAudioFile(null);
     setAudioPreview(null);
     if (audioInputRef.current) audioInputRef.current.value = '';
   };
+
   const handleGenerate = async () => {
     setError('');
     setSuccess('');
     setResultVideo(null);
+    setGenProgress(0);
+    setGenMessage('');
+
     if (images.length === 0) {
       setError('Please upload at least one image');
       return;
@@ -275,65 +502,95 @@ const AIVideoGeneration: React.FC = () => {
       setError('Please upload an audio file or switch audio mode');
       return;
     }
+
     setGenerating(true);
     try {
-      const formData = new FormData();
-      formData.append('title', title.trim() || 'AI Generated Video');
-      formData.append('audioMode', audioMode);
-      formData.append('durationSeconds', String(durationSeconds));
-      formData.append('audioLanguage', audioLanguage);
-      formData.append('voiceGender', voiceGender);
-      if (audioScript.trim()) formData.append('audioScript', audioScript.trim());
-      images.forEach((img) => formData.append('images', img.file));
-      if (audioFile) formData.append('audio', audioFile);
-      const res = await api.post('/ai-videos/generate', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 300000,
-      });
-      const video = res.data.data as GeneratedVideo;
-      setResultVideo(video);
-      if (video.status === 'failed') {
-        setError(video.errorMessage || 'Video generation failed');
-      } else if (isPlayableVideoUrl(video.videoUrl) && video.videoUrl?.includes('cloudinary')) {
-        setSuccess('Video generated and uploaded to Cloudinary successfully!');
-      } else if (isPlayableVideoUrl(video.videoUrl)) {
-        setSuccess(
-          'Video generated locally. Use “Upload to Cloudinary” if the player does not load.'
+      // 1) Resolve audio blob
+      let audioBlob: Blob | null = null;
+      if (audioMode === 'upload' && audioFile) {
+        audioBlob = audioFile;
+        setGenMessage('Using uploaded audio...');
+      } else if (audioMode === 'ai' && audioScript.trim()) {
+        setGenMessage('Generating AI voice-over...');
+        setGenProgress(5);
+        const ttsRes = await api.post(
+          '/ai-videos/tts',
+          {
+            script: audioScript.trim(),
+            language: audioLanguage,
+            voiceGender,
+          },
+          { responseType: 'blob', timeout: 120000 }
         );
-      } else {
-        setSuccess(res.data.message || 'Processing finished');
+        audioBlob = ttsRes.data as Blob;
+        if (!audioBlob || audioBlob.size < 100) {
+          throw new Error('AI voice generation returned empty audio');
+        }
       }
+
+      // 2) Build video client-side with COVER frames + audio
+      setGenMessage('Building video (full-frame images + audio)...');
+      const videoBlob = await buildVideoBlob(
+        images.map((i) => i.preview),
+        audioBlob,
+        durationSeconds,
+        (p, msg) => {
+          setGenProgress(p);
+          setGenMessage(msg);
+        }
+      );
+
+      // 3) Upload to Cloudinary
+      setGenMessage('Uploading to Cloudinary...');
+      setGenProgress(96);
+      const uploaded = await uploadBlobToCloudinary(videoBlob, (p) => {
+        setGenProgress(96 + Math.round(p * 0.03));
+      });
+
+      // 4) Save record on backend
+      setGenMessage('Saving...');
+      const saveRes = await api.post('/ai-videos/save', {
+        title: title.trim() || 'AI Generated Video',
+        videoUrl: uploaded.url,
+        thumbnailUrl: null,
+        imageUrls: [],
+        audioMode,
+        audioScript: audioMode === 'ai' ? audioScript.trim() : null,
+        audioLanguage,
+        voiceGender,
+        durationSeconds,
+        cloudinaryPublicId: uploaded.publicId,
+        metadata: {
+          clientEngine: 'mediarecorder',
+          hasAudio: !!audioBlob,
+          frameCount: images.length,
+        },
+      });
+
+      const video = saveRes.data.data as GeneratedVideo;
+      setResultVideo(video);
+      setSuccess('Video generated with full-frame images and audio, uploaded to Cloudinary!');
+      setGenProgress(100);
       await fetchHistory();
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'Failed to generate video');
+      console.error(err);
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          'Failed to generate video'
+      );
     } finally {
       setGenerating(false);
     }
   };
+
   const resolveMediaUrl = (url?: string | null) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
     const base = apiBase.replace(/\/api\/?$/, '');
     return `${base}${url.startsWith('/') ? url : '/' + url}`;
   };
-  const handleReuploadCloudinary = async (videoId: string) => {
-    setReuploading(true);
-    setError('');
-    setSuccess('');
-    try {
-      const res = await api.post(`/ai-videos/${videoId}/reupload-cloudinary`);
-      const video = res.data.data as GeneratedVideo;
-      setResultVideo(video);
-      setSuccess('Video uploaded to Cloudinary successfully!');
-      await fetchHistory();
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message || err.message || 'Failed to upload to Cloudinary'
-      );
-    } finally {
-      setReuploading(false);
-    }
-  };
+
   const isTokenExpired = (conn?: SocialConnection) => {
     if (!conn) return true;
     if (!conn.connected) return true;
@@ -341,6 +598,7 @@ const AIVideoGeneration: React.FC = () => {
     if (conn.tokenExpiresAt && new Date(conn.tokenExpiresAt) < new Date()) return true;
     return false;
   };
+
   const handleShare = async () => {
     if (!resultVideo?.videoUrl) {
       setError('No video available to share');
@@ -352,20 +610,12 @@ const AIVideoGeneration: React.FC = () => {
     }
     const conn = connections[selectedProviderId];
     if (!conn || isTokenExpired(conn)) {
-      setError(
-        'Account not connected or token expired. Click Connect to authorize again.'
-      );
+      setError('Account not connected or token expired. Click Connect to authorize again.');
       return;
     }
     const video_url = resolveMediaUrl(resultVideo.videoUrl);
-    if (!video_url.startsWith('http://') && !video_url.startsWith('https://')) {
-      setError('Video must be a public HTTPS URL. Click “Upload to Cloudinary” first.');
-      return;
-    }
-    if (!isPlayableVideoUrl(resultVideo.videoUrl)) {
-      setError(
-        'Current file is not a playable video (likely an image fallback). Regenerate or Upload to Cloudinary.'
-      );
+    if (!video_url.startsWith('http')) {
+      setError('Video must be a public HTTPS URL.');
       return;
     }
     setSharing(true);
@@ -394,20 +644,18 @@ const AIVideoGeneration: React.FC = () => {
       setSharing(false);
     }
   };
+
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const mediaOptions =
     MEDIA_TYPES[selectedProvider?.provider_key || ''] || MEDIA_TYPES.default;
-  const selectedConn = selectedProviderId
-    ? connections[selectedProviderId]
-    : undefined;
-  const needsReconnect = selectedProviderId
-    ? isTokenExpired(selectedConn)
-    : false;
+  const selectedConn = selectedProviderId ? connections[selectedProviderId] : undefined;
+  const needsReconnect = selectedProviderId ? isTokenExpired(selectedConn) : false;
   const playable = isPlayableVideoUrl(resultVideo?.videoUrl);
   const onCloudinary =
     !!resultVideo?.videoUrl &&
     (resultVideo.videoUrl.includes('res.cloudinary.com') ||
       !!resultVideo.metadata?.cloudinaryPublicId);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="card-glass p-8">
@@ -418,11 +666,12 @@ const AIVideoGeneration: React.FC = () => {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">AI Video Generation</h1>
             <p className="text-slate-500 text-sm mt-1">
-              Upload product images, add voice-over, generate an MP4, upload to Cloudinary,
-              then share to social formats.
+              Images fill the full frame (no bars). AI or uploaded voice is embedded in the
+              video, then uploaded to Cloudinary for sharing.
             </p>
           </div>
         </div>
+
         {error && (
           <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm mb-4 whitespace-pre-wrap">
             {error}
@@ -434,6 +683,7 @@ const AIVideoGeneration: React.FC = () => {
             {success}
           </div>
         )}
+
         <div className="mb-5">
           <label className="block text-sm font-medium text-gray-700 mb-1">Video Title</label>
           <input
@@ -445,6 +695,7 @@ const AIVideoGeneration: React.FC = () => {
             disabled={generating}
           />
         </div>
+
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">
@@ -510,6 +761,7 @@ const AIVideoGeneration: React.FC = () => {
             </div>
           )}
         </div>
+
         <div className="mb-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
           <label className="block text-sm font-medium text-gray-700 mb-3">Voice-over</label>
           <div className="flex flex-wrap gap-3 mb-4">
@@ -539,6 +791,7 @@ const AIVideoGeneration: React.FC = () => {
               </button>
             ))}
           </div>
+
           {audioMode === 'upload' && (
             <div>
               <input
@@ -578,6 +831,7 @@ const AIVideoGeneration: React.FC = () => {
               )}
             </div>
           )}
+
           {audioMode === 'ai' && (
             <div className="space-y-3">
               <div>
@@ -626,6 +880,7 @@ const AIVideoGeneration: React.FC = () => {
             </div>
           )}
         </div>
+
         <div className="mb-6 max-w-xs">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Seconds per image
@@ -641,7 +896,26 @@ const AIVideoGeneration: React.FC = () => {
             }
             disabled={generating}
           />
+          <p className="text-xs text-gray-500 mt-1">
+            Images rotate for the full length of the voice-over.
+          </p>
         </div>
+
+        {generating && (
+          <div className="mb-4 space-y-2">
+            <div className="flex justify-between text-xs text-gray-600">
+              <span>{genMessage || 'Working...'}</span>
+              <span>{Math.round(genProgress)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${genProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleGenerate}
@@ -650,7 +924,7 @@ const AIVideoGeneration: React.FC = () => {
         >
           {generating ? (
             <>
-              <Loader2 size={18} className="animate-spin" /> Generating & uploading...
+              <Loader2 size={18} className="animate-spin" /> Generating...
             </>
           ) : (
             <>
@@ -659,6 +933,7 @@ const AIVideoGeneration: React.FC = () => {
           )}
         </button>
       </div>
+
       {resultVideo && (
         <div className="card-glass p-8">
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -672,40 +947,13 @@ const AIVideoGeneration: React.FC = () => {
                   src={resolveMediaUrl(resultVideo.videoUrl)}
                   controls
                   playsInline
-                  className="w-full rounded-xl border border-gray-200 bg-black max-h-96"
-                  poster={
-                    resultVideo.thumbnailUrl
-                      ? resolveMediaUrl(resultVideo.thumbnailUrl)
-                      : undefined
-                  }
+                  className="w-full rounded-xl border border-gray-200 bg-black max-h-96 object-contain"
                 />
-              ) : resultVideo.thumbnailUrl || resultVideo.videoUrl ? (
-                <div>
-                  <img
-                    src={resolveMediaUrl(
-                      resultVideo.thumbnailUrl || resultVideo.videoUrl || ''
-                    )}
-                    alt="Preview"
-                    className="w-full rounded-xl border border-gray-200 object-contain max-h-96 bg-gray-50"
-                  />
-                  <p className="text-xs text-amber-700 mt-2 bg-amber-50 px-3 py-2 rounded-lg">
-                    This entry is not a playable MP4 (old fallback stored an image). Click
-                    “Upload to Cloudinary” to regenerate and upload a real video.
-                  </p>
-                </div>
               ) : (
-                <div className="text-gray-500 text-sm">No media available</div>
+                <div className="text-gray-500 text-sm">No playable media</div>
               )}
               <div className="flex flex-wrap items-center gap-2 mt-3">
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${
-                    resultVideo.status === 'completed'
-                      ? 'bg-green-100 text-green-700'
-                      : resultVideo.status === 'failed'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                   {resultVideo.status}
                 </span>
                 {onCloudinary && (
@@ -713,47 +961,21 @@ const AIVideoGeneration: React.FC = () => {
                     Cloudinary
                   </span>
                 )}
-                {resultVideo.metadata?.engine && (
-                  <span className="text-xs text-gray-500">
-                    engine: {resultVideo.metadata.engine}
-                  </span>
-                )}
               </div>
-              {resultVideo.errorMessage && (
-                <p className="text-xs text-red-500 mt-1">{resultVideo.errorMessage}</p>
-              )}
               {resultVideo.videoUrl && (
-                <p
-                  className="text-xs text-gray-400 mt-1 truncate"
-                  title={resultVideo.videoUrl}
-                >
+                <p className="text-xs text-gray-400 mt-1 truncate" title={resultVideo.videoUrl}>
                   {resultVideo.videoUrl}
                 </p>
               )}
-              {resultVideo.status !== 'failed' && !onCloudinary && (
-                <button
-                  type="button"
-                  onClick={() => handleReuploadCloudinary(resultVideo.id)}
-                  disabled={reuploading}
-                  className="mt-3 px-3 py-2 rounded-lg text-sm font-medium bg-sky-600 text-white hover:bg-sky-700 flex items-center gap-2"
-                >
-                  {reuploading ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <CloudUpload size={16} />
-                  )}
-                  Upload to Cloudinary
-                </button>
-              )}
             </div>
+
             <div className="space-y-4">
               <h3 className="font-medium text-gray-800 flex items-center gap-2">
                 <Share2 size={18} /> Share to social
               </h3>
               {providers.length === 0 ? (
                 <p className="text-sm text-gray-500">
-                  No enabled social providers. Configure them under Social Post Video
-                  Config.
+                  No enabled social providers. Configure them under Social Post Video Config.
                 </p>
               ) : (
                 <>
@@ -790,12 +1012,11 @@ const AIVideoGeneration: React.FC = () => {
                       })}
                     </select>
                   </div>
+
                   {selectedProviderId && needsReconnect && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex flex-col sm:flex-row sm:items-center gap-3">
                       <div className="flex-1">
-                        <p className="font-medium">
-                          Account not connected or token expired
-                        </p>
+                        <p className="font-medium">Account not connected or token expired</p>
                         <p className="text-xs mt-0.5">
                           Reconnect to post videos to this provider.
                         </p>
@@ -804,7 +1025,7 @@ const AIVideoGeneration: React.FC = () => {
                         type="button"
                         onClick={() => openAuthPopup(selectedProviderId)}
                         disabled={isConnecting === selectedProviderId}
-                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5 whitespace-nowrap"
                       >
                         {isConnecting === selectedProviderId ? (
                           <Loader2 size={14} className="animate-spin" />
@@ -815,12 +1036,14 @@ const AIVideoGeneration: React.FC = () => {
                       </button>
                     </div>
                   )}
+
                   {selectedProviderId && !needsReconnect && selectedConn?.connected && (
                     <div className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">
                       Connected as @
                       {selectedConn.username || selectedConn.accountId || 'account'}
                     </div>
                   )}
+
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Format
@@ -858,8 +1081,7 @@ const AIVideoGeneration: React.FC = () => {
                       !selectedProviderId ||
                       needsReconnect ||
                       resultVideo.status !== 'completed' ||
-                      !playable ||
-                      !onCloudinary
+                      !playable
                     }
                     className="btn-primary flex items-center gap-2"
                   >
@@ -873,17 +1095,13 @@ const AIVideoGeneration: React.FC = () => {
                       </>
                     )}
                   </button>
-                  {!onCloudinary && playable && (
-                    <p className="text-xs text-amber-600">
-                      Share requires a public Cloudinary URL. Upload to Cloudinary first.
-                    </p>
-                  )}
                 </>
               )}
             </div>
           </div>
         </div>
       )}
+
       <div className="card-glass p-8">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Recent generations</h2>
         {loadingHistory ? (
@@ -893,7 +1111,6 @@ const AIVideoGeneration: React.FC = () => {
         ) : (
           <div className="space-y-3">
             {history.map((v) => {
-              const ok = isPlayableVideoUrl(v.videoUrl);
               const cloud =
                 !!v.videoUrl &&
                 (v.videoUrl.includes('res.cloudinary.com') ||
@@ -904,26 +1121,16 @@ const AIVideoGeneration: React.FC = () => {
                   className="flex items-center gap-4 p-3 rounded-xl border border-gray-200 bg-white hover:shadow-sm cursor-pointer"
                   onClick={() => setResultVideo(v)}
                 >
-                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                    {v.thumbnailUrl ? (
-                      <img
-                        src={resolveMediaUrl(v.thumbnailUrl)}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">
-                        <Film size={20} />
-                      </div>
-                    )}
+                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center text-gray-400">
+                    <Film size={20} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800 truncate">
                       {v.title || 'Untitled'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {v.status} · {v.imageUrls?.length || 0} images
-                      {cloud ? ' · Cloudinary' : ok ? ' · local MP4' : ' · no video'}
+                      {v.status}
+                      {cloud ? ' · Cloudinary' : ''}
                       {v.createdAt ? ` · ${new Date(v.createdAt).toLocaleString()}` : ''}
                     </p>
                   </div>
@@ -947,4 +1154,5 @@ const AIVideoGeneration: React.FC = () => {
     </div>
   );
 };
+
 export default AIVideoGeneration;
