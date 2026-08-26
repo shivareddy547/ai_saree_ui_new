@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
   Eye,
@@ -12,6 +12,9 @@ import {
   ChevronUp,
   MapPin,
   Globe,
+  Search,
+  Filter,
+  X,
 } from 'lucide-react';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const apiClient = axios.create({
@@ -67,11 +70,30 @@ const StorePageViews: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
-  const fetchPageViews = async () => {
+  // Filters
+  const [pathFilter, setPathFilter] = useState('');
+  const [providerFilter, setProviderFilter] = useState('');
+  const [minViewsFilter, setMinViewsFilter] = useState('');
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState({
+    path: '',
+    provider: '',
+    minViews: '',
+    startDate: '',
+    endDate: '',
+  });
+  const fetchPageViews = useCallback(async (filters = appliedFilters) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await apiClient.get('/store/page-views');
+      const params: Record<string, string> = {};
+      if (filters.path?.trim()) params.path = filters.path.trim();
+      if (filters.provider?.trim()) params.provider = filters.provider.trim();
+      if (filters.minViews?.trim()) params.minViews = filters.minViews.trim();
+      if (filters.startDate) params.startDate = filters.startDate;
+      if (filters.endDate) params.endDate = filters.endDate;
+      const response = await apiClient.get('/store/page-views', { params });
       if (response.data.success) {
         setRows(response.data.data || []);
       } else {
@@ -87,10 +109,53 @@ const StorePageViews: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [appliedFilters]);
   useEffect(() => {
     fetchPageViews();
-  }, []);
+  }, [fetchPageViews]);
+  const applyFilters = () => {
+    const next = {
+      path: pathFilter,
+      provider: providerFilter,
+      minViews: minViewsFilter,
+      startDate: startDateFilter,
+      endDate: endDateFilter,
+    };
+    setAppliedFilters(next);
+  };
+  const clearFilters = () => {
+    setPathFilter('');
+    setProviderFilter('');
+    setMinViewsFilter('');
+    setStartDateFilter('');
+    setEndDateFilter('');
+    setAppliedFilters({
+      path: '',
+      provider: '',
+      minViews: '',
+      startDate: '',
+      endDate: '',
+    });
+  };
+  const hasActiveFilters =
+    !!appliedFilters.path ||
+    !!appliedFilters.provider ||
+    !!appliedFilters.minViews ||
+    !!appliedFilters.startDate ||
+    !!appliedFilters.endDate;
+  const availableProviders = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => {
+      if (r.providerViews) {
+        Object.keys(r.providerViews).forEach((k) => set.add(k));
+      }
+    });
+    // Always offer common ones even if current page has none
+    ['instagram', 'youtube', 'facebook', 'twitter', 'whatsapp'].forEach((p) =>
+      set.add(p)
+    );
+    return Array.from(set).sort();
+  }, [rows]);
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, row) => {
@@ -111,7 +176,7 @@ const StorePageViews: React.FC = () => {
       return next;
     });
   };
-  if (loading) {
+  if (loading && rows.length === 0) {
     return (
       <div className="space-y-5 sm:space-y-8 px-1 sm:px-0">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
@@ -143,7 +208,7 @@ const StorePageViews: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={fetchPageViews}
+          onClick={() => fetchPageViews()}
           disabled={loading}
           className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
         >
@@ -158,7 +223,7 @@ const StorePageViews: React.FC = () => {
             <p className="text-red-700 font-medium">Unable to load analytics</p>
             <p className="text-red-600 text-sm mt-1">{error}</p>
             <button
-              onClick={fetchPageViews}
+              onClick={() => fetchPageViews()}
               className="mt-2 text-sm text-red-700 underline hover:no-underline"
             >
               Try again
@@ -166,6 +231,115 @@ const StorePageViews: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Filters */}
+      <div className="card-glass p-4 sm:p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter className="w-4 h-4 text-purple-600" />
+          <h2 className="text-sm font-semibold text-slate-800">Filters</h2>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clear all
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              Path contains
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={pathFilter}
+                onChange={(e) => setPathFilter(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+                placeholder="/store/product/…"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              Provider
+            </label>
+            <select
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none bg-white"
+            >
+              <option value="">All providers</option>
+              {availableProviders.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              Min. total views
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={minViewsFilter}
+              onChange={(e) => setMinViewsFilter(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+              placeholder="e.g. 5"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              From date
+            </label>
+            <input
+              type="date"
+              value={startDateFilter}
+              onChange={(e) => setStartDateFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              To date
+            </label>
+            <input
+              type="date"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={applyFilters}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+          >
+            <Filter className="w-4 h-4" />
+            Apply filters
+          </button>
+          {hasActiveFilters && (
+            <span className="text-xs text-slate-500">
+              Showing filtered results
+              {appliedFilters.path && ` · path: “${appliedFilters.path}”`}
+              {appliedFilters.provider && ` · provider: ${appliedFilters.provider}`}
+              {appliedFilters.minViews && ` · ≥ ${appliedFilters.minViews} views`}
+              {appliedFilters.startDate && ` · from ${appliedFilters.startDate}`}
+              {appliedFilters.endDate && ` · to ${appliedFilters.endDate}`}
+            </span>
+          )}
+        </div>
+      </div>
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         <div className="bg-white/80 backdrop-blur-sm border border-purple-100 rounded-xl p-4 sm:p-5 shadow-sm">
@@ -236,9 +410,15 @@ const StorePageViews: React.FC = () => {
             <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <Eye className="w-8 h-8 text-purple-400" />
             </div>
-            <p className="text-slate-600 font-medium">No page views recorded yet</p>
+            <p className="text-slate-600 font-medium">
+              {hasActiveFilters
+                ? 'No page views match the selected filters'
+                : 'No page views recorded yet'}
+            </p>
             <p className="text-slate-500 text-sm mt-1">
-              Views will appear here once visitors open any /store/* page
+              {hasActiveFilters
+                ? 'Try adjusting or clearing filters'
+                : 'Views will appear here once visitors open any /store/* page'}
             </p>
           </div>
         ) : (
