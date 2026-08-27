@@ -30,6 +30,7 @@ import PaymentProvidersSetup from './pages/PaymentProvidersSetup';
 import ShipmentProvidersSetup from './pages/ShipmentProvidersSetup';
 import StoreSettingsAdmin from './pages/StoreSettingsAdmin';
 import StorePageViews from './pages/StorePageViews';
+import AIModelsSetup from './pages/AIModelsSetup'; // Import new page
 import StoreHome from './pages/Store/StoreHome';
 import StoreProducts from './pages/Store/StoreProducts';
 import StoreProductDetail from './pages/Store/StoreProductDetail';
@@ -126,6 +127,7 @@ const App: React.FC = () => {
                             <Route path="/payment-providers-setup" element={<PaymentProvidersSetup />} />
                             <Route path="/shipment-providers-setup" element={<ShipmentProvidersSetup />} />
                             <Route path="/setup-providers" element={<SetupProviders />} />
+                            <Route path="/ai-models-setup" element={<AIModelsSetup />} /> {/* New route */}
                             <Route path="/store-settings" element={<StoreSettingsAdmin />} />
                         </Route>
                         <Route path="/store" element={<StoreLayout />}>
