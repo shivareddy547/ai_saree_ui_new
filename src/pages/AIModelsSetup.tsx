@@ -50,6 +50,7 @@ const PROVIDER_OPTIONS = [
   { key: 'groq', name: 'Groq' },
   { key: 'mistral', name: 'Mistral' },
   { key: 'bedrock', name: 'AWS Bedrock' },
+  { key: 'grok', name: 'Grok' },
 ];
 const MODEL_TYPES = ['chat', 'embedding', 'image', 'audio', 'moderation'];
 const AIModelsSetup: React.FC = () => {
