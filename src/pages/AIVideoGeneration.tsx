@@ -14,7 +14,7 @@ import {
   CheckCircle2,
   Film,
   Link2,
-  CloudUpload,
+  Cpu,
 } from 'lucide-react';
 
 interface Provider {
@@ -37,6 +37,21 @@ interface SocialConnection {
   tokenExpiresAt?: string;
 }
 
+interface AiModelOption {
+  id: string;
+  name: string;
+  model_identifier: string;
+  model_type: string;
+  enabled: boolean;
+  is_default: boolean;
+  provider?: {
+    id: string;
+    name: string;
+    provider: string;
+    enabled: boolean;
+  };
+}
+
 interface GeneratedVideo {
   id: string;
   title?: string;
@@ -52,9 +67,11 @@ interface GeneratedVideo {
     engine?: string;
     cloudinaryPublicId?: string | null;
     frameCount?: number;
-    cloudinaryError?: string;
-    localPath?: string;
-    audioSource?: string;
+    requestId?: string;
+    modelIdentifier?: string;
+    providerKey?: string;
+    providerName?: string;
+    prompt?: string;
   };
 }
 
@@ -89,15 +106,18 @@ const UPLOAD_PRESET =
 const OUT_W = 1080;
 const OUT_H = 1920;
 
+/** Providers known to support native AI video APIs */
+const VIDEO_CAPABLE_PROVIDERS = new Set(['grok']);
+
 const isPlayableVideoUrl = (url?: string | null) => {
   if (!url) return false;
   if (url.includes('res.cloudinary.com')) return true;
   if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) return true;
   if (url.includes('/uploads/videos/')) return true;
+  if (url.includes('x.ai') || url.includes('cdn')) return true;
   return false;
 };
 
-/** Draw image COVER — fills entire canvas, no bars on any side */
 function drawImageCover(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -122,10 +142,6 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/**
- * Client-side video builder (same approach as CreateProduct reference):
- * canvas COVER frames + real audio track via MediaRecorder.
- */
 async function buildVideoBlob(
   imageSrcs: string[],
   audioBlob: Blob | null,
@@ -158,7 +174,6 @@ async function buildVideoBlob(
   canvas.height = OUT_H;
   const ctx = canvas.getContext('2d')!;
   const canvasStream = canvas.captureStream(30);
-
   const combinedStream = new MediaStream();
   canvasStream.getVideoTracks().forEach((t) => combinedStream.addTrack(t));
 
@@ -203,7 +218,6 @@ async function buildVideoBlob(
 
   onProgress?.(15, 'Recording video...');
   recorder.start(500);
-
   if (audioContext) await audioContext.resume();
   if (audioEl) {
     try {
@@ -222,10 +236,8 @@ async function buildVideoBlob(
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, OUT_W, OUT_H);
       drawImageCover(ctx, images[imgIndex], OUT_W, OUT_H);
-
       const pct = 15 + (frame / totalFrames) * 70;
       if (frame % 15 === 0) onProgress?.(Math.min(85, pct), 'Encoding frames...');
-
       frame++;
       setTimeout(tick, 1000 / fps);
     };
@@ -245,15 +257,12 @@ async function buildVideoBlob(
 
   onProgress?.(90, 'Finalizing...');
   const blob = await new Promise<Blob>((resolve) => {
-    recorder.onstop = () => {
-      resolve(new Blob(chunks, { type: mimeType }));
-    };
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
     recorder.stop();
     setTimeout(() => {
       if (chunks.length > 0) resolve(new Blob(chunks, { type: mimeType }));
     }, 4000);
   });
-
   onProgress?.(95, 'Video ready');
   return blob;
 }
@@ -267,10 +276,8 @@ async function uploadBlobToCloudinary(
   form.append('file', blob, `ai_video.${ext}`);
   form.append('upload_preset', UPLOAD_PRESET);
   form.append('folder', 'ai_videos');
-
   const xhr = new XMLHttpRequest();
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;
-
   const result = await new Promise<any>((resolve, reject) => {
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
@@ -290,11 +297,24 @@ async function uploadBlobToCloudinary(
     xhr.open('POST', url);
     xhr.send(form);
   });
-
   return {
     url: result.secure_url || result.url,
     publicId: result.public_id,
   };
+}
+
+async function uploadImageFileToCloudinary(file: File): Promise<string> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('upload_preset', UPLOAD_PRESET);
+  form.append('folder', 'ai_video_refs');
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+    { method: 'POST', body: form }
+  );
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || 'Image upload failed');
+  return json.secure_url || json.url;
 }
 
 const AIVideoGeneration: React.FC = () => {
@@ -306,6 +326,13 @@ const AIVideoGeneration: React.FC = () => {
     },
     withCredentials: true,
   });
+
+  const [engine, setEngine] = useState<'local' | 'ai'>('local');
+  const [aiModels, setAiModels] = useState<AiModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [aspectRatio, setAspectRatio] = useState('9:16');
+  const [aiDuration, setAiDuration] = useState(8);
 
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   const [title, setTitle] = useState('');
@@ -335,6 +362,12 @@ const AIVideoGeneration: React.FC = () => {
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const selectedModel = aiModels.find((m) => m.id === selectedModelId);
+  const selectedSupportsVideo =
+    !!selectedModel &&
+    VIDEO_CAPABLE_PROVIDERS.has(selectedModel.provider?.provider || '');
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -344,6 +377,37 @@ const AIVideoGeneration: React.FC = () => {
     } catch (_) {
     } finally {
       setLoadingHistory(false);
+    }
+  }, []);
+
+  /**
+   * Load ALL enabled models from AI Models Setup (any provider).
+   * Prefer default model / video-type models for initial selection.
+   */
+  const fetchAiModels = useCallback(async () => {
+    try {
+      const res = await api.get('/ai-models');
+      const all: AiModelOption[] = (res.data.data || []).filter(
+        (m: AiModelOption) => m.enabled && m.provider?.enabled
+      );
+      // Sort: defaults first, then video type, then name
+      all.sort((a, b) => {
+        if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+        if (a.model_type === 'video' && b.model_type !== 'video') return -1;
+        if (b.model_type === 'video' && a.model_type !== 'video') return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      setAiModels(all);
+      if (all.length > 0) {
+        setSelectedModelId((prev) => {
+          if (prev && all.some((m) => m.id === prev)) return prev;
+          const def = all.find((m) => m.is_default);
+          const video = all.find((m) => m.model_type === 'video');
+          return (def || video || all[0]).id;
+        });
+      }
+    } catch (_) {
+      setAiModels([]);
     }
   }, []);
 
@@ -375,7 +439,11 @@ const AIVideoGeneration: React.FC = () => {
   useEffect(() => {
     fetchHistory();
     fetchProvidersAndConnections();
-  }, [fetchHistory, fetchProvidersAndConnections]);
+    fetchAiModels();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [fetchHistory, fetchProvidersAndConnections, fetchAiModels]);
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -483,13 +551,42 @@ const AIVideoGeneration: React.FC = () => {
     if (audioInputRef.current) audioInputRef.current.value = '';
   };
 
-  const handleGenerate = async () => {
-    setError('');
-    setSuccess('');
-    setResultVideo(null);
-    setGenProgress(0);
-    setGenMessage('');
+  const startPolling = (videoId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts += 1;
+      try {
+        const res = await api.get(`/ai-videos/${videoId}/status`);
+        const v = res.data.data as GeneratedVideo;
+        setResultVideo(v);
+        setGenProgress(Math.min(95, 20 + attempts * 5));
+        setGenMessage(
+          `${v.metadata?.providerName || 'AI'} status: ${v.status}`
+        );
+        if (v.status === 'completed') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setGenerating(false);
+          setGenProgress(100);
+          setSuccess('AI video generated successfully!');
+          fetchHistory();
+        } else if (v.status === 'failed') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setGenerating(false);
+          setError(v.errorMessage || 'AI generation failed');
+          fetchHistory();
+        }
+      } catch (err: any) {
+        if (attempts > 60) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setGenerating(false);
+          setError(err.response?.data?.message || 'Polling timed out');
+        }
+      }
+    }, 4000);
+  };
 
+  const handleGenerateLocal = async () => {
     if (images.length === 0) {
       setError('Please upload at least one image');
       return;
@@ -505,7 +602,6 @@ const AIVideoGeneration: React.FC = () => {
 
     setGenerating(true);
     try {
-      // 1) Resolve audio blob
       let audioBlob: Blob | null = null;
       if (audioMode === 'upload' && audioFile) {
         audioBlob = audioFile;
@@ -528,7 +624,6 @@ const AIVideoGeneration: React.FC = () => {
         }
       }
 
-      // 2) Build video client-side with COVER frames + audio
       setGenMessage('Building video (full-frame images + audio)...');
       const videoBlob = await buildVideoBlob(
         images.map((i) => i.preview),
@@ -540,14 +635,12 @@ const AIVideoGeneration: React.FC = () => {
         }
       );
 
-      // 3) Upload to Cloudinary
       setGenMessage('Uploading to Cloudinary...');
       setGenProgress(96);
       const uploaded = await uploadBlobToCloudinary(videoBlob, (p) => {
         setGenProgress(96 + Math.round(p * 0.03));
       });
 
-      // 4) Save record on backend
       setGenMessage('Saving...');
       const saveRes = await api.post('/ai-videos/save', {
         title: title.trim() || 'AI Generated Video',
@@ -569,18 +662,92 @@ const AIVideoGeneration: React.FC = () => {
 
       const video = saveRes.data.data as GeneratedVideo;
       setResultVideo(video);
-      setSuccess('Video generated with full-frame images and audio, uploaded to Cloudinary!');
+      setSuccess(
+        'Video generated with full-frame images and audio, uploaded to Cloudinary!'
+      );
       setGenProgress(100);
       await fetchHistory();
     } catch (err: any) {
       console.error(err);
       setError(
-        err.response?.data?.message ||
-          err.message ||
-          'Failed to generate video'
+        err.response?.data?.message || err.message || 'Failed to generate video'
       );
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleGenerateAi = async () => {
+    if (!selectedModelId) {
+      setError(
+        'Select a model from AI Models Setup (or mark a default model there).'
+      );
+      return;
+    }
+    if (!prompt.trim()) {
+      setError('Please enter a prompt for AI video generation');
+      return;
+    }
+    if (!selectedSupportsVideo) {
+      setError(
+        `Provider "${selectedModel?.provider?.name || selectedModel?.provider?.provider}" does not support native AI video generation. ` +
+          'Choose a video-capable model (e.g. Grok video) or use Local slideshow. ' +
+          'Groq and most chat providers only support text inference.'
+      );
+      return;
+    }
+
+    setGenerating(true);
+    setGenProgress(10);
+    setGenMessage('Uploading reference images...');
+    try {
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < images.length; i++) {
+        setGenMessage(`Uploading image ${i + 1}/${images.length}...`);
+        const url = await uploadImageFileToCloudinary(images[i].file);
+        uploadedUrls.push(url);
+        setGenProgress(10 + Math.round(((i + 1) / Math.max(1, images.length)) * 20));
+      }
+
+      setGenMessage(
+        `Starting generation with ${selectedModel?.provider?.name || 'AI'} / ${selectedModel?.name || 'model'}...`
+      );
+      setGenProgress(35);
+      const res = await api.post('/ai-videos/generate-ai', {
+        title: title.trim() || 'AI Video',
+        prompt: prompt.trim(),
+        modelId: selectedModelId,
+        imageUrls: uploadedUrls,
+        durationSeconds: aiDuration,
+        aspectRatio,
+        resolution: '720p',
+      });
+
+      const video = res.data.data as GeneratedVideo;
+      setResultVideo(video);
+      setGenMessage('Job started — polling for completion...');
+      setGenProgress(40);
+      startPolling(video.id);
+    } catch (err: any) {
+      setGenerating(false);
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          'Failed to start AI generation'
+      );
+    }
+  };
+
+  const handleGenerate = async () => {
+    setError('');
+    setSuccess('');
+    setResultVideo(null);
+    setGenProgress(0);
+    setGenMessage('');
+    if (engine === 'ai') {
+      await handleGenerateAi();
+    } else {
+      await handleGenerateLocal();
     }
   };
 
@@ -610,7 +777,9 @@ const AIVideoGeneration: React.FC = () => {
     }
     const conn = connections[selectedProviderId];
     if (!conn || isTokenExpired(conn)) {
-      setError('Account not connected or token expired. Click Connect to authorize again.');
+      setError(
+        'Account not connected or token expired. Click Connect to authorize again.'
+      );
       return;
     }
     const video_url = resolveMediaUrl(resultVideo.videoUrl);
@@ -648,7 +817,9 @@ const AIVideoGeneration: React.FC = () => {
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const mediaOptions =
     MEDIA_TYPES[selectedProvider?.provider_key || ''] || MEDIA_TYPES.default;
-  const selectedConn = selectedProviderId ? connections[selectedProviderId] : undefined;
+  const selectedConn = selectedProviderId
+    ? connections[selectedProviderId]
+    : undefined;
   const needsReconnect = selectedProviderId ? isTokenExpired(selectedConn) : false;
   const playable = isPlayableVideoUrl(resultVideo?.videoUrl);
   const onCloudinary =
@@ -666,8 +837,8 @@ const AIVideoGeneration: React.FC = () => {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">AI Video Generation</h1>
             <p className="text-slate-500 text-sm mt-1">
-              Images fill the full frame (no bars). AI or uploaded voice is embedded in the
-              video, then uploaded to Cloudinary for sharing.
+              Local slideshow or AI provider from Models Setup. Provider and model are
+              selected dynamically — nothing is hardcoded.
             </p>
           </div>
         </div>
@@ -681,6 +852,133 @@ const AIVideoGeneration: React.FC = () => {
           <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm mb-4 flex items-center gap-2">
             <CheckCircle2 size={18} />
             {success}
+          </div>
+        )}
+
+        <div className="mb-5">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Generation engine
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setEngine('local')}
+              disabled={generating}
+              className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${
+                engine === 'local'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Film size={16} /> Local slideshow
+            </button>
+            <button
+              type="button"
+              onClick={() => setEngine('ai')}
+              disabled={generating}
+              className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${
+                engine === 'ai'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Cpu size={16} /> AI Provider
+            </button>
+          </div>
+        </div>
+
+        {engine === 'ai' && (
+          <div className="mb-6 p-5 bg-indigo-50 rounded-xl border border-indigo-100 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                AI Model <span className="text-red-500">*</span>
+                <span className="text-gray-400 font-normal ml-1">
+                  (from AI Models Setup)
+                </span>
+              </label>
+              {aiModels.length === 0 ? (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  No enabled models found. Enable a provider and add models under{' '}
+                  <strong>AI Models Setup</strong>. Your default provider will be used
+                  automatically when available.
+                </p>
+              ) : (
+                <select
+                  className="input-field"
+                  value={selectedModelId}
+                  onChange={(e) => setSelectedModelId(e.target.value)}
+                  disabled={generating}
+                >
+                  <option value="">Select model</option>
+                  {aiModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      [{m.provider?.name || m.provider?.provider || 'AI'}] {m.name} (
+                      {m.model_identifier})
+                      {m.model_type ? ` · ${m.model_type}` : ''}
+                      {m.is_default ? ' · default' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {selectedModel && (
+                <p className="text-xs text-gray-600 mt-1">
+                  Provider:{' '}
+                  <strong>{selectedModel.provider?.name || '—'}</strong> (
+                  {selectedModel.provider?.provider}) · type:{' '}
+                  {selectedModel.model_type}
+                  {selectedSupportsVideo
+                    ? ' · supports AI video'
+                    : ' · chat/text only (use Local slideshow for video, or pick a video-capable model)'}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Prompt <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                className="input-field min-h-[100px]"
+                placeholder="e.g. Create a luxury wedding saree advertisement with soft lighting and elegant motion"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                disabled={generating}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Aspect ratio
+                </label>
+                <select
+                  className="input-field"
+                  value={aspectRatio}
+                  onChange={(e) => setAspectRatio(e.target.value)}
+                  disabled={generating}
+                >
+                  <option value="9:16">9:16 (Reel / Short)</option>
+                  <option value="16:9">16:9 (Landscape)</option>
+                  <option value="1:1">1:1 (Square)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Duration (sec)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={15}
+                  className="input-field"
+                  value={aiDuration}
+                  onChange={(e) =>
+                    setAiDuration(
+                      Math.max(1, Math.min(15, Number(e.target.value) || 8))
+                    )
+                  }
+                  disabled={generating}
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -699,8 +997,13 @@ const AIVideoGeneration: React.FC = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">
-              Product Images <span className="text-red-500">*</span>
-              <span className="text-gray-400 font-normal ml-1">(up to 15)</span>
+              Product Images{' '}
+              {engine === 'local' && <span className="text-red-500">*</span>}
+              <span className="text-gray-400 font-normal ml-1">
+                {engine === 'ai'
+                  ? '(optional reference images)'
+                  : '(up to 15)'}
+              </span>
             </label>
             <button
               type="button"
@@ -762,144 +1065,150 @@ const AIVideoGeneration: React.FC = () => {
           )}
         </div>
 
-        <div className="mb-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
-          <label className="block text-sm font-medium text-gray-700 mb-3">Voice-over</label>
-          <div className="flex flex-wrap gap-3 mb-4">
-            {(
-              [
-                { key: 'none', label: 'No audio', icon: Volume2 },
-                { key: 'upload', label: 'Upload audio', icon: Mic },
-                { key: 'ai', label: 'AI voice-over', icon: Sparkles },
-              ] as const
-            ).map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setAudioMode(key);
-                  if (key !== 'upload') clearAudio();
-                }}
-                disabled={generating}
-                className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
-                  audioMode === key
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Icon size={16} />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {audioMode === 'upload' && (
-            <div>
-              <input
-                ref={audioInputRef}
-                type="file"
-                accept="audio/*"
-                className="hidden"
-                onChange={handleAudioSelect}
-              />
-              {!audioFile ? (
-                <button
-                  type="button"
-                  onClick={() => audioInputRef.current?.click()}
-                  className="btn-primary text-sm"
-                  disabled={generating}
-                >
-                  Choose audio file
-                </button>
-              ) : (
-                <div className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 px-3 py-2">
-                  <Mic size={18} className="text-purple-600" />
-                  <span className="text-sm text-gray-700 truncate flex-1">
-                    {audioFile.name}
-                  </span>
-                  {audioPreview && (
-                    <audio src={audioPreview} controls className="h-8 max-w-[180px]" />
-                  )}
+        {engine === 'local' && (
+          <>
+            <div className="mb-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Voice-over
+              </label>
+              <div className="flex flex-wrap gap-3 mb-4">
+                {(
+                  [
+                    { key: 'none', label: 'No audio', icon: Volume2 },
+                    { key: 'upload', label: 'Upload audio', icon: Mic },
+                    { key: 'ai', label: 'AI voice-over', icon: Sparkles },
+                  ] as const
+                ).map(({ key, label, icon: Icon }) => (
                   <button
+                    key={key}
                     type="button"
-                    onClick={clearAudio}
-                    className="text-red-500"
+                    onClick={() => {
+                      setAudioMode(key);
+                      if (key !== 'upload') clearAudio();
+                    }}
                     disabled={generating}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
+                      audioMode === key
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                    }`}
                   >
-                    <Trash2 size={16} />
+                    <Icon size={16} />
+                    {label}
                   </button>
+                ))}
+              </div>
+              {audioMode === 'upload' && (
+                <div>
+                  <input
+                    ref={audioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={handleAudioSelect}
+                  />
+                  {!audioFile ? (
+                    <button
+                      type="button"
+                      onClick={() => audioInputRef.current?.click()}
+                      className="btn-primary text-sm"
+                      disabled={generating}
+                    >
+                      Choose audio file
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                      <Mic size={18} className="text-purple-600" />
+                      <span className="text-sm text-gray-700 truncate flex-1">
+                        {audioFile.name}
+                      </span>
+                      {audioPreview && (
+                        <audio src={audioPreview} controls className="h-8 max-w-[180px]" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={clearAudio}
+                        className="text-red-500"
+                        disabled={generating}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {audioMode === 'ai' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Script
+                    </label>
+                    <textarea
+                      className="input-field min-h-[90px]"
+                      placeholder="Describe the product..."
+                      value={audioScript}
+                      onChange={(e) => setAudioScript(e.target.value)}
+                      disabled={generating}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Language
+                      </label>
+                      <select
+                        className="input-field"
+                        value={audioLanguage}
+                        onChange={(e) => setAudioLanguage(e.target.value)}
+                        disabled={generating}
+                      >
+                        <option value="en">English</option>
+                        <option value="hi">Hindi</option>
+                        <option value="ta">Tamil</option>
+                        <option value="te">Telugu</option>
+                        <option value="bn">Bengali</option>
+                        <option value="mr">Marathi</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Voice
+                      </label>
+                      <select
+                        className="input-field"
+                        value={voiceGender}
+                        onChange={(e) => setVoiceGender(e.target.value as any)}
+                        disabled={generating}
+                      >
+                        <option value="female">Female</option>
+                        <option value="male">Male</option>
+                        <option value="neutral">Neutral</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          )}
-
-          {audioMode === 'ai' && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Script</label>
-                <textarea
-                  className="input-field min-h-[90px]"
-                  placeholder="Describe the product and key highlights for the AI voice..."
-                  value={audioScript}
-                  onChange={(e) => setAudioScript(e.target.value)}
-                  disabled={generating}
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Language
-                  </label>
-                  <select
-                    className="input-field"
-                    value={audioLanguage}
-                    onChange={(e) => setAudioLanguage(e.target.value)}
-                    disabled={generating}
-                  >
-                    <option value="en">English</option>
-                    <option value="hi">Hindi</option>
-                    <option value="ta">Tamil</option>
-                    <option value="te">Telugu</option>
-                    <option value="bn">Bengali</option>
-                    <option value="mr">Marathi</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Voice</label>
-                  <select
-                    className="input-field"
-                    value={voiceGender}
-                    onChange={(e) => setVoiceGender(e.target.value as any)}
-                    disabled={generating}
-                  >
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="neutral">Neutral</option>
-                  </select>
-                </div>
-              </div>
+            <div className="mb-6 max-w-xs">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Seconds per image
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={15}
+                className="input-field"
+                value={durationSeconds}
+                onChange={(e) =>
+                  setDurationSeconds(
+                    Math.max(1, Math.min(15, Number(e.target.value) || 5))
+                  )
+                }
+                disabled={generating}
+              />
             </div>
-          )}
-        </div>
-
-        <div className="mb-6 max-w-xs">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Seconds per image
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={15}
-            className="input-field"
-            value={durationSeconds}
-            onChange={(e) =>
-              setDurationSeconds(Math.max(1, Math.min(15, Number(e.target.value) || 5)))
-            }
-            disabled={generating}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Images rotate for the full length of the voice-over.
-          </p>
-        </div>
+          </>
+        )}
 
         {generating && (
           <div className="mb-4 space-y-2">
@@ -919,7 +1228,11 @@ const AIVideoGeneration: React.FC = () => {
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={generating || images.length === 0}
+          disabled={
+            generating ||
+            (engine === 'local' && images.length === 0) ||
+            (engine === 'ai' && (!selectedModelId || !prompt.trim()))
+          }
           className="btn-primary flex items-center gap-2"
         >
           {generating ? (
@@ -928,7 +1241,10 @@ const AIVideoGeneration: React.FC = () => {
             </>
           ) : (
             <>
-              <Film size={18} /> Generate Video
+              <Film size={18} />{' '}
+              {engine === 'ai'
+                ? `Generate with ${selectedModel?.provider?.name || 'AI'}`
+                : 'Generate Video'}
             </>
           )}
         </button>
@@ -950,32 +1266,41 @@ const AIVideoGeneration: React.FC = () => {
                   className="w-full rounded-xl border border-gray-200 bg-black max-h-96 object-contain"
                 />
               ) : (
-                <div className="text-gray-500 text-sm">No playable media</div>
+                <div className="text-gray-500 text-sm">
+                  {resultVideo.status === 'processing'
+                    ? 'Generation in progress…'
+                    : 'No playable media yet'}
+                </div>
               )}
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                   {resultVideo.status}
                 </span>
+                {(resultVideo.metadata?.engine === 'ai_provider' ||
+                  resultVideo.metadata?.engine === 'grok') && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                    {resultVideo.metadata?.providerName ||
+                      resultVideo.metadata?.providerKey ||
+                      'AI'}
+                    {resultVideo.metadata?.modelIdentifier
+                      ? ` · ${resultVideo.metadata.modelIdentifier}`
+                      : ''}
+                  </span>
+                )}
                 {onCloudinary && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
                     Cloudinary
                   </span>
                 )}
               </div>
-              {resultVideo.videoUrl && (
-                <p className="text-xs text-gray-400 mt-1 truncate" title={resultVideo.videoUrl}>
-                  {resultVideo.videoUrl}
-                </p>
-              )}
             </div>
-
             <div className="space-y-4">
               <h3 className="font-medium text-gray-800 flex items-center gap-2">
                 <Share2 size={18} /> Share to social
               </h3>
               {providers.length === 0 ? (
                 <p className="text-sm text-gray-500">
-                  No enabled social providers. Configure them under Social Post Video Config.
+                  No enabled social providers.
                 </p>
               ) : (
                 <>
@@ -1012,20 +1337,16 @@ const AIVideoGeneration: React.FC = () => {
                       })}
                     </select>
                   </div>
-
                   {selectedProviderId && needsReconnect && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex flex-col sm:flex-row sm:items-center gap-3">
                       <div className="flex-1">
-                        <p className="font-medium">Account not connected or token expired</p>
-                        <p className="text-xs mt-0.5">
-                          Reconnect to post videos to this provider.
-                        </p>
+                        <p className="font-medium">Reconnect required</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => openAuthPopup(selectedProviderId)}
                         disabled={isConnecting === selectedProviderId}
-                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5 whitespace-nowrap"
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5"
                       >
                         {isConnecting === selectedProviderId ? (
                           <Loader2 size={14} className="animate-spin" />
@@ -1036,14 +1357,6 @@ const AIVideoGeneration: React.FC = () => {
                       </button>
                     </div>
                   )}
-
-                  {selectedProviderId && !needsReconnect && selectedConn?.connected && (
-                    <div className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">
-                      Connected as @
-                      {selectedConn.username || selectedConn.accountId || 'account'}
-                    </div>
-                  )}
-
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Format
@@ -1069,7 +1382,6 @@ const AIVideoGeneration: React.FC = () => {
                       className="input-field min-h-[80px]"
                       value={caption}
                       onChange={(e) => setCaption(e.target.value)}
-                      placeholder="Write a caption for your post..."
                       disabled={sharing}
                     />
                   </div>
@@ -1110,44 +1422,44 @@ const AIVideoGeneration: React.FC = () => {
           <p className="text-gray-500 text-sm">No videos generated yet.</p>
         ) : (
           <div className="space-y-3">
-            {history.map((v) => {
-              const cloud =
-                !!v.videoUrl &&
-                (v.videoUrl.includes('res.cloudinary.com') ||
-                  !!v.metadata?.cloudinaryPublicId);
-              return (
-                <div
-                  key={v.id}
-                  className="flex items-center gap-4 p-3 rounded-xl border border-gray-200 bg-white hover:shadow-sm cursor-pointer"
-                  onClick={() => setResultVideo(v)}
-                >
-                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center text-gray-400">
-                    <Film size={20} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-800 truncate">
-                      {v.title || 'Untitled'}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {v.status}
-                      {cloud ? ' · Cloudinary' : ''}
-                      {v.createdAt ? ` · ${new Date(v.createdAt).toLocaleString()}` : ''}
-                    </p>
-                  </div>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      v.status === 'completed'
-                        ? 'bg-green-100 text-green-700'
-                        : v.status === 'failed'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}
-                  >
-                    {v.status}
-                  </span>
+            {history.map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center gap-4 p-3 rounded-xl border border-gray-200 bg-white hover:shadow-sm cursor-pointer"
+                onClick={() => setResultVideo(v)}
+              >
+                <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center text-gray-400">
+                  <Film size={20} />
                 </div>
-              );
-            })}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-800 truncate">
+                    {v.title || 'Untitled'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {v.status}
+                    {v.metadata?.providerName
+                      ? ` · ${v.metadata.providerName}`
+                      : v.metadata?.engine === 'grok'
+                      ? ' · Grok'
+                      : ''}
+                    {v.createdAt
+                      ? ` · ${new Date(v.createdAt).toLocaleString()}`
+                      : ''}
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    v.status === 'completed'
+                      ? 'bg-green-100 text-green-700'
+                      : v.status === 'failed'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {v.status}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
