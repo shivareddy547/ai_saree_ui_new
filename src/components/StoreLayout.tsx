@@ -3,7 +3,6 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   ShoppingBag,
   Search,
-  User,
   Heart,
   Menu,
   X,
@@ -14,25 +13,28 @@ import {
   Package,
   HelpCircle,
   Store,
-  ChevronRight,
   XCircle,
-  MapPin
+  MapPin,
 } from 'lucide-react';
 import CartPopup from './CartPopup';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import axios from 'axios';
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const uploadsBase = API_BASE_URL.replace(/\/api$/, '');
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
+
 interface Suggestion {
   id: string;
   name: string;
   image: string | null;
 }
+
 interface StoreSettings {
   id: string;
   name: string;
@@ -40,6 +42,7 @@ interface StoreSettings {
   logo: string | null;
   favicon: string | null;
 }
+
 const StoreLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -47,23 +50,32 @@ const StoreLayout: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { totalItems } = useCart();
   const { wishlistCount } = useWishlist();
-  // Dynamic store settings
+
   const [storeName, setStoreName] = useState('SareeStore');
-  const [storeCaption, setStoreCaption] = useState('Your trusted destination for premium sarees. Quality guaranteed.');
+  const [storeCaption, setStoreCaption] = useState(
+    'Your trusted destination for premium sarees. Quality guaranteed.'
+  );
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  // Search state
+
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const suggestionContainerRef = useRef<HTMLDivElement>(null);
+
+  // Separate refs for desktop and mobile search inputs
+  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+  const desktopSuggestionRef = useRef<HTMLDivElement>(null);
+  const mobileSuggestionRef = useRef<HTMLDivElement>(null);
+
   const getImageUrl = (path: string | null | undefined) => {
     if (!path) return null;
     if (path.startsWith('http')) return path;
     return `${uploadsBase}${path}`;
   };
+
   const fetchStoreSettings = useCallback(async () => {
     try {
       const token = localStorage.getItem('authToken');
@@ -73,16 +85,21 @@ const StoreLayout: React.FC = () => {
       const data: StoreSettings = res.data.data;
       if (data) {
         setStoreName(data.name || 'SareeStore');
-        setStoreCaption(data.caption || 'Your trusted destination for premium sarees. Quality guaranteed.');
+        setStoreCaption(
+          data.caption ||
+            'Your trusted destination for premium sarees. Quality guaranteed.'
+        );
         setLogoUrl(getImageUrl(data.logo));
       }
     } catch {
       // Keep defaults on error
     }
   }, []);
+
   useEffect(() => {
     fetchStoreSettings();
   }, [fetchStoreSettings]);
+
   const userStr = localStorage.getItem('user');
   let userName = 'User';
   let userEmail = 'user@example.com';
@@ -92,48 +109,64 @@ const StoreLayout: React.FC = () => {
       const user = JSON.parse(userStr);
       userName = user.fullName || 'User';
       userEmail = user.email || 'user@example.com';
-      userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+      userInitials = userName
+        .split(' ')
+        .map((n: string) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
     } catch (e) {
       // ignore
     }
   }
-  // Define public store routes that do not require authentication
+
   const publicStorePaths = [
     '/store/home',
     '/store/products',
-    '/store/product', // prefix for product detail
+    '/store/product',
     '/store/cart',
   ];
-  const isPublicPath = (path: string) => {
-    return publicStorePaths.some(p => path.startsWith(p));
-  };
-  // Check authentication and redirect if needed
+
+  const isPublicPath = (path: string) =>
+    publicStorePaths.some((p) => path.startsWith(p));
+
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const currentPath = location.pathname;
-    // Only enforce for store routes
     if (currentPath.startsWith('/store')) {
-      // If the current path is not public and user is not logged in, redirect to login
       if (!isPublicPath(currentPath) && !token) {
         navigate('/login', { state: { from: currentPath } });
       }
     }
   }, [location.pathname, navigate]);
+
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
-  // Close suggestions on outside click
+
+  // Outside-click closes suggestions (checks both desktop + mobile refs)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (suggestionContainerRef.current && !suggestionContainerRef.current.contains(e.target as Node) &&
-          searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideDesktop =
+        (desktopSuggestionRef.current &&
+          desktopSuggestionRef.current.contains(target)) ||
+        (desktopSearchInputRef.current &&
+          desktopSearchInputRef.current.contains(target));
+      const insideMobile =
+        (mobileSuggestionRef.current &&
+          mobileSuggestionRef.current.contains(target)) ||
+        (mobileSearchInputRef.current &&
+          mobileSearchInputRef.current.contains(target));
+      if (!insideDesktop && !insideMobile) {
         setShowSuggestions(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () =>
+      document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  // Debounced autocomplete fetch
+
   const fetchSuggestions = useCallback(async (query: string) => {
     if (!query || query.trim().length < 2) {
       setSuggestions([]);
@@ -143,7 +176,7 @@ const StoreLayout: React.FC = () => {
     setIsLoadingSuggestions(true);
     try {
       const response = await apiClient.get('/store/autocomplete', {
-        params: { q: query.trim() }
+        params: { q: query.trim() },
       });
       if (response.data.success) {
         setSuggestions(response.data.data || []);
@@ -160,7 +193,10 @@ const StoreLayout: React.FC = () => {
       setIsLoadingSuggestions(false);
     }
   }, []);
-  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+
+  const handleSearchInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const value = e.target.value;
     setSearchQuery(value);
     if (searchTimeoutRef.current) {
@@ -170,35 +206,45 @@ const StoreLayout: React.FC = () => {
       fetchSuggestions(value);
     }, 300);
   };
+
   const handleSuggestionSelect = (suggestion: Suggestion) => {
     setSearchQuery(suggestion.name);
     setShowSuggestions(false);
     navigate(`/store/product/${suggestion.id}`);
   };
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       setShowSuggestions(false);
-      navigate(`/store/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      navigate(
+        `/store/products?search=${encodeURIComponent(searchQuery.trim())}`
+      );
     }
   };
+
   const clearSearch = () => {
     setSearchQuery('');
     setSuggestions([]);
     setShowSuggestions(false);
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (desktopSearchInputRef.current) {
+      desktopSearchInputRef.current.focus();
+    } else if (mobileSearchInputRef.current) {
+      mobileSearchInputRef.current.focus();
     }
   };
+
   const navItems = [
     { path: '/store/home', label: 'Home', icon: Home },
     { path: '/store/products', label: 'Products', icon: Package },
     { path: '/store/orders', label: 'Orders', icon: ShoppingBag },
     { path: '/store/cart', label: 'Cart', icon: ShoppingBag },
   ];
-  const isActive = (path: string) => {
-    return location.pathname === path || location.pathname.startsWith(`${path}/`);
-  };
+
+  const isActive = (path: string) =>
+    location.pathname === path ||
+    location.pathname.startsWith(`${path}/`);
+
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
@@ -206,6 +252,7 @@ const StoreLayout: React.FC = () => {
     localStorage.removeItem('sessionId');
     navigate('/login');
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-purple-100">
@@ -227,6 +274,7 @@ const StoreLayout: React.FC = () => {
                 {storeName}
               </span>
             </Link>
+
             <nav className="hidden md:flex items-center gap-1">
               {navItems.map((item) => (
                 <Link
@@ -242,13 +290,17 @@ const StoreLayout: React.FC = () => {
                 </Link>
               ))}
             </nav>
+
             <div className="flex items-center gap-2">
               {/* Desktop Search */}
-              <div className="hidden lg:block relative" ref={suggestionContainerRef}>
+              <div
+                className="hidden lg:block relative"
+                ref={desktopSuggestionRef}
+              >
                 <form onSubmit={handleSearchSubmit} className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
-                    ref={searchInputRef}
+                    ref={desktopSearchInputRef}
                     type="text"
                     placeholder="Search products..."
                     value={searchQuery}
@@ -274,17 +326,25 @@ const StoreLayout: React.FC = () => {
                       {suggestions.map((suggestion) => (
                         <li key={suggestion.id}>
                           <button
-                            onClick={() => handleSuggestionSelect(suggestion)}
+                            onClick={() =>
+                              handleSuggestionSelect(suggestion)
+                            }
                             className="w-full px-4 py-2 text-left hover:bg-purple-50 flex items-center gap-3"
                           >
                             {suggestion.image ? (
-                              <img src={suggestion.image} alt={suggestion.name} className="w-8 h-8 object-cover rounded" />
+                              <img
+                                src={suggestion.image}
+                                alt={suggestion.name}
+                                className="w-8 h-8 object-cover rounded"
+                              />
                             ) : (
                               <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
                                 <Package className="w-4 h-4 text-gray-500" />
                               </div>
                             )}
-                            <span className="text-sm text-gray-700">{suggestion.name}</span>
+                            <span className="text-sm text-gray-700">
+                              {suggestion.name}
+                            </span>
                           </button>
                         </li>
                       ))}
@@ -297,6 +357,7 @@ const StoreLayout: React.FC = () => {
                   </div>
                 )}
               </div>
+
               <Link
                 to="/store/wishlist"
                 className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -308,6 +369,7 @@ const StoreLayout: React.FC = () => {
                   </span>
                 )}
               </Link>
+
               <Link
                 to="/store/cart"
                 className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -319,6 +381,7 @@ const StoreLayout: React.FC = () => {
                   </span>
                 )}
               </Link>
+
               <div className="relative">
                 <button
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -379,6 +442,7 @@ const StoreLayout: React.FC = () => {
                   </div>
                 )}
               </div>
+
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -391,12 +455,16 @@ const StoreLayout: React.FC = () => {
               </button>
             </div>
           </div>
+
           {/* Mobile Search */}
-          <div className="md:hidden pb-3 relative" ref={suggestionContainerRef}>
+          <div
+            className="md:hidden pb-3 relative"
+            ref={mobileSuggestionRef}
+          >
             <form onSubmit={handleSearchSubmit} className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
-                ref={searchInputRef}
+                ref={mobileSearchInputRef}
                 type="text"
                 placeholder="Search products..."
                 value={searchQuery}
@@ -422,17 +490,25 @@ const StoreLayout: React.FC = () => {
                   {suggestions.map((suggestion) => (
                     <li key={suggestion.id}>
                       <button
-                        onClick={() => handleSuggestionSelect(suggestion)}
+                        onClick={() =>
+                          handleSuggestionSelect(suggestion)
+                        }
                         className="w-full px-4 py-2 text-left hover:bg-purple-50 flex items-center gap-3"
                       >
                         {suggestion.image ? (
-                          <img src={suggestion.image} alt={suggestion.name} className="w-8 h-8 object-cover rounded" />
+                          <img
+                            src={suggestion.image}
+                            alt={suggestion.name}
+                            className="w-8 h-8 object-cover rounded"
+                          />
                         ) : (
                           <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
                             <Package className="w-4 h-4 text-gray-500" />
                           </div>
                         )}
-                        <span className="text-sm text-gray-700">{suggestion.name}</span>
+                        <span className="text-sm text-gray-700">
+                          {suggestion.name}
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -446,6 +522,7 @@ const StoreLayout: React.FC = () => {
             )}
           </div>
         </div>
+
         {isMobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 py-2">
             <div className="max-w-7xl mx-auto px-4 space-y-1">
@@ -479,17 +556,20 @@ const StoreLayout: React.FC = () => {
                   className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
                 >
                   <HelpCircle className="w-5 h-5" />
-                  <span>Help & Support</span>
+                  <span>Help &amp; Support</span>
                 </Link>
               </div>
             </div>
           </div>
         )}
       </header>
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Outlet />
       </main>
+
       <CartPopup />
+
       <footer className="bg-white/80 backdrop-blur-md border-t border-purple-100 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -498,19 +578,63 @@ const StoreLayout: React.FC = () => {
               <p className="text-sm text-gray-600">{storeCaption}</p>
             </div>
             <div>
-              <h4 className="font-semibold text-gray-900 mb-3">Quick Links</h4>
+              <h4 className="font-semibold text-gray-900 mb-3">
+                Quick Links
+              </h4>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li><Link to="/store/home" className="hover:text-purple-600 transition-colors">Home</Link></li>
-                <li><Link to="/store/products" className="hover:text-purple-600 transition-colors">Products</Link></li>
-                <li><Link to="/store/orders" className="hover:text-purple-600 transition-colors">Orders</Link></li>
+                <li>
+                  <Link
+                    to="/store/home"
+                    className="hover:text-purple-600 transition-colors"
+                  >
+                    Home
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/store/products"
+                    className="hover:text-purple-600 transition-colors"
+                  >
+                    Products
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/store/orders"
+                    className="hover:text-purple-600 transition-colors"
+                  >
+                    Orders
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-gray-900 mb-3">Support</h4>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li><Link to="/help-us" className="hover:text-purple-600 transition-colors">Help Center</Link></li>
-                <li><Link to="/store/return-policy" className="hover:text-purple-600 transition-colors">Return Policy</Link></li>
-                <li><Link to="/store/shipping" className="hover:text-purple-600 transition-colors">Shipping Info</Link></li>
+                <li>
+                  <Link
+                    to="/help-us"
+                    className="hover:text-purple-600 transition-colors"
+                  >
+                    Help Center
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/store/return-policy"
+                    className="hover:text-purple-600 transition-colors"
+                  >
+                    Return Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/store/shipping"
+                    className="hover:text-purple-600 transition-colors"
+                  >
+                    Shipping Info
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>
@@ -530,4 +654,5 @@ const StoreLayout: React.FC = () => {
     </div>
   );
 };
+
 export default StoreLayout;
